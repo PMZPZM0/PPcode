@@ -778,6 +778,10 @@ interface Window {
     updateCheck(): Promise<{ ok: boolean; info?: { hasUpdate: boolean; reason: string; version?: string; filename?: string; size?: number; sha256?: string; changelog?: string; mandatory?: boolean; downloadUrl?: string }; currentVersion?: string; source?: string; error?: string }>;
     updateDownload(input: { downloadUrl: string; filename?: string }): Promise<{ ok: boolean; path?: string; bytes?: number; error?: string }>;
     updateInstall(filePath: string): Promise<{ ok: boolean; error?: string }>;
+    /* 读更新源配置（私有仓时代）：仓库 / 只读令牌**掩码** / 自定义清单地址。⛔ 全量令牌绝不回渲染层 */
+    updateSourceGet(): Promise<{ ok: boolean; repo?: string; manifestUrl?: string; hasToken?: boolean; tokenHint?: string; filePath?: string; error?: string }>;
+    /* 写更新源配置（部分更新；空串 = 清除该项）⇒ userData/update-source.json（0600）。发布仓私有：令牌 fine-grained Contents:Read-only 即可；或改走自定义清单（令牌留服务端） */
+    updateSourceSave(patch: { repo?: string; token?: string; manifestUrl?: string }): Promise<{ ok: boolean; repo?: string; manifestUrl?: string; hasToken?: boolean; tokenHint?: string; filePath?: string; error?: string }>;
     bridgeStatus(): Promise<{ running: boolean; port: number; targets: number; requests: number; converted: number; forwarded: number; failures: number; modes: Record<string, "responses" | "chat"> }>;
     getThreadRuntime(threadId: string): Promise<{ model: string; effort: string; sandbox: string; approval: string; rev: number; updatedAt: number } | null>;
     planMemoryHygiene(workspace?: string): Promise<{ rules: { layer: string; name: string; when: string; action: string; protect: string; trace: string }[]; labels: Record<string, { title: string; danger: string }>; actions: string[]; issues: { severity: "info" | "warn"; layer: string; code: string; message: string; count?: number }[]; archive: { files: number; bytes: number }; pool: { total: number; pinned: number; expiring: number; max: number; ttlDays: number }; }>;

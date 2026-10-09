@@ -440,6 +440,10 @@ contextBridge.exposeInMainWorld("codex", {
   updateCheck: () => __ipc("updates:check", 0, []),
   updateDownload: (input: { downloadUrl: string; filename?: string }) => __ipc("updates:download", 0, [input]),
   updateInstall: (filePath: string) => __ipc("updates:install", 1, [filePath]),
+  /* 读更新源配置（私有仓时代）：仓库 / 只读令牌**掩码** / 自定义清单地址。⛔ 全量令牌绝不回渲染层 */
+  updateSourceGet: () => __ipc("updates:source-get", 0, []),
+  /* 写更新源配置（部分更新；空串 = 清除该项）⇒ userData/update-source.json（0600）。发布仓私有：令牌 fine-grained Contents:Read-only 即可；或改走自定义清单（令牌留服务端） */
+  updateSourceSave: (patch: { repo?: string; token?: string; manifestUrl?: string }) => __ipc("updates:source-save", 0, [patch]),
   bridgeStatus: () => __ipc("bridge:status", 0, []),
   getThreadRuntime: (threadId: string) => __ipc("thread-runtime:get", 1, [threadId]),
   planMemoryHygiene: (workspace?: string) => __ipc("memory:hygiene:plan", 0, [workspace]),

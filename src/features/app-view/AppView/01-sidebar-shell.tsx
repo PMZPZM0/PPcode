@@ -245,6 +245,79 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
   //   侧栏导航区不再逐个平铺。同上同款纯局部 UI 状态（不跨组件共享、不进 bag）。
   const [moreHubOpen, setMoreHubOpen] = useState(false);
 
+  /* ── 私有仓更新源（10-09）────────────────────────────────────────────────
+     发布仓 `PMZPZM0/PPcode` 是**私有**的 ⇒ GitHub 对私有仓的 `releases/latest`
+     匿名请求一律 404，原本零配置的「检查更新」必然失败。两条出路：
+       ① 填一个**只读**令牌（fine-grained，只勾 `Contents: Read-only`）；
+       ② 填自定义清单地址（把令牌留在服务端 —— 对外分发时只有这条能用，
+          令牌塞进安装包等于把私有仓连源码一起公开）。
+     配置本体在主进程 userData 里，这里只是**纯局部 UI 状态**（同 extHubOpen 那套，
+     不进 bag、不动自动生成的 bag-types）。 */
+  const [updateSource, setUpdateSource] = useState<{ repo: string; manifestUrl: string; hasToken: boolean; tokenHint: string; filePath: string } | null>(null);
+  const [updateTokenDraft, setUpdateTokenDraft] = useState("");
+  const [updateManifestDraft, setUpdateManifestDraft] = useState("");
+  const [updateSourceBusy, setUpdateSourceBusy] = useState(false);
+  const [updateSourceMsg, setUpdateSourceMsg] = useState("");
+  const [updateSourceOpen, setUpdateSourceOpen] = useState(false);
+
+  /** 读一次更新源配置（打开「检查更新」子页时调；取不到就保持未知，不挡检查本身）。 */
+  const loadUpdateSource = async () => {
+    try {
+      const r = await window.codex.updateSourceGet?.();
+      if (!r?.ok) return;
+      setUpdateSource({ repo: r.repo ?? "", manifestUrl: r.manifestUrl ?? "", hasToken: Boolean(r.hasToken), tokenHint: r.tokenHint ?? "", filePath: r.filePath ?? "" });
+      setUpdateManifestDraft(r.manifestUrl ?? "");
+    } catch { /* 忽略 */ }
+  };
+
+  /** 保存更新源（部分更新：只覆盖传进来的键，空串 = 清除该项）。成功即自动重试一次检查。 */
+  const saveUpdateSource = async (patch: { repo?: string; token?: string; manifestUrl?: string }, thenCheck = false) => {
+    setUpdateSourceBusy(true);
+    setUpdateSourceMsg("");
+    try {
+      const r = await window.codex.updateSourceSave?.(patch);
+      if (!r?.ok) throw new Error(r?.error || "保存失败");
+      setUpdateSource({ repo: r.repo ?? "", manifestUrl: r.manifestUrl ?? "", hasToken: Boolean(r.hasToken), tokenHint: r.tokenHint ?? "", filePath: r.filePath ?? "" });
+      setUpdateManifestDraft(r.manifestUrl ?? "");
+      setUpdateTokenDraft("");
+      showToast("更新源已保存", r.hasToken ? `令牌 ${r.tokenHint}` : (r.manifestUrl ? "已改用自定义更新源" : "已恢复默认 GitHub 源"));
+      if (thenCheck) await runUpdateCheck();
+    } catch (err: any) {
+      setUpdateSourceMsg(err?.message || String(err));
+    } finally {
+      setUpdateSourceBusy(false);
+    }
+  };
+
+  /** 需要「配令牌 / 换源」的四类失败：主进程把错误码**原样透传**（见 updates.ts / update-source.ts），
+   *  渲染层靠它决定是给「可执行的下一步」还是普通报错。 */
+  const updateAuthIssue = ["private_repo_needs_token", "token_invalid", "repo_not_found_or_no_access", "github_forbidden"].includes(updateError);
+  const updateAuthTitle = updateError === "token_invalid" ? "令牌无效或已过期"
+    : updateError === "repo_not_found_or_no_access" ? "这个令牌读不到该仓库"
+    : updateError === "github_forbidden" ? "GitHub 拒绝了这次请求（令牌权限不足？）"
+    : "私有仓库需要只读令牌";
+
+  /** 令牌输入行（授权引导与「更新源设置」共用同一条，避免两处漂移）。 */
+  const updateTokenRow = (
+    <div className="account-menu-inline">
+      <input
+        className="account-menu-input"
+        type="password"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="只读令牌（github_pat_… / ghp_…）"
+        value={updateTokenDraft}
+        onChange={(e) => setUpdateTokenDraft(e.target.value)}
+      />
+      <button
+        className="account-menu-mini"
+        disabled={updateSourceBusy || !updateTokenDraft.trim()}
+        onClick={() => void saveUpdateSource({ token: updateTokenDraft.trim() }, true)}
+      >{updateSourceBusy ? "保存中" : "保存并重试"}</button>
+    </div>
+  );
+
+
   /** 复制「我正在跑的是哪一份构建」的诊断信息（09-23）。
    *  目的很具体：用户报「改了没生效」时，第一件要排除的就是**跑的产物不是最新构建**（09-23 真实事故，
    *  当时只能靠"请你重启一次"来猜）。把版本/构建/产物/引擎信息一次复制出来，双方都能对账。
@@ -536,7 +609,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                       </span>
                     </div>
                     <button className="account-menu-item" onClick={() => setAccountMenuSub("zoom")}><ZoomIn size={15} className="ic-violet" /><span>界面缩放</span><ChevronRight size={14} className="account-menu-arrow" /></button>
-                    <button className="account-menu-item" onClick={() => setAccountMenuSub("update")}>
+                    <button className="account-menu-item" onClick={() => { setAccountMenuSub("update"); void loadUpdateSource(); }}>
                       <RefreshCw size={15} className="ic-green" />
                       <span>检查更新</span>
                       {updateInfo?.hasUpdate ? <span className="account-menu-dot" title={`v${updateInfo.version} 可用`} /> : null}
@@ -573,7 +646,13 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                           注入的指纹与自身 URL 里的产物名，显示的就是正在执行的那份，不是磁盘现状。 */}
                       <div className="account-menu-row"><span className="account-menu-label">构建</span><span className="account-menu-value mono" title="构建期写进包体的指纹（YYYYMMDD-HHmm）">{buildStamp}</span></div>
                       <div className="account-menu-row"><span className="account-menu-label">产物</span><span className="account-menu-value mono" title="正在执行的渲染层 bundle（含内容 hash）">{bundleFile}</span></div>
-                      <div className="account-menu-row"><span className="account-menu-label">更新地址</span><span className="account-menu-value">GitHub Releases</span></div>
+                      <div className="account-menu-row" title={updateSource?.filePath || undefined}>
+                        <span className="account-menu-label">更新地址</span>
+                        <span className="account-menu-value">
+                          {updateSource?.manifestUrl ? "自定义清单" : `GitHub · ${updateSource?.repo || "…"}`}
+                          {updateSource?.hasToken ? "（已授权）" : ""}
+                        </span>
+                      </div>
                     </div>
                     <button className="account-menu-item" onClick={() => void copyBuildDiagnostics()}>
                       <ClipboardList size={15} /><span>复制诊断信息</span>
@@ -582,7 +661,22 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                       <RefreshCw size={15} className={updateChecking ? "spin" : ""} />
                       <span>{updateChecking ? "检查中…" : "检查更新"}</span>
                     </button>
-                    {updateError ? <div className="account-menu-error">{updateError}</div> : null}
+                    {updateAuthIssue ? (
+                      /* 私有仓未授权 —— 这不是「普通报错」，直接给可执行的下一步（10-09） */
+                      <div className="account-menu-hint">
+                        <div className="account-menu-hint-title"><KeyRound size={13} /><span>{updateAuthTitle}</span></div>
+                        <div className="account-menu-hint-body">
+                          发布仓是<b>私有仓库</b>，匿名读不到 Release。填一个<b>只读</b>令牌即可：
+                          仓库访问选 <code>Only select repositories → PMZPZM0/PPcode</code>，
+                          权限只勾 <code>Contents: Read-only</code>（本应用对发布仓只需读）。
+                        </div>
+                        {updateTokenRow}
+                        <button className="account-menu-item" onClick={() => void window.codex.openExternal("https://github.com/settings/personal-access-tokens/new")}>
+                          <KeyRound size={15} /><span>去申请只读令牌</span><ExternalLink size={12} className="account-menu-arrow" />
+                        </button>
+                        {updateSourceMsg ? <div className="account-menu-error">{updateSourceMsg}</div> : null}
+                      </div>
+                    ) : (updateError ? <div className="account-menu-error">{updateError}</div> : null)}
                     {updateInfo && !updateInfo.hasUpdate ? (
                       <div className="account-menu-success">
                         <CircleCheck size={14} /><span>已是最新版本</span>
@@ -600,6 +694,46 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                         <span>{updateDownloading ? (updateProgress > 0 ? `下载中 ${Math.round(updateProgress * 100)}%` : "下载中…") : "立即更新"}</span>
                       </button>
                     </> : null}
+                    <button className="account-menu-item" onClick={() => { setUpdateSourceOpen((v) => !v); if (!updateSource) void loadUpdateSource(); }}>
+                      <ShieldCheck size={15} className="ic-violet" /><span>更新源设置</span>
+                      <ChevronRight size={14} className={`account-menu-arrow${updateSourceOpen ? " open" : ""}`} />
+                    </button>
+                    {updateSourceOpen ? (
+                      <div className="account-menu-hint">
+                        <div className="account-menu-hint-body">
+                          当前：{updateSource?.manifestUrl
+                            ? <>自定义清单 <code>{updateSource.manifestUrl}</code></>
+                            : <>GitHub Releases · <code>{updateSource?.repo || "—"}</code></>}
+                          {updateSource?.hasToken ? <> · 令牌 <code>{updateSource.tokenHint}</code></> : " · 无令牌"}
+                        </div>
+                        {updateSource?.hasToken ? (
+                          <button className="account-menu-item" onClick={() => void saveUpdateSource({ token: "" }, true)}>
+                            <Trash2 size={15} /><span>清除令牌</span>
+                          </button>
+                        ) : null}
+                        {updateTokenRow}
+                        <div className="account-menu-inline">
+                          <input
+                            className="account-menu-input"
+                            autoComplete="off"
+                            spellCheck={false}
+                            placeholder="自定义清单地址（https://…/latest.json）"
+                            value={updateManifestDraft}
+                            onChange={(e) => setUpdateManifestDraft(e.target.value)}
+                          />
+                          <button
+                            className="account-menu-mini"
+                            disabled={updateSourceBusy}
+                            onClick={() => void saveUpdateSource({ manifestUrl: updateManifestDraft.trim() })}
+                          >保存</button>
+                        </div>
+                        <div className="account-menu-hint-body">
+                          清单填了就以它为准（令牌可留在服务端 ⇒ 对外分发时用它）；
+                          留空回到 GitHub 源。格式见 <code>docs/UPDATE-SOURCE.md</code>。
+                        </div>
+                        {updateSourceMsg ? <div className="account-menu-error">{updateSourceMsg}</div> : null}
+                      </div>
+                    ) : null}
                     <div className="account-menu-sep" />
                     <button className="account-menu-item" title="打开发布中心反馈页（自动携带版本与系统信息）" onClick={openFeedbackPage}><MessageSquare size={15} /><span>遇到问题？去反馈</span><ExternalLink size={13} className="account-menu-arrow" /></button>
                   </>}

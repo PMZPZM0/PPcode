@@ -10,6 +10,10 @@
  *   · 没有任何 URL 参数时，回落到**内置默认码** `DEFAULT_AFF_CODE`；
  *   · 于是「下载即带归因」——用户不用点链接、不用填邀请码，注册即绑定。
  *
+ * ⛔ 同日用户追加：「邀请归因**不要透出来**，默认用我的邀请码注册就行」⇒ 本模块只负责
+ *   「算出一个码交给请求体」，**界面一个字都不显示**（连掩码也不显示）。别再加回展示用的
+ *   辅助函数或归因行 —— 那正是用户点名要去掉的东西。
+ *
  * ⛔ 为什么单独一个基座文件：原先这个码硬编码在 `RelayCenterPage/use-relay-center-page-state.tsx`
  *   里（`const AFF_CODE = "X82JSNVC3W3S"`），只有在「中转站面板」注册才带；首屏登录页、引导弹窗
  *   各写一份必然漂移。现在**所有注册入口都从这里取**（守卫钉住：不许再出现第二处字面量）。
@@ -91,9 +95,6 @@ export function resolveAffiliateCode(...values: unknown[]): { code: string; sour
   return { code: DEFAULT_AFF_CODE, source: "default" };
 }
 
-/** 展示用：把码遮成 `X82J…C3W3S`（首屏不必把完整邀请码摊给所有人看）。 */
-export function maskAffCode(code: string): string {
-  const value = normalizeAffCode(code);
-  if (value.length <= 8) return value;
-  return `${value.slice(0, 4)}…${value.slice(-4)}`;
-}
+/* ⛔ 原来这里有个 `maskAffCode()`（把邀请码遮成 `X82J…C3W3S` 给界面显示用）。
+   10-09 用户令「邀请归因不要透出来，默认用我的邀请码注册就行」⇒ 界面不再显示任何码
+   （连掩码也不显示），该函数已删除。别再复活：它存在的唯一目的是"把码显示出来"。 */

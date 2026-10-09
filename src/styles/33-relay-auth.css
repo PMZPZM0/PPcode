@@ -164,18 +164,8 @@
 .authx-code-btn:hover:not(:disabled) { background: color-mix(in oklab, #a855f7 20%, transparent); }
 .authx-code-btn:disabled { opacity: .55; cursor: default; }
 
-/* 归因行：把「这段注册会挂到谁名下」摊开给用户看 */
-.authx-aff {
-  display: flex; align-items: center; gap: 7px;
-  padding: 7px 10px;
-  border-radius: 10px;
-  border: 1px dashed color-mix(in oklab, #a855f7 34%, var(--line));
-  background: color-mix(in oklab, #a855f7 7%, transparent);
-  font-size: 11.5px; color: var(--muted);
-}
-.authx-aff svg { color: color-mix(in oklab, #a855f7 80%, var(--text)); }
-.authx-aff b { color: var(--text); font-weight: 600; letter-spacing: .3px; }
-.authx-aff em { margin-left: auto; font-style: normal; font-size: 10.5px; color: var(--faint); }
+/* 归因行样式（`.authx-aff`）已随 10-09 用户令删除：邀请归因不进界面，不许显示。
+   别再按"把这段注册会挂到谁名下摊开给用户看"的旧意图复活它。 */
 
 .authx-adv { border-radius: 10px; }
 .authx-adv > summary {

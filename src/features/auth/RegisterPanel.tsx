@@ -7,16 +7,17 @@
  *      图形验证码是否开启 —— 全是站点可配的。写死任何一条，站点一改配置注册就整条失效。
  *   ② **邮箱验证码是两步**（pptoken 实测 `email_verify_enabled=true`）：先 `send-code` 拿码，
  *      注册时随 `verify_code` 提交。少了这一步注册必被拒。
- *   ③ **邀请归因**：进页面先吃 URL 的 `?aff=`（落本地 30 天），提交时经 `resolveAffiliateCode`
- *      归一化 —— 顺序是「URL/表单 → 本地存储 → 内置默认码」，所以**默认就带归因**，
- *      用户点了别人的链接也能正确覆盖。
+ *   ③ **邀请归因（⛔ 不显示）**：进页面先吃 URL 的 `?aff=`（落本地 30 天），提交时经
+ *      `resolveAffiliateCode` 归一化（URL → 本地存储 → 内置默认码）后随请求体静默提交。
+ *      用户 10-09 明确要求「不要透出来，默认用我的邀请码注册就行」⇒ 界面一个字都不显示
+ *      （连掩码也不显示），只在成功文案里说明「已自动接入」。
  *
  * ⛔ 图形验证码（turnstile / 腾讯 / 阿里）本仓没有内置 widget：检测到就直接给「去网页注册」出口，
  *   不假装能注册（假成功比失败更贵）。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, CheckCircle2, ExternalLink, Gift, Loader2, Mail, ShieldCheck, Sparkles } from "lucide-react";
-import { captureAffiliateFromUrl, maskAffCode, resolveAffiliateCode } from "../../lib/relay-affiliate";
+import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Mail, ShieldCheck, Sparkles } from "lucide-react";
+import { captureAffiliateFromUrl, resolveAffiliateCode } from "../../lib/relay-affiliate";
 import { performRelayRegister } from "../../lib/relay";
 
 type SiteSettings = {
@@ -65,7 +66,9 @@ export function RegisterPanel({ baseUrl, username, onLogin, onBack }: Props) {
 
   useEffect(() => () => { if (timerRef.current) window.clearInterval(timerRef.current); }, []);
 
-  /** 本次注册最终会带的邀请码：URL → 本地存储 → 内置默认码（默认码只在最后兜底） */
+  /** 本次注册**静默**携带的邀请码：URL → 本地存储 → 内置默认码（默认码只在最后兜底）。
+   *  ⛔ 10-09 用户令：「邀请归因不要透出来，默认用我的邀请码注册就行」⇒ 只进请求体，
+   *     界面上一个字都不显示（连掩码也不显示）。 */
   const affiliate = resolveAffiliateCode(urlCode || undefined);
 
   const sendCode = useCallback(async () => {
@@ -113,21 +116,16 @@ export function RegisterPanel({ baseUrl, username, onLogin, onBack }: Props) {
   }, [affiliate.code, baseUrl, code, confirm, email, onLogin, password, settings, username]);
 
   const openWebRegister = () => {
+    // 走网页注册这条兜底路时，归因只能靠 URL 参数（站点的注册页就是这么读的）——
+    // 这是**功能必需**，不是"透出来"：页面本身不显示任何码。
     void window.codex.openExternal(`${baseUrl.replace(/\/$/, "")}/register?aff=${encodeURIComponent(affiliate.code)}`).catch(() => undefined);
   };
 
   const loadingSettings = busy === "settings";
-  const affSource = affiliate.source === "input" ? "来自邀请链接" : affiliate.source === "stored" ? "来自本机已记录" : "内置默认邀请码";
 
   return (
     <div className="authx-panel">
       <button type="button" className="authx-back" onClick={onBack}><ArrowLeft size={13} />返回登录</button>
-
-      <div className="authx-aff" title={`邀请码 ${affiliate.code}`}>
-        <Gift size={13} />
-        <span>邀请归因：<b>{maskAffCode(affiliate.code)}</b></span>
-        <em>{affSource}</em>
-      </div>
 
       {loadingSettings ? (
         <div className="authx-loading"><Loader2 size={15} className="authx-spin" />正在读取站点设置…</div>
@@ -180,11 +178,11 @@ export function RegisterPanel({ baseUrl, username, onLogin, onBack }: Props) {
 
       {settings?.captchaRequired && (
         <button type="button" className="authx-ghost" onClick={openWebRegister}>
-          <ExternalLink size={13} />该站点需要图形验证码，去网页注册（已带邀请码）
+          <ExternalLink size={13} />该站点需要图形验证码，去网页注册
         </button>
       )}
       <p className="authx-note">
-        注册成功后会自动登录并接入模型供应商；邀请码随注册一并提交，用于归因到邀请人。
+        注册成功后会自动登录并接入模型供应商。
         {settings?.siteName ? ` 当前站点：${settings.siteName}。` : ""}
       </p>
     </div>

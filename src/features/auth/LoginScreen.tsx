@@ -15,10 +15,10 @@
  * 公开面见同目录 index.ts。
  */
 
-import { Wallet, WifiOff, Mail, Lock, UserRound, Eye, EyeOff, Loader2, Gift, Sparkles } from "lucide-react";
+import { Wallet, WifiOff, Mail, Lock, UserRound, Eye, EyeOff, Loader2, Sparkles } from "lucide-react";
 import { createPortal } from "react-dom";
 import { performRelayLogin } from "../../lib/relay";
-import { captureAffiliateFromUrl, maskAffCode, resolveAffiliateCode } from "../../lib/relay-affiliate";
+import { captureAffiliateFromUrl } from "../../lib/relay-affiliate";
 import { RegisterPanel } from "./RegisterPanel";
 import { useRef, useState, useLayoutEffect, useEffect, KeyboardEvent } from "react";
 
@@ -113,8 +113,9 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
   const [username, setUsername] = useState(() => localStorage.getItem("username") || "");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
-  /* 进页面先吃 URL 上的 ?aff=（浏览器/外链带进来的归因），落本地 30 天 */
-  const [urlCode] = useState(() => captureAffiliateFromUrl(window.location.search));
+  /* 进页面先吃 URL 上的 ?aff=（外链带进来的归因）落本地 30 天 —— 注册时静默带上。
+     ⛔ 只是**捕获**、不显示：本页与注册页都不出现任何归因字样（10-09 用户令）。 */
+  useEffect(() => { captureAffiliateFromUrl(window.location.search); }, []);
 
   /* 中转站账户登录：登录 → 自动选计费（有套餐用套餐，否则余额）→ 生成供应商进主界面 */
   const relayLogin = async () => {
@@ -133,8 +134,8 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
     setBusy(false);
   };
 
-  const affiliate = resolveAffiliateCode(urlCode || undefined);
-  const affSource = affiliate.source === "input" ? "来自邀请链接" : affiliate.source === "stored" ? "本机已记录" : "默认邀请码";
+  /* ⛔ 邀请归因**不进界面**（10-09 用户令：「不要透出来，默认用我的邀请码注册就行」）：
+     码只在注册请求体里静默带上，界面一个字都不显示。 */
   const canSubmit = Boolean(email.trim() && password && !busy);
 
   return (
@@ -169,12 +170,6 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
           />
         ) : (
           <div className="authx-panel">
-            <div className="authx-aff" title={`邀请码 ${affiliate.code}`}>
-              <Gift size={13} />
-              <span>邀请归因：<b>{maskAffCode(affiliate.code)}</b></span>
-              <em>{affSource}</em>
-            </div>
-
             <label className="authx-field">
               <span>账号邮箱</span>
               <div className="authx-input">

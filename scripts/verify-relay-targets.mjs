@@ -204,8 +204,9 @@ section("⑥b normalizeCredential（全角/空白/零宽 —— 肉眼看不出�
     "站点拒绝凭据时，提示里必须带**打到了哪个站点**（否则分不清是账号问题还是打错了站）");
 
   const loginSrc = readFileSync(path.join(ROOT, "src", "features", "auth", "LoginScreen.tsx"), "utf8");
-  ok(/normalizeCredential\(email\)/.test(loginSrc) && /normalizeCredential\(password\)/.test(loginSrc),
-    "登录页在提交前净化邮箱与密码");
+  ok(/normalizeCredential\(\s*(?:[A-Za-z_$.]+\.)?email\s*\)/.test(loginSrc)
+    && /normalizeCredential\(\s*(?:[A-Za-z_$.]+\.)?password\s*\)/.test(loginSrc),
+    "登录页在提交前净化邮箱与密码（直取 state 或经草稿对象都算）");
   const relayTs = strip(readFileSync(path.join(ROOT, "src", "lib", "relay.ts"), "utf8"));
   ok(/normalizeCredential\(input\.password\)/.test(relayTs),
     "⛔ relay.ts 里也净化一次（兜住面板/引导弹窗这些没走登录页的入口）");

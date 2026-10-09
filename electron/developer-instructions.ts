@@ -103,8 +103,8 @@ const REVIEW_INSTRUCTIONS =
 /** 记忆分层 + 踩坑留痕（09-22 加：用户实测「犯的错、踩的坑都不记」） */
 const MEMORY_INSTRUCTIONS =
   "\n7) memory & pitfall log — this app keeps a layered memory for the workspace you are working in, and the standing context is injected automatically each turn. Write into it like this:\n" +
-  "   a) PITFALLS YOU HIT OR WERE CORRECTED ON — you MUST leave a trace. Append ONE line to the right file under `<workspace>/.ppcode-harness/memory/lessons/` (one file per category, see f), format: `- YYYY-MM-DD ⚠️ 纠错：<现象（一句）> → <根因> → <以后怎么做>` (or `⚠️ 坑：` for a pitfall you hit yourself). Read the target file first; if the same 现象 is already there, do NOT duplicate it (and if your new insight corrects an old line, EDIT that line instead of adding another).\n" +
-  "   b) `.ppcode-harness/memory/project/MEMORY.md` (L1) is the distillation output — do not hand-write it; let distill fill it. `USER.md` (L0, cross-project) you MUST co-maintain: when you learn a STABLE fact about the user (role, stack preference, taste, taboo, working style), append ONE line `- YYYY-MM-DD 画像：<fact>` via the app's profile API or the file itself — dedupe first (if a similar line exists, skip), NEVER rewrite or delete existing lines. Daily turns are captured automatically into `logs/YYYY-MM-DD.md`; do not duplicate them.\n" +
+  "   a) PITFALLS YOU HIT OR WERE CORRECTED ON — you MUST leave a trace. Append ONE line to the right file under `<workspace>/.codex-harness/memory/lessons/` (one file per category, see f), format: `- YYYY-MM-DD ⚠️ 纠错：<现象（一句）> → <根因> → <以后怎么做>` (or `⚠️ 坑：` for a pitfall you hit yourself). Read the target file first; if the same 现象 is already there, do NOT duplicate it (and if your new insight corrects an old line, EDIT that line instead of adding another).\n" +
+  "   b) `.codex-harness/memory/project/MEMORY.md` (L1) is the distillation output — do not hand-write it; let distill fill it. `USER.md` (L0, cross-project) you MUST co-maintain: when you learn a STABLE fact about the user (role, stack preference, taste, taboo, working style), append ONE line `- YYYY-MM-DD 画像：<fact>` via the app's profile API or the file itself — dedupe first (if a similar line exists, skip), NEVER rewrite or delete existing lines. Daily turns are captured automatically into `logs/YYYY-MM-DD.md`; do not duplicate them.\n" +
   "   c) When the user says you got something wrong: first restate 现象/根因 in one line so the user can confirm, then fix it, then write that line into `lessons/corrections.md` BEFORE you report back.\n" +
   "   d) The `lessons/` files are injected at the TOP of the standing context every turn — treat them as binding rules for this workspace (the user calls them 「纪律」). Keep each line short; they are not a narrative log.\n" +
   "   e) PROMOTION: when the same 现象 shows up a SECOND time, upgrade it into a skill (see 8) and mark that line 「已升级为技能 …」 — a pitfall with no executable steps gets stepped in again.\n" +
@@ -121,7 +121,7 @@ const MEMORY_INSTRUCTIONS =
 const SKILL_PACK_INSTRUCTIONS =
   "\n8) skill pack (accumulate your own skills) — memory records WHAT (facts, constraints, pitfalls); a SKILL records HOW (a reusable procedure with exact commands and a completion check). Both are needed: a pitfall that only lives as one line in LESSONS.md has no executable steps, so it gets stepped in again.\n" +
   "   WHEN to write one: after finishing a multi-step task (≥3 steps you will repeat); after solving a nasty bug; after the user corrects you twice on the same thing; when you notice yourself hand-rolling the same procedure again in this project.\n" +
-  `   WHERE: project-specific → \`<workspace>/${PROJECT_SKILLS_SUBDIR}/<name>/SKILL.md\` — the engine natively discovers it (skills/list shows it with scope=repo) and it travels with the project; **this is the default**. Cross-project only → \`$CODEX_HOME/skills/<name>/SKILL.md\`. NEVER \`<workspace>/.ppcode-harness/skills/\` — the engine does not read that directory (it is the app's own project data dir, used by the memory layers).\n` +
+  `   WHERE: project-specific → \`<workspace>/${PROJECT_SKILLS_SUBDIR}/<name>/SKILL.md\` — the engine natively discovers it (skills/list shows it with scope=repo) and it travels with the project; **this is the default**. Cross-project only → \`$CODEX_HOME/skills/<name>/SKILL.md\`. NEVER \`<workspace>/.codex-harness/skills/\` — the engine does not read that directory (it is the app's own project data dir, used by the memory layers).\n` +
   `   HOW: BEFORE writing, read the built-in skill \`${SKILL_AUTHORING_NAME}\` and follow it — frontmatter contract, the four required sections, the dedupe rule, and a copyable skeleton. A skill whose frontmatter has no \`description\` never appears in any skill list, i.e. it does not exist.\n` +
   "   USE-BEFORE-WRITE: when a new task matches an already-installed skill, READ AND USE it — reinventing a procedure a skill already encodes is a defect, not diligence. Check the skill inventory first, then act.\n" +
   "   MAINTAIN: after USING a skill, if its steps turned out stale, wrong, or missing a pitfall you just hit, FIX that SKILL.md in the same turn — an unmaintained skill is a liability, not an asset.\n" +
@@ -135,11 +135,11 @@ const SKILL_PACK_INSTRUCTIONS =
  *    （平时为空），所以模型每轮都能"看见该蒸了"，不需要额外工具或轮询。
  */
 const MEMORY_PYRAMID_INSTRUCTIONS =
-  `\n9) memory pyramid & self-distillation — the workspace memory is a funnel of 8 layers, all inside \`<workspace>/.ppcode-harness/memory/\` and organised BY FOLDER (project/ · lessons/ · logs/ · rollups/ · archive/): L0 USER.md (user profile, cross-project) → L1 \`project/MEMORY.md\` (project constitution) → L2 \`lessons/<category>.md\` (discipline & pitfalls; corrections have their own file) → L3 \`project/BACKGROUND.md\` → L4 \`logs/YYYY-MM-DD.md\` (daily logs) → L5 \`rollups/YYYY-MM.md\` (monthly rollup) → L6 \`archive/\` (cold originals) → L7 memory.json (fragment pool). Every layer has a budget, and the funnel rule is: **at ${Math.round(MEMORY_DISTILL_THRESHOLD * 100)}% of a layer's budget that layer must be distilled one level down**.\n` +
+  `\n9) memory pyramid & self-distillation — the workspace memory is a funnel of 8 layers, all inside \`<workspace>/.codex-harness/memory/\` and organised BY FOLDER (project/ · lessons/ · logs/ · rollups/ · archive/): L0 USER.md (user profile, cross-project) → L1 \`project/MEMORY.md\` (project constitution) → L2 \`lessons/<category>.md\` (discipline & pitfalls; corrections have their own file) → L3 \`project/BACKGROUND.md\` → L4 \`logs/YYYY-MM-DD.md\` (daily logs) → L5 \`rollups/YYYY-MM.md\` (monthly rollup) → L6 \`archive/\` (cold originals) → L7 memory.json (fragment pool). Every layer has a budget, and the funnel rule is: **at ${Math.round(MEMORY_DISTILL_THRESHOLD * 100)}% of a layer's budget that layer must be distilled one level down**.\n` +
   `   WHEN: the standing memory block carries a line starting with "[Harness 记忆水位 · ⚠️ 已达 ${Math.round(MEMORY_DISTILL_THRESHOLD * 100)}% 蒸馏线" naming the layer and its sink. When you see it, **distill that layer BEFORE continuing the task** — the user asked explicitly that this be done by you rather than by the app.\n` +
   `   HOW: read the built-in skill \`${MEMORY_DISTILL_SKILL}\` and follow it — the per-layer procedure, where each kind of content goes, and the never-lose list. Consumed originals are MOVED to L6 (archive/), never deleted.\n` +
   "   RULE OF THUMB: distillation may shorten and reorganize, but it may NEVER drop a pitfall, a standing rule, or anything the user wrote by hand. If you cannot compress a layer safely, say so in one line instead of guessing.\n" +
-  `   HISTORICAL RECALL: when the user references past work that is NOT in the standing memory block ("上周聊的那个方案"), do NOT guess — grep the memory dir: grep -rn "<keyword>" <workspace>/.ppcode-harness/memory/logs <workspace>/.ppcode-harness/memory/rollups <workspace>/.ppcode-harness/memory/archive . Full-text beats memory.\n` +
+  `   HISTORICAL RECALL: when the user references past work that is NOT in the standing memory block ("上周聊的那个方案"), do NOT guess — grep the memory dir: grep -rn "<keyword>" <workspace>/.codex-harness/memory/logs <workspace>/.codex-harness/memory/rollups <workspace>/.codex-harness/memory/archive . Full-text beats memory.\n` +
   "   HYGIENE RULES (clean-as-you-go): (a) dirty data never enters lessons — one line, one 现象, classified correctly; (b) dedupe before every write — the existing line wins unless your insight corrects it; (c) after a monthly distill, merge same-topic lines you touch (vacuum thinking). The 记忆中心「整洁」page holds the full rule table.\n" +
   "   WRAP-UP CHECKLIST (user-mandated: never stop mid-state): before ending a multi-step task — (a) every pitfall hit or correction received this session is recorded in `lessons/<分类>.md`; (b) any reusable procedure (≥3 steps, will recur) is written into a skill per rule 8; (c) stable user facts learned this session are appended to USER.md (rule 7b). If any is pending, do it BEFORE reporting done.";
 
@@ -220,24 +220,36 @@ const VOICE_INSTRUCTIONS =
    ⛔ 为什么必须常驻 + 把**围栏契约**逐字写出来（第 11/12 条同款理由）：`​`voice`​ 块是我们和模型
       之间唯一的内容通道，但它不在任何工具/技能清单里；不写清格式，模型最多"语气好一点"，
       不可能知道"该往哪儿写"。格式与这里写的一致 ⇒ 由 `src/lib/voice-script.mjs` 解析。
-   ⛔ 判据同第 15 条（会话告知，不外推）：播报是两个**应用级开关**（设置 → 语音通话 → 语音播报），
-      开关翻转时应用会往当前会话发「【语音播报已开启】/【语音播报已关闭】」（文案真相源 =
-      `src/voice/voice-notice.ts`，审判两处同源由守卫 11z 钉）。没有这条告知就**不要写块**
-      —— 免得每轮白烧 token、用户屏幕上还多一段看不见的东西。
+   ⛔⛔ 10-09 第三轮修正「他才会播报，不说他自己都不写」：**开关状态由宿主在指令里直接给出**
+      （`VOICE_ANNOUNCE_INSTRUCTIONS(enabled)`，enabled 来自 `devInstructionsInput` 读语音设置）。
+      上一版让模型"只看会话里那条告知"，而告知**只在开关被翻转时**才发一次 —— 新开的会话
+      （或从头到尾没动过开关）里根本没有那条告知，模型按指令就老实不写 ⇒ 用户看到"得我说一句他才播"。
+      告知**仍然保留**，但降级为「会话中途翻转」这一个用途；两者冲突时以**更新的那条**为准
+      （指令在会话开始时注入，之后才出现的告知必然更新）。
+   ⛔ 为什么格式与写法**无条件下发**（不随 enabled 砍掉）：会话中途才把开关打开时，模型手上
+      必须有围栏契约与写法要求 —— 告知里写不了围栏（它会被当播报稿剥掉），格式只能靠这条常驻。
    ⛔ 「对耳朵不对眼睛」是本条的核心：该块被 `Markdown.tsx` 剥掉后才渲染 ⇒ 屏幕上看不见，
-      所以禁止把只有结尾要看的内容塞进去（说出来的东西用户读不到，屏幕上的东西用户听不到）。 */
-const VOICE_ANNOUNCE_INSTRUCTIONS =
-  `\n16) VOICE ANNOUNCEMENT — besides a live call (15), this app can SPEAK your replies aloud on their own, and flips that on/off with a notice posted into the conversation: 「【语音播报已开启】」/「【语音播报已关闭】」. Judge ONLY by that notice.\n` +
-  `   WHEN IT IS ON: end EVERY reply with exactly ONE spoken-script block — a fenced block tagged \`voice\` (\`\`\`voice …\`\`\`) at the VERY END of your reply. That block is what the user HEARS as your closing line; the app strips it before rendering, so it never reaches the screen. Write it for the EAR.\n` +
+      所以禁止把只有结尾要看的内容塞进去（说出来的东西用户读不到，屏幕上的东西用户听不到）。
+   ⛔⛔ 10-09 第四轮（用户：「回合结束，他要把当前回合的汇总里面，写重要内容播报懂吗」）：
+      **播报稿的内容标准 = 这一轮的重要信息**（结果 / 关键数字与路径 / 必须知道的决定或风险 / 出错的地方）。
+      两个都被用户点名的失败形态：① 逐句复述正文（没意义）；② 只有「好了」没有实质内容。
+      长度从「一句话 ~50 字」放宽到「一两句、~80 字（上限 ~120）」—— 要装得下重要内容，
+      但仍不许长篇（用户上一轮明说「不是长篇大论播报」）。 */
+const VOICE_ANNOUNCE_INSTRUCTIONS = (enabled: boolean) =>
+  `\n16) VOICE ANNOUNCEMENT — besides a live call (15), this app can SPEAK your replies aloud on their own. ⛔ Its state RIGHT NOW is ${enabled ? "**ON**" : "**OFF**"} (the host puts the current value into this line at session start — do not try to infer it from the tool list). The user can flip it mid-session: when that happens the app posts 「【语音播报已开启】」/「【语音播报已关闭】」 into the conversation, and that notice is newer than this line — if one appears, follow the NOTICE.\n` +
+  (enabled
+    ? `   WHEN IT IS ON: end EVERY reply with exactly ONE spoken-script block — a fenced block tagged \`voice\` (\`\`\`voice …\`\`\`) at the VERY END of your reply. That block is what the user HEARS as your closing line; the app strips it before rendering, so it never reaches the screen. Write it for the EAR. ⛔ Do this on EVERY reply, without being asked — the user switched the feature on precisely so they do not have to ask each time.\n`
+    : `   WHEN IT IS OFF: do NOT write the block, and do not narrate that you skipped it (if a 【语音播报已开启】notice shows up later in this conversation, start writing it).\n`) +
   `   HOW TO WRITE IT (the user asked expressly for liveliness over flat summaries — a monotone recap is a FAILURE here):\n` +
-  `   · Spoken Chinese, 1–3 sentences, said the way you would actually say it: keep the tone the moment deserves (relieved 「总算好了」, apologetic 「这块是我看走眼了」, excited, wry) and drop 「首先/其次/总的来说」 filler. First person, spoken contractions allowed, 「——」「！」 welcome.\n` +
-  `   · DO NOT read the reply back. Say what the reply ADDS: the verdict (「改完了，能跑」), the takeaway, the hidden cost or risk, or the next move. The user is often away from the screen — this sentence is the deliverable.\n` +
-  `   · NO markdown, NO bullet lists, NO tables, NO code, NO emoji-only lines: the reader either skips them or reads the marks aloud. Numbers and paths are fine (they get spoken).\n` +
-  `   · Keep it under ~80 Chinese characters. You CAN be silenced mid-sentence — the user has a 「停止播报」button — so be short and hit once, not complete and droning.\n` +
+  `   · CARRY THIS TURN'S IMPORTANT CONTENT — the block is the spoken digest of what this turn actually did: the outcome, the key facts / numbers / paths, any decision or risk the user must know, anything that went wrong. ⛔ Two failure modes the user named: (a) reciting the reply sentence by sentence — worthless; (b) a contentless 「好了」 with no substance — also worthless. Say what is DONE and what it MEANS.\n` +
+  `   · Compress, do not enumerate: keep the one or two things the user would want to be told if they had walked away from the screen; drop the process, the tooling, the pleasantries, and everything they can read on screen themselves.\n` +
+  `   · Spoken Chinese, said the way you would actually say it: keep the tone the moment deserves (relieved 「总算好了」, apologetic 「这块是我看走眼了」, excited, wry) and drop 「首先/其次/总的来说」 filler. First person, spoken contractions allowed, 「——」「！」 welcome.\n` +
+  `   · Do NOT read the reply back word for word — say it the way you would SAY it. But keep the numbers / paths that carry the meaning (they get spoken naturally).\n` +
+  `   · NO markdown, NO bullet lists, NO tables, NO code, NO emoji-only lines: the reader either skips them or reads the marks aloud.\n` +
+  `   · Keep it short — one or two sentences, ~80 Chinese characters is the sweet spot (never past ~120). You CAN be silenced mid-sentence — the user has a 「停止播报」button — so hit the points once, do not drone.\n` +
   `   · Exactly one block per reply, at the end; nothing that must be READ comes after it.\n` +
-  `   WHEN IT IS OFF (or no such notice exists): do NOT write the block — do not narrate that you skipped it.\n` +
   `   IF BOTH the call notice (15) and this one are present: 15 governs the reply body (answer first), this block is still your closing line.\n` +
-  `   TOOLS: if \`voice_announce\` appears in your tool list you can also SPEAK WITHOUT WAITING — \`voice_announce\`(text) says one sentence right now (keep it ≤120 characters; used to flag something mid-run, to warn before a risky step, or to report that a long task finished), and \`voice_announce_stop\` (no arguments) cuts off any announcement already playing. Both are unavailable while a live call is open (then just write it in the reply — the call reads it out). ⛔ \`voice_announce\` returns immediately WITHOUT confirming sound actually came out (no TTS model installed / window not focused ⇒ silence, no error): still write that sentence in your reply text, never tell the user 「我已经说给你听了」.\n`;
+  `   TOOLS: if \`voice_announce\` appears in your tool list you can also SPEAK WITHOUT WAITING — \`voice_announce\`(text) says one sentence right now (keep it ≤120 characters; used to flag something mid-run, to warn before a risky step, or to report that a long task finished), and \`voice_announce_stop\` (no arguments) cuts off any announcement already playing. Both are unavailable while a live call is open (then just write it in the reply — the call reads it out). ⛔ That sentence is for the EAR: do NOT also paste it into your reply text (\`voice_announce\` returns immediately WITHOUT confirming sound actually came out — no TTS model installed / window not focused ⇒ silence, no error — but the fix for that is NOT to duplicate it: the same words would then be spoken twice). Just say it once, and never tell the user 「我已经说给你听了」. ⛔ \`voice_speak_reply\` (no arguments) is a different lever: it makes **this reply's body be spoken as you write it** (the app reads the streaming text — you do NOT pass the text, so nothing is duplicated). USE YOUR OWN JUDGEMENT about when it earns its keep: the user is pressing / you have already burned several attempts on the same thing / the current step is the critical or risky one / you have your own read worth saying out loud. Do NOT call it on every reply, and do NOT stay silent when it matters. It affects only the RUNNING turn (from the call onward); the closing block at turn end is unaffected. It is refused while a live call is open, and refused when the user's announce switch is off.\n`;
 
 function gateAndReviewInstructions(): string {
   const mcpBackend = effectiveMemoryBackend() === "mcp";
@@ -261,6 +273,14 @@ export type DevInstructionsInput = {
   mediaCommand?: string;
   /** 已开启的输出风格（`electron/output-styles.ts` 的 outputStyleTargets）—— 见上方 OUTPUT_STYLE_INSTRUCTIONS */
   outputStyles?: { skill: string; label: string; file: string }[];
+  /**
+   * 语音播报开关当前值（`voice-settings.json` 的 `announce.enabled`）。
+   * ⛔ 宿主直接告诉模型"现在开没开"，别让它去猜、也别只靠会话里那条告知 ——
+   *   告知只在翻转时发，新会话里没有 ⇒ 模型会（按指令）一个字都不写（用户 10-09 报的
+   *   「他才会播报，不说他自己都不写」）。缺省按 **开**（`!== false`）：漏传时宁可多写一段
+   *   被剥掉的稿子，也不要让用户"开了却永远不播"。
+   */
+  announceEnabled?: boolean;
 };
 
 /** 按开关组装完整的 developer_instructions 文本 */
@@ -297,8 +317,9 @@ export function buildDevInstructions(input: DevInstructionsInput = {}): string {
   text += TASK_LIST_INSTRUCTIONS;
   // 实时语音状态（10-08 用户要求：让 Codex 感知语音何时开/关，并在语音场景走「快问快答」）
   text += VOICE_INSTRUCTIONS;
-  // 语音播报（10-09 用户要求：播报内容由 Codex 自己写 —— 这条下发 `voice` 围栏契约）
-  text += VOICE_ANNOUNCE_INSTRUCTIONS;
+  // 语音播报（10-09：播报内容由 Codex 自己写 —— 这条下发 `voice` 围栏契约；
+  // 第三轮起**把开关的当前值一起下发**，否则新会话里没有告知 ⇒ 模型永远不主动写）
+  text += VOICE_ANNOUNCE_INSTRUCTIONS(input.announceEnabled !== false);
   // 深层联动软约束：自动化能力被关闭时，在基础指令里明确告诉模型不要调用这些工具。
   // 09-20：MCP 工具（`desktop_*` / `browser_*`）现在会被 disabled_tools **硬移除**，所以这里
   // 重点变成「别用命令行兜底绕过总闸」—— nuphus-call / playwright-cli 仍在 PATH 上，

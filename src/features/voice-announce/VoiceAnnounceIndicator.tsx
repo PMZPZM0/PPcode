@@ -17,8 +17,10 @@ import { Square, Volume2 } from "lucide-react";
 import { getAnnounceStatus, requestAnnounceStop, subscribeAnnounceStatus, type AnnounceStatus } from "../../voice/announce-bus";
 
 const SOURCE_LABEL: Record<string, string> = {
+  /* 来源三种：`live` = Codex 逐条决定念的正文；`summary` = 回合结束那段播报稿（键名沿用旧名，
+     语义是"念 Codex 写的播报稿"）；`tool` = 主动插播。 */
   live: "正在念正文",
-  summary: "正在念小结",
+  summary: "正在念播报稿",
   tool: "Codex 插播",
 };
 

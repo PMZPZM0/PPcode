@@ -70,9 +70,9 @@ jobs:
             esac
             cp "${found[0]}" "dist-assets/${out}"
           }
-          pick artifacts/win-x64   '*.exe' "Codex.Harness.Desktop-${VERSION}-win-x64.exe"
-          pick artifacts/mac-arm64 '*.zip' "Codex.Harness.Desktop-${VERSION}-arm64-mac.zip"
-          pick artifacts/mac-x64   '*.zip' "Codex.Harness.Desktop-${VERSION}-x64-mac.zip"
+          pick artifacts/win-x64   '*.exe' "PPcode-${VERSION}-win-x64.exe"
+          pick artifacts/mac-arm64 '*.zip' "PPcode-${VERSION}-arm64-mac.zip"
+          pick artifacts/mac-x64   '*.zip' "PPcode-${VERSION}-x64-mac.zip"
           echo "=== 待发布资产 ==="
           (cd dist-assets && sha256sum ./* | tee ../assets-sha256.txt && ls -l)
 

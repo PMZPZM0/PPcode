@@ -88,11 +88,23 @@ export function orderEffectiveSubscriptions(subs, nowMs = Date.now()) {
 /**
  * 建密钥 / 选计费的**候选链**（按顺序尝试，第一个成功即生效）：
  *   ① 每个「已生效」套餐的分组 —— 用户令：分组选已生效的套餐；
- *   ② 余额（不绑分组）—— 没有任何已生效套餐时它就是第一个候选。
+ *   ② **余额分组**（`subscription_type = "standard"` 的可用分组，按倍率从低到高）——
+ *      用户令：没有套餐就用余额。⛔ 这一步**必须绑分组**：pptoken 这类站点对
+ *      「无分组 key」是**站点级硬拒**（`API Key is not assigned to any group and cannot be
+ *      used`，该文案不在上游 main 里，是站点自己加的），只发无分组 key 必 403；
+ *      而上游 `api_key_auth.go` 对「绑了非订阅分组」的 key 是**从账户余额扣费**
+ *      （`isSubscriptionType=false` ⇒ 不查订阅，只查余额）⇒ 绑 standard 分组才是真正的
+ *      「用余额」姿势。分组清单来自 `GET /api/v1/groups/available`（= 该用户有权绑的活跃分组）。
+ *   ③ 无分组余额（**最后的兜底**）：站点没配任何分组时只有这条路；上游默认实现允许
+ *      （`validateAPIKeyGroupAvailable` 对 `GroupID == nil` 直接放行），老版本站点靠它。
  *
+ * ⛔ 顺序刻意把「余额分组」放在「无分组」之前：前者在"要求绑分组"和"不要求"两类站点上都能用，
+ *    后者只在后一类能用。反过来排会让每个 pptoken 用户白建一把用不上的 Harness-余额。
+ *
+ * @param groups `/groups/available` 的返回，用于挑余额分组（可选）
  * @returns {{ mode: "plan" | "balance", groupId: number | null, groupName: string, label: string }[]}
  */
-export function buildRelayCandidates(subs, nowMs = Date.now()) {
+export function buildRelayCandidates(subs, nowMs = Date.now(), groups = []) {
   const out = [];
   const seen = new Set();
   for (const sub of orderEffectiveSubscriptions(subs, nowMs)) {
@@ -102,19 +114,57 @@ export function buildRelayCandidates(subs, nowMs = Date.now()) {
     const groupName = String(sub?.group_name ?? sub?.groupName ?? `分组 ${groupId}`);
     out.push({ mode: "plan", groupId, groupName, label: `${groupName}（套餐）` });
   }
-  out.push({ mode: "balance", groupId: null, groupName: "", label: "余额" });
+  for (const group of orderBalanceGroups(groups)) {
+    if (seen.has(group.id)) continue;
+    seen.add(group.id);
+    out.push({ mode: "balance", groupId: group.id, groupName: group.name, label: `${group.name}（余额）` });
+  }
+  out.push({ mode: "balance", groupId: null, groupName: "", label: "余额（不绑分组）" });
   return out;
 }
 
+/** 可用的**余额分组**：`subscription_type = "standard"`（按余额扣费）且状态正常。
+ *  排序：倍率低的在前（新手默认挑最便宜的那条），同倍率按 id 升序（稳定）。
+ *  ⛔ 上限 3 个：一次失败不该把站点里所有公开分组都建一遍密钥（每个候选都会建 key）。 */
+export function orderBalanceGroups(groups, limit = 3) {
+  const list = (Array.isArray(groups) ? groups : [])
+    .map((group, index) => ({ group, index }))
+    .filter(({ group }) => {
+      if (!group || typeof group !== "object") return false;
+      const id = Number(group.id ?? group.group_id);
+      if (!Number.isInteger(id) || id <= 0) return false;
+      const status = String(group.status ?? RELAY_STATUS_ACTIVE).trim().toLowerCase();
+      if (status && status !== RELAY_STATUS_ACTIVE) return false;
+      // 缺字段按 standard 处理：上游 `SubscriptionType` 缺省即标准计费，不写就等于按余额扣
+      const type = String(group.subscription_type ?? group.subscriptionType ?? "standard").trim().toLowerCase();
+      return type !== "subscription";
+    })
+    .sort((a, b) => {
+      const ra = Number(a.group.rate_multiplier ?? a.group.rateMultiplier ?? 1);
+      const rb = Number(b.group.rate_multiplier ?? b.group.rateMultiplier ?? 1);
+      const va = Number.isFinite(ra) ? ra : 1;
+      const vb = Number.isFinite(rb) ? rb : 1;
+      if (va !== vb) return va - vb;
+      return a.index - b.index;
+    })
+    .slice(0, Math.max(0, Number(limit) || 0));
+  return list.map(({ group }) => ({
+    id: Number(group.id ?? group.group_id),
+    name: String(group.name ?? `分组 ${group.id}`),
+    rate: Number(group.rate_multiplier ?? group.rateMultiplier ?? 1),
+  }));
+}
+
 /**
- * 该候选能复用哪把已有密钥：必须是 active，且分组与该候选匹配
- * （套餐候选 ⇒ 同 group_id；余额候选 ⇒ 无分组）。复用优先于新建 —— 重跑一次登录不该
- * 在站点里堆出一串同名密钥。
+ * 该候选能复用哪把已有密钥：必须是 active，且分组与该候选**完全对上**
+ * （候选绑了分组 ⇒ 同 group_id；候选不绑分组 ⇒ 无分组）。复用优先于新建 —— 重跑一次登录
+ * 不该在站点里堆出一串同名密钥。
  *
  * @returns 命中的密钥行，或 null（调用方据此去新建）
  */
 export function pickReusableKey(keys, candidate) {
-  const want = candidate?.mode === "plan" ? Number(candidate.groupId) : null;
+  const raw = candidate?.groupId;
+  const want = raw === null || raw === undefined ? null : Number(raw);
   return (Array.isArray(keys) ? keys : []).find((key) => {
     if (!key || typeof key !== "object") return false;
     const status = String(key.status ?? RELAY_STATUS_ACTIVE).trim().toLowerCase();
@@ -125,9 +175,10 @@ export function pickReusableKey(keys, candidate) {
   }) ?? null;
 }
 
-/** 自动新建密钥时用的名字（沿用既有命名，用户在中转站里一眼能认出是应用建的）。 */
+/** 自动新建密钥时用的名字（沿用既有命名，用户在中转站里一眼能认出是应用建的）。
+ *  绑了分组 ⇒ `Harness-<组名>`；不绑分组（老站点兜底）⇒ `Harness-余额`。 */
 export function keyNameForCandidate(candidate) {
-  if (candidate?.mode !== "plan") return "Harness-余额";
-  const name = String(candidate.groupName ?? "").trim();
+  if (candidate?.groupId === null || candidate?.groupId === undefined) return "Harness-余额";
+  const name = String(candidate?.groupName ?? "").trim();
   return `Harness-${name || candidate.groupId}`;
 }

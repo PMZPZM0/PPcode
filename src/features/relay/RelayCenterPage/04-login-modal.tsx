@@ -3,6 +3,7 @@
  * ⛔ props 类型由 TypeChecker 从**原作用域**推断（不是 any）⇒ 静态检查强度不降。
  */
 import { AlertTriangle, ArrowUpRight, Bot, Check, ChevronDown, Clock3, Copy, Eye, EyeOff, FolderTree, Plus, Play, RefreshCw, Settings2, Sparkles, Trash2, X, Zap, CircleCheck, ChevronRight, Wallet, LogIn } from "lucide-react";
+import { RelayModal } from "./relay-modal";
 import { Spinner } from "../../../components/CardShell";
 
 type Props = {
@@ -23,7 +24,7 @@ type Props = {
 export function RelayCenterPageLoginModal({ authTab, draft, login, loginModalOpen, regDraft, register, setAuthTab, setDraft, setErr, setLoginModalOpen, setRegDraft, working }: Props) {
   return (
     loginModalOpen && (
-            <div className="relay-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setLoginModalOpen(false); }}>
+            <RelayModal onClose={() => setLoginModalOpen(false)}>
               <div className="relay-manage-modal relay-login-modal">
                 <div className="relay-keys-head">
                   <strong className="relay-modal-title"><Wallet size={15} />{authTab === "login" ? "登录中转站" : "注册中转站账号"}</strong>
@@ -52,7 +53,7 @@ export function RelayCenterPageLoginModal({ authTab, draft, login, loginModalOpe
                   </>
                 )}
               </div>
-            </div>
+            </RelayModal>
           )
   );
 }

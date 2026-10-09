@@ -289,11 +289,22 @@ section("⑨ 密钥管理接线 + 建表单不许再重复");
   const formCount = (modal.match(/relay-key-form/g) || []).length;
   ok(formCount === 1,
     `⛔ 「新建密钥」表单在文件里只许出现**一次**（10-09 用户报「重复了」：复制进折叠块时忘了删外面那份 ⇒ 渲染两份）`);
-  ok(/changeKeyGroup\(group, k/.test(modal) && /deleteKey\(group, k/.test(modal),
-    "面板行内接上了改分组与删除（弹窗经 hook 的动作，不直连 window.codex）");
   const hookSrc = strip(readFileSync(path.join(ROOT, "src", "features", "relay", "RelayCenterPage", "use-relay-center-page-state.tsx"), "utf8"));
   ok(/relayUpdateKeyGroup\(/.test(hookSrc) && /relayDeleteKey\(/.test(hookSrc),
     "hook 真正调用了两条新通道");
+
+  /* ⛔ 交互形态（10-09 用户令）：改绑/删除做成**第三级弹窗**，不许内嵌在密钥行里；
+     且所有 relay 弹层必须 portal 到 body —— 设置页容器的 transform 会把 fixed 劫持成
+     「相对容器定位」⇒ 弹层嵌在内容列里（「内嵌的，不好看」的根因）。 */
+  ok(!/editingKey/.test(modal) && !/editingKey/.test(hookSrc), "⛔ 行内内嵌编辑（editingKey）不许复活");
+  ok(/relay-key-manage-modal/.test(modal) && /relay-key-modal-backdrop/.test(readFileSync(path.join(ROOT, "src", "styles", "11-settings-secrets.css"), "utf8")),
+    "改绑/删除在第三级弹窗里完成（relay-key-manage-modal，z=910 高于账号管理弹窗）");
+  ok(/armDelete/.test(modal), "弹窗内删除用两段式确认（不再叠第四层 confirm 弹窗）");
+  for (const f of ["03-manage-modal.tsx", "04-login-modal.tsx", "05-plans-modal.tsx"]) {
+    const src = readFileSync(path.join(ROOT, "src", "features", "relay", "RelayCenterPage", f), "utf8");
+    ok(src.includes("RelayModal") && !src.includes('className="relay-modal-backdrop"'),
+      f + " 的弹层经 RelayModal portal 到 body（不被设置页 transform 劫持成内嵌）");
+  }
   ok(!/无分组（部分站点不支持）/.test(modal.split("relay-key-form")[1] ?? "") || true,
     "改绑下拉不含「无分组」（上游 PUT 对 group_id=null 是「不修改」，解绑做不到）");
 }

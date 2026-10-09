@@ -16,6 +16,7 @@ import {
   hasQuotaLeft,
   isSubscriptionEffective,
   keyNameForCandidate,
+  orderBalanceGroups,
   orderEffectiveSubscriptions,
   pickReusableKey,
 } from "../src/lib/relay-targets.mjs";
@@ -80,53 +81,99 @@ section("③ orderEffectiveSubscriptions（有额度 → 快到期的优先 → 
 }
 
 /* ── ④ 候选链 ────────────────────────────────────────────────────── */
-section("④ buildRelayCandidates（用户令：分组选已生效的套餐，没有就用余额）");
+section("④ buildRelayCandidates（用户令：分组选已生效的套餐，没有就用余额分组）");
 {
   const onlyBalance = buildRelayCandidates([], NOW);
   ok(onlyBalance.length === 1 && onlyBalance[0].mode === "balance" && onlyBalance[0].groupId === null,
-    "没有任何套餐 ⇒ 候选只有「余额」（不绑分组）");
+    "没有任何套餐、站点也没有可用分组 ⇒ 只剩「不绑分组」的兜底候选");
 
   const withPlan = buildRelayCandidates([sub({ group_id: 7, group_name: "Pro" })], NOW);
   ok(withPlan.length === 2 && withPlan[0].mode === "plan" && withPlan[0].groupId === 7 && withPlan[1].mode === "balance",
-    "有一个生效套餐 ⇒ 候选 = [该套餐分组, 余额]（**套餐优先**，余额兜底）");
+    "有一个生效套餐 ⇒ 候选 = [该套餐分组, 无分组兜底]（**套餐优先**）");
 
   const mixed = buildRelayCandidates([sub({ status: "expired", group_id: 99 }), sub({ group_id: 7 })], NOW);
-  ok(mixed.length === 2 && mixed[0].groupId === 7, "过期套餐不进候选（只有 生效套餐 + 余额 两项）");
+  ok(mixed.length === 2 && mixed[0].groupId === 7, "过期套餐不进候选");
 
   const exhausted = sub({ group_id: 8, group_name: "用满", monthly_used_usd: 5, monthly_limit_usd: 5 });
   const two = buildRelayCandidates([exhausted, sub({ group_id: 7, group_name: "有额度" })], NOW);
-  ok(two[0].groupId === 7 && two[1].groupId === 8, "多个套餐：有余量的在前，用满的排后但仍保留（用满可能只是暂时）");
+  ok(two[0].groupId === 7 && two[1].groupId === 8, "多个套餐：有余量的在前，用满的排后但仍保留");
 
   const dup = buildRelayCandidates([sub({ group_id: 7 }), sub({ group_id: 7, expires_at: iso(90) })], NOW);
-  ok(dup.filter((c) => c.groupId === 7).length === 1, "同一分组的多条订阅只出一个候选（去重，不重复建 key）");
+  ok(dup.filter((c) => c.groupId === 7).length === 1, "同一分组的多条订阅只出一个候选（不重复建 key）");
 
   const noId = buildRelayCandidates([sub({ group_id: null, group_name: "无分组套餐" })], NOW);
-  ok(noId.length === 1 && noId[0].mode === "balance", "订阅缺 group_id ⇒ 跳过（宁可走余额，也不建一把绑定不了的 key）");
+  ok(noId.length === 1 && noId[0].mode === "balance", "订阅缺 group_id ⇒ 跳过（宁可走余额）");
+}
+
+/* ── ④b 余额分组（10-09 用户报障的正解）──────────────────────────────── */
+section("④b 余额分组：`subscription_type=standard` 才是「按余额扣费」的分组");
+{
+  const std = (over = {}) => ({ id: 5, name: "默认分组", status: "active", subscription_type: "standard", rate_multiplier: 1, ...over });
+
+  const candidates = buildRelayCandidates([], NOW, [std()]);
+  ok(candidates.length === 2 && candidates[0].groupId === 5 && candidates[0].mode === "balance",
+    "没有套餐但有可用分组 ⇒ **余额候选绑到该分组**（pptoken 对无分组 key 站点级硬拒，不绑就必 403）");
+  ok(candidates[candidates.length - 1].groupId === null,
+    "不绑分组退到**最后**兜底（站点没配任何分组时才用得上）");
+
+  const withPlanAndGroup = buildRelayCandidates([sub({ group_id: 7, group_name: "Pro" })], NOW, [std({ id: 5 })]);
+  ok(withPlanAndGroup[0].groupId === 7 && withPlanAndGroup[1].groupId === 5 && withPlanAndGroup[2].groupId === null,
+    "顺序 = 生效套餐 → 余额分组 → 无分组（用户令：优先生效订阅，次优先余额）");
+
+  const cheapestFirst = buildRelayCandidates([], NOW, [std({ id: 1, rate_multiplier: 2 }), std({ id: 2, rate_multiplier: 0.5 }), std({ id: 3, rate_multiplier: 1 })]);
+  ok(cheapestFirst[0].groupId === 2 && cheapestFirst[1].groupId === 3 && cheapestFirst[2].groupId === 1,
+    "多个余额分组按**倍率从低到高**（新手默认挑最便宜的）");
+
+  const subType = buildRelayCandidates([], NOW, [std({ id: 9, subscription_type: "subscription" })]);
+  ok(subType.length === 1 && subType[0].groupId === null,
+    "⛔ `subscription` 型分组**不**作余额候选（它是套餐分组，没订阅必 403 SUBSCRIPTION_NOT_FOUND）");
+
+  const inactive = buildRelayCandidates([], NOW, [std({ id: 4, status: "disabled" })]);
+  ok(inactive.length === 1 && inactive[0].groupId === null, "停用的分组不进候选");
+
+  const noType = buildRelayCandidates([], NOW, [std({ id: 6, subscription_type: undefined })]);
+  ok(noType[0].groupId === 6, "字段缺失按 standard 处理（上游缺省即标准计费）");
+
+  const many = buildRelayCandidates([], NOW, [1, 2, 3, 4, 5].map((i) => std({ id: i })));
+  ok(many.filter((c) => c.groupId !== null).length === 3,
+    "余额分组候选**上限 3 个**（一次失败不该把站点所有公开分组都建一遍 key）");
+
+  const dedup = buildRelayCandidates([sub({ group_id: 5 })], NOW, [std({ id: 5 })]);
+  ok(dedup.filter((c) => c.groupId === 5).length === 1, "同一个分组既在订阅又在可用列表 ⇒ 只出现一次");
+
+  ok(orderBalanceGroups(null).length === 0 && orderBalanceGroups("x").length === 0, "非数组入参 ⇒ 空（不抛异常）");
 }
 
 /* ── ⑤ 复用已有密钥 ──────────────────────────────────────────────── */
-section("⑤ pickReusableKey（复用优先于新建，且分组必须对得上）");
+section("⑤ pickReusableKey（复用优先于新建，且分组必须**完全对上**）");
 {
   const plan7 = { mode: "plan", groupId: 7, groupName: "Pro" };
+  const balance5 = { mode: "balance", groupId: 5, groupName: "默认分组" };
+  const noGroup = { mode: "balance", groupId: null, groupName: "" };
   const keys = [
     { id: 1, name: "Harness-Pro", key: "sk-a", group_id: 7, status: "active" },
     { id: 2, name: "Harness-余额", key: "sk-b", group_id: null, status: "active" },
+    { id: 5, name: "Harness-默认分组", key: "sk-e", group_id: 5, status: "active" },
     { id: 3, name: "旧套餐组", key: "sk-c", group_id: 9, status: "active" },
     { id: 4, name: "停用的", key: "sk-d", group_id: 7, status: "disabled" },
   ];
   ok(pickReusableKey(keys, plan7)?.id === 1, "套餐候选复用**同分组**的 active key");
-  ok(pickReusableKey(keys, { mode: "balance", groupId: null, groupName: "" })?.id === 2, "余额候选复用**无分组**的 active key");
+  ok(pickReusableKey(keys, balance5)?.id === 5, "绑分组的余额候选复用**同分组**的 key");
+  ok(pickReusableKey(keys, noGroup)?.id === 2, "不绑分组的余额候选复用**无分组**的 key");
   ok(pickReusableKey([keys[3]], plan7) === null, "非 active 的 key 不复用（会被网关拒，不如新建）");
   ok(pickReusableKey(keys.filter((k) => k.id !== 1), plan7) === null,
-    "⛔ 余额 key 不会被套餐候选复用（否则套餐额度记到余额账上，用户查账对不上）");
+    "⛔ 别的分组的 key 不会被复用（否则套餐额度记到余额账上，用户查账对不上）");
+  ok(pickReusableKey(keys, noGroup)?.id !== 1 && pickReusableKey([keys[0]], noGroup) === null,
+    "⛔ 绑了分组的 key 不会被「不绑分组」候选复用（反过来同样会串账）");
   ok(pickReusableKey([], plan7) === null && pickReusableKey(null, plan7) === null, "空列表 / null ⇒ null（交给调用方新建）");
 }
 
 /* ── ⑥ 新建密钥命名 ──────────────────────────────────────────────── */
 section("⑥ keyNameForCandidate");
-ok(keyNameForCandidate({ mode: "balance", groupId: null, groupName: "" }) === "Harness-余额", "余额候选 ⇒ Harness-余额");
+ok(keyNameForCandidate({ mode: "balance", groupId: null, groupName: "" }) === "Harness-余额", "不绑分组 ⇒ Harness-余额");
+ok(keyNameForCandidate({ mode: "balance", groupId: 5, groupName: "默认分组" }) === "Harness-默认分组", "绑余额分组 ⇒ Harness-<组名>");
 ok(keyNameForCandidate({ mode: "plan", groupId: 7, groupName: "Pro" }) === "Harness-Pro", "套餐候选 ⇒ Harness-<套餐名>");
-ok(keyNameForCandidate({ mode: "plan", groupId: 7, groupName: "" }) === "Harness-7", "套餐名为空 ⇒ 退回 Harness-<groupId>（不留空名）");
+ok(keyNameForCandidate({ mode: "plan", groupId: 7, groupName: "" }) === "Harness-7", "组名为空 ⇒ 退回 Harness-<groupId>（不留空名）");
 
 /* ── ⑦ 源码接线（负向断言前先剥注释，否则被自己的说明顶红）─────────── */
 section("⑦ relay.ts 的接线（候选链真被用上 / 旧的单候选写法不许复活）");
@@ -152,6 +199,9 @@ section("⑦ relay.ts 的接线（候选链真被用上 / 旧的单候选写法�
     "候选类型从声明文件引入（.d.mts 与 .mjs 同源，避免退化成 any）");
   ok(/isNetworkFailure\(reason\)/.test(relaySrc) && /const note = \(label/.test(relaySrc),
     "网络层失败（连不上/超时/DNS）立即收尾 —— 换候选也一样连不上，别在站点里白建一串密钥");
+
+  ok(/not assigned to any group/.test(relaySrc) && /groupHint/.test(relaySrc),
+    "站点硬要求绑分组、而一个余额分组都没读到时，给一句能指路的话（10-09 报障现场）");
 
   /* ⛔ 第二处入口（中转站面板的「登录后自动配置」）曾自己写了一份 `subs[0]`。
      两处判定分家 ⇒ 「登录页选了 A 分组、面板却激活 B 分组」这类错位查不出原因。 */

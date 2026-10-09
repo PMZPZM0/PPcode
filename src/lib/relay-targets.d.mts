@@ -22,8 +22,12 @@ export declare function hasQuotaLeft(sub: unknown): boolean;
 /** 已生效订阅的尝试顺序：有额度 → 快到期的优先 → 无到期时间最后。 */
 export declare function orderEffectiveSubscriptions(subs: unknown, nowMs?: number): any[];
 
-/** 候选链：已生效套餐（顺序同上）→ 余额。至少含一个候选（余额）。 */
-export declare function buildRelayCandidates(subs: unknown, nowMs?: number): RelayCandidate[];
+/** 可用的**余额分组**（`subscription_type = "standard"`）：倍率低的在前，最多 limit 个。 */
+export declare function orderBalanceGroups(groups: unknown, limit?: number): { id: number; name: string; rate: number }[];
+
+/** 候选链：已生效套餐 → 余额分组（standard，按倍率）→ 无分组余额（兜底）。
+ *  `groups` 取自 `GET /api/v1/groups/available`（该用户有权绑的活跃分组）。 */
+export declare function buildRelayCandidates(subs: unknown, nowMs?: number, groups?: unknown): RelayCandidate[];
 
 /** 该候选能复用的已有密钥（active 且分组匹配）；没有返回 null。 */
 export declare function pickReusableKey(keys: unknown, candidate: RelayCandidate | null): any | null;

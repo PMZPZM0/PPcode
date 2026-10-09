@@ -35,10 +35,45 @@ export function writeRelayActive(active: RelayActive | null) {
   else localStorage.removeItem("relay-active-v1");
 }
 
-/** 解析目标计费方式对应的密钥：优先复用同分组/无分组的生效 key，没有则新建。
- *  返回网关地址、明文密钥与生成供应商所需的全部参数（供保存链路使用）。
- *  ⛔ 复用/命名规则在 relay-targets（单一真相源）：套餐候选只认同分组的 active key，
- *    余额候选只认无分组 —— 不然「余额候选复用了某套餐的 key」会让额度记到套餐上。 */
+/** 按**候选**落地：复用/新建该候选的密钥 → 选计费 → 拼出供应商参数与「已生效」标记。
+ *  ⛔ 所有入口（登录链 / 中转站面板 / 引导弹窗 / 模型页一键切换）最终都汇到这里，
+ *    这样「用哪个分组建 key」只可能有一份实现。 */
+export async function resolveRelayCandidate(candidate: RelayCandidate, overview?: any): Promise<{
+  overview: any;
+  gateway: string;
+  apiKey: string;
+  provider: string;
+  displayName: string;
+  active: RelayActive;
+}> {
+  const ov = overview ?? await window.codex.relayOverview();
+  const key = pickReusableKey(ov.keys, candidate)
+    ?? await window.codex.relayCreateKey({ name: keyNameForCandidate(candidate), groupId: candidate.groupId });
+  if (!key?.key) throw new Error("中转站未返回密钥明文");
+  await window.codex.relaySelect({ mode: candidate.mode, groupId: candidate.groupId, keyId: key.id, keyName: key.name });
+  const baseUrl: string = ov.baseUrl;
+  let hostLabel = "中转站";
+  try { hostLabel = new URL(baseUrl).host.replace(/^api\./i, "").split(".")[0] || hostLabel; } catch { /* 保底 */ }
+  const provider = `relay-${hostLabel.toLowerCase()}`;
+  const what = candidate.groupName || "余额";
+  const displayName = `${hostLabel.toUpperCase()} · ${what}${ov?.email ? " · " + ov.email : ""}`;
+  return {
+    overview: ov,
+    gateway: `${baseUrl}/v1`,
+    apiKey: key.key,
+    provider,
+    displayName,
+    active: { provider, baseUrl, apiKey: key.key, mode: candidate.mode, groupId: candidate.groupId, label: displayName, email: ov?.email },
+  };
+}
+
+/** 解析目标计费方式对应的密钥（面板 / 引导弹窗 / 模型页一键切换的入口）。
+ *  ⛔ **`mode="balance"` 且没指定分组时，自动落到「余额分组」**（`subscription_type=standard`）：
+ *    pptoken 这类站点对「无分组 key」是**站点级硬拒**（`API Key is not assigned to any group`），
+ *    只发无分组 key 等于把面板上的「余额」做成一个必然失败的按钮；而上游对「绑了非订阅分组」的
+ *    key 是**从账户余额扣费** ⇒ 绑 standard 分组才是真正可用的「用余额」姿势。
+ *    站点没配任何分组时才退回不绑分组（上游默认允许，`validateAPIKeyGroupAvailable` 直接放行）。
+ *  ⛔ 别在这里再写一份分组挑选 —— 候选链在 lib/relay-targets（单一真相源）。 */
 export async function resolveRelayTarget(mode: "balance" | "plan", group?: RelayGroup): Promise<{
   overview: any;
   gateway: string;
@@ -48,29 +83,13 @@ export async function resolveRelayTarget(mode: "balance" | "plan", group?: Relay
   active: RelayActive;
 }> {
   const overview = await window.codex.relayOverview();
-  const candidate: RelayCandidate = {
-    mode,
-    groupId: mode === "plan" ? Number(group!.group_id) : null,
-    groupName: mode === "plan" ? String(group!.group_name ?? "") : "",
-    label: mode === "plan" ? String(group!.group_name ?? "") : "余额",
-  };
-  const key = pickReusableKey(overview.keys, candidate)
-    ?? await window.codex.relayCreateKey({ name: keyNameForCandidate(candidate), groupId: candidate.groupId });
-  if (!key?.key) throw new Error("中转站未返回密钥明文");
-  await window.codex.relaySelect({ mode, groupId: candidate.groupId, keyId: key.id, keyName: key.name });
-  const baseUrl: string = overview.baseUrl;
-  let hostLabel = "中转站";
-  try { hostLabel = new URL(baseUrl).host.replace(/^api\./i, "").split(".")[0] || hostLabel; } catch { /* 保底 */ }
-  const provider = `relay-${hostLabel.toLowerCase()}`;
-  const displayName = `${hostLabel.toUpperCase()} · ${mode === "plan" ? (group!.group_name ?? "套餐") : "余额"}${overview?.email ? " · " + overview.email : ""}`;
-  return {
-    overview,
-    gateway: `${baseUrl}/v1`,
-    apiKey: key.key,
-    provider,
-    displayName,
-    active: { provider, baseUrl, apiKey: key.key, mode, groupId: candidate.groupId, label: displayName, email: overview?.email },
-  };
+  const candidates = buildRelayCandidates(overview.subscriptions ?? [], Date.now(), overview.groups ?? []) as RelayCandidate[];
+  const wantedId = group ? Number(group.group_id) : null;
+  const candidate = wantedId !== null
+    ? candidates.find((c) => c.groupId === wantedId)
+      ?? { mode: "plan" as const, groupId: wantedId, groupName: String(group!.group_name ?? ""), label: String(group!.group_name ?? "") }
+    : candidates.find((c) => c.mode === mode) ?? candidates[candidates.length - 1];
+  return resolveRelayCandidate(candidate, overview);
 }
 
 /** 按用户显式选择的密钥解析目标（自选密钥模式）：不再匹配/新建，直接用选中的 key。 */
@@ -100,28 +119,25 @@ export async function resolveRelayKeyTarget(keyRow: { id: any; name: any; key: s
   };
 }
 
-/** 候选链（已生效套餐 → 余额）：挑出「按顺序该试哪些目标」。**只管挑**，不发请求、不建密钥
- *  —— 真正落地（复用/新建 key、选计费、探测模型）在 resolveRelayTarget(候选)。 */
-export async function resolveRelayCandidates(): Promise<{
-  overview: any;
-  candidates: { mode: "balance" | "plan"; group?: RelayGroup; label: string }[];
-}> {
+/** 候选链（已生效套餐 → 余额分组 → 无分组余额）：挑出「按顺序该试哪些目标」。
+ *  **只管挑**，不发请求、不建密钥 —— 落地在 resolveRelayCandidate(候选)。 */
+export async function resolveRelayCandidates(): Promise<{ overview: any; candidates: RelayCandidate[] }> {
   const overview = await window.codex.relayOverview();
-  const raw = buildRelayCandidates(overview.subscriptions ?? []) as RelayCandidate[];
-  const candidates = raw.map((c) => ({
-    mode: c.mode,
-    group: c.mode === "plan" ? { group_id: Number(c.groupId), group_name: c.groupName } : undefined,
-    label: c.label,
-  }));
+  const candidates = buildRelayCandidates(overview.subscriptions ?? [], Date.now(), overview.groups ?? []) as RelayCandidate[];
   return { overview, candidates };
 }
 
 /** 登录后自动选择计费方式的**单个**目标（兼容既有调用方：中转站面板 / 引导弹窗的「重试」）。
  *  ⛔ 只取候选链首位。要「依次尝试直到成功」请走 performRelayLogin —— 它才带兜底。 */
-export async function resolveRelayAutoTarget(): Promise<{ mode: "balance" | "plan"; group?: RelayGroup; resolved: Awaited<ReturnType<typeof resolveRelayTarget>> }> {
-  const { candidates } = await resolveRelayCandidates();
-  const first = candidates[0] ?? { mode: "balance" as const, group: undefined, label: "余额" };
-  return { mode: first.mode, group: first.group, resolved: await resolveRelayTarget(first.mode, first.group) };
+export async function resolveRelayAutoTarget(): Promise<{ mode: "balance" | "plan"; group?: RelayGroup; resolved: Awaited<ReturnType<typeof resolveRelayCandidate>> }> {
+  const { overview, candidates } = await resolveRelayCandidates();
+  const first = candidates[0];
+  const resolved = await resolveRelayCandidate(first, overview);
+  return {
+    mode: first.mode,
+    group: first.groupId !== null ? { group_id: first.groupId, group_name: first.groupName } : undefined,
+    resolved,
+  };
 }
 
 /** 把包装过的报错还原成人话（`Error invoking remote method 'x': …` 前缀一律剥掉）。 */
@@ -226,7 +242,7 @@ export async function performRelayLogin(input: {
          那一个分组建出来的 key 只要在当前网关不可用（额度用满 / 该分组不允许请求的模型 /
          已过期），整条链直接失败，既不退下一个套餐也不退余额，用户还只看到一句
          「没探测到可用模型」——不知道是认证被拒、分组没模型，还是网络问题。 */
-    const { candidates } = await resolveRelayCandidates();
+    const { overview, candidates } = await resolveRelayCandidates();
     const failures: { label: string; reason: string }[] = [];
     /** 记一次失败；返回 true = 网络层挂了 ⇒ 换候选也一样连不上，直接收尾（别白建密钥）。 */
     const note = (label: string, reason: string) => {
@@ -235,9 +251,9 @@ export async function performRelayLogin(input: {
     };
     let lastActive: RelayActive | undefined;
     for (const cand of candidates) {
-      let resolved: Awaited<ReturnType<typeof resolveRelayTarget>>;
+      let resolved: Awaited<ReturnType<typeof resolveRelayCandidate>>;
       try {
-        resolved = await resolveRelayTarget(cand.mode, cand.group);
+        resolved = await resolveRelayCandidate(cand, overview);
       } catch (error) {
         if (note(cand.label, relayReason(error))) break;
         continue;
@@ -266,9 +282,14 @@ export async function performRelayLogin(input: {
     }
     const head = failures[0]?.reason ?? "未知原因";
     const tried = failures.length > 1 ? `（已依次尝试：${failures.map((f) => f.label).join("、")}）` : "";
+    /* 站点硬要求「密钥必须绑分组」、而我们一个余额分组都没读到（`/groups/available` 失败或站点
+       没给这个用户任何可绑分组）——这时再重试也是白搭，必须给一句能指路的话（10-09 实际报障）。 */
+    const groupHint = /not assigned to any group/i.test(head) && !candidates.some((c) => c.mode === "balance" && c.groupId !== null)
+      ? " 该站点要求密钥必须绑定分组，但没读到可用分组：请在中转站官网确认分组，或到「设置 → 账户 → 中转站」手动选一把已绑分组的密钥。"
+      : "";
     return {
       ok: false,
-      message: `供应商生成失败${tried}：${head}。可在「设置 → 账户 → 中转站」重试，或换用「粘贴 API Key」。`,
+      message: `供应商生成失败${tried}：${head}。${groupHint}可在「设置 → 账户 → 中转站」重试，或换用「粘贴 API Key」。`,
       active: lastActive,
     };
   } catch (error: any) {

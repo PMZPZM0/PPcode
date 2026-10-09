@@ -37,11 +37,16 @@ const MASTER_SVG = fs.readFileSync(path.join(OUT_DIR, "icon-a-spark.svg"), "utf8
 
 
 /** macOS 模板图：**只用 alpha**（系统按菜单栏明暗反色）。所以画成纯黑、无渐变、无底色 ——
- *  底色方块在模板图里会变成一整块实心黑砖，看起来像"菜单栏多了个黑洞"。 */
+ *  底色方块在模板图里会变成一整块实心黑砖，看起来像"菜单栏多了个黑洞"。
+ *  10-09 随图标母版换成 PPtoken 品牌：只留双 P 字形（环与节点在 16px 下会糊成一团），
+ *  放大到铺满（宽 86% / 高 62%），与桌面/任务栏的构图同源（同一套字形参数）。 */
 const TEMPLATE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <path d="M170 130 L336 256 L170 382" fill="none" stroke="#000000" stroke-width="76"
-        stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="382" cy="252" r="30" fill="#000000"/>
+  <g fill="#000000" transform="translate(-167.1,-154.6) scale(1.623)">
+    <rect x="125.0" y="164.2" width="49.2" height="177.5"/>
+    <path fill-rule="evenodd" d="M 174.2 165.8 A 63.8 50.5 0 1 1 174.2 263.7 Z M 190.2 201.5 A 16.0 13.3 0 1 1 190.2 228.1 A 16.0 13.3 0 1 1 190.2 201.5 Z"/>
+    <rect x="267.3" y="164.2" width="49.2" height="177.5"/>
+    <path fill-rule="evenodd" d="M 316.5 165.8 A 63.8 50.5 0 1 1 316.5 263.7 Z M 332.5 201.5 A 16.0 13.3 0 1 1 332.5 228.1 A 16.0 13.3 0 1 1 332.5 201.5 Z"/>
+  </g>
 </svg>`;
 
 function render(svg, size) {

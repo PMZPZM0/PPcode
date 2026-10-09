@@ -30,7 +30,8 @@
     "verify:image-plugin": "node scripts/verify-image-plugin.mjs",
     "verify:packaged-tools": "node scripts/verify-packaged-tools.cjs",
     "verify:reasoning": "node scripts/verify-reasoning-transport.cjs",
-    "voice:models": "node scripts/install-voice-models.cjs"
+    "voice:models": "node scripts/install-voice-models.cjs",
+    "icons": "node scripts/build-app-icons.cjs && node scripts/build-tray-icon.cjs"
   },
   "dependencies": {
     "@google/model-viewer": "^4.3.1",

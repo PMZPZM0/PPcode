@@ -1433,3 +1433,67 @@
 .relay-keys-toggle small {
   font-weight: 400;
 }
+
+/* ── 私有仓更新源（10-09）：账号菜单 →「检查更新」里的授权引导与更新源设置 ──────────
+   发布仓改私有后，「检查更新」会以 `private_repo_needs_token` 失败 —— 原来只甩一句错误码，
+   用户无从下手。这组样式承载「一句说明 + 一行输入 + 一个动作」的紧凑卡片。
+   ⛔ 只服务 .account-menu 内部，不写全局 input/button 选择器（免得影响别处）。 */
+.account-menu-hint {
+  margin: 4px 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.account-menu-hint-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.account-menu-hint-body {
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--faint);
+  word-break: break-word;
+}
+.account-menu-hint-body code {
+  padding: 0 3px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.account-menu-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.account-menu-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  outline: none;
+}
+.account-menu-input:focus { border-color: var(--accent); }
+.account-menu-mini {
+  flex: none;
+  padding: 4px 9px;
+  font-size: 11px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.account-menu-mini:disabled { opacity: .45; cursor: default; }
+.account-menu-arrow.open { transform: rotate(90deg); }

@@ -1,7 +1,7 @@
 {
   "_comment": "IPC 桥的单一真相源。加/改接口只改这里，然后跑 `npm run gen:ipc`。字段：paramsImpl=preload 实现参数（含默认值），paramsDecl=d.ts 声明参数，returns=返回类型，cast=invoke 后的 as 尾转换（没有则 null），note=显示在生成物里的备注。事件订阅等非 invoke 成员不在这里（仍在 preload.ts 手写）。",
   "generatedAt": "2026-10-09",
-  "count": 434,
+  "count": 436,
   "channels": [
     {
       "name": "request",
@@ -3101,6 +3101,25 @@
       "invokeArgs": "filePath",
       "cast": null,
       "note": null
+    },
+    {
+      "name": "updateSourceGet",
+      "channel": "updates:source-get",
+      "paramsImpl": "",
+      "paramsDecl": "",
+      "returns": "Promise<{ ok: boolean; repo?: string; manifestUrl?: string; hasToken?: boolean; tokenHint?: string; filePath?: string; error?: string }>",
+      "cast": null,
+      "note": "读更新源配置（私有仓时代）：仓库 / 只读令牌**掩码** / 自定义清单地址。⛔ 全量令牌绝不回渲染层"
+    },
+    {
+      "name": "updateSourceSave",
+      "channel": "updates:source-save",
+      "paramsImpl": "patch: { repo?: string; token?: string; manifestUrl?: string }",
+      "paramsDecl": "patch: { repo?: string; token?: string; manifestUrl?: string }",
+      "returns": "Promise<{ ok: boolean; repo?: string; manifestUrl?: string; hasToken?: boolean; tokenHint?: string; filePath?: string; error?: string }>",
+      "invokeArgs": "patch",
+      "cast": null,
+      "note": "写更新源配置（部分更新；空串 = 清除该项）⇒ userData/update-source.json（0600）。发布仓私有：令牌 fine-grained Contents:Read-only 即可；或改走自定义清单（令牌留服务端）"
     },
     {
       "name": "bridgeStatus",

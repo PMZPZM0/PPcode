@@ -1,13 +1,17 @@
 /**
- * PPcode 自更新（client side）—— GitHub 单源版
+ * PPcode 自更新（client side）
  *
- * 设计原则：更新源固定，用户零配置。
- *   - ⛔ 09-15 用户定稿：更新源**只剩 GitHub Releases**，自建发布站不再分发安装包
+ * 设计原则：**发布仓私有**（`PMZPZM0/PPcode`）⇒ 匿名读不到 Releases，鉴权与自定义源
+ *   统一由 `update-source.ts` 管（用户在「检查更新」里可配只读令牌或自定义清单地址）。
+ *   - ⛔ 09-15 用户定稿：更新源只剩 GitHub Releases，自建发布站不再分发安装包
  *     （发布站只负责应用介绍与问题反馈），web 更新源代码整段删除
+ *   - ⛔ 10-09：仓库改私有后补两条取源 —— ① GitHub + 只读令牌（Contents: Read-only）
+ *     ② 自定义清单 `manifestUrl`（可在私有仓前挂代理，令牌留服务端）
  *   - channel 固定 stable，不暴露 beta/canary 选项
  *   - 桌面端只有一个动作：检查更新 → 有新版本 → 下载并打开安装程序
  *
- * 流程：checkLatestUpdate() 拉 GitHub Releases API → downloadUpdate() 流式落盘（https+sha256）→ installUpdate() 运行安装包
+ * 流程：checkLatestUpdate() 拉 Releases API（或自定义清单）→ downloadUpdate() 流式落盘
+ *      （https + sha256）→ installUpdate() 运行安装包
  */
 import fs from "node:fs/promises";
 import { existsSync, createWriteStream, createReadStream } from "node:fs";
@@ -16,9 +20,12 @@ import path from "node:path";
 import https from "node:https";
 import { shell } from "electron";
 import { URL } from "node:url";
+import { DEFAULT_UPDATE_REPO, readUpdateSource, type UpdateSourceConfig } from "./update-source";
 
-/** GitHub 仓库（唯一更新源，走 Releases API）——PPcode 专用私有仓库 */
-export const GITHUB_REPO = "PMZPZM0/PPcode";
+/** GitHub 仓库（**内置默认**更新源，走 Releases API）——PPcode 专用私有仓库。
+ *  ⛔ 运行期真正生效的是 update-source.ts 里那份（用户在应用内可改）；这里只是
+ *     「从没配置过」时的兜底，同时也是 whats-new 弹窗里 release 链接的唯一来源。 */
+export const GITHUB_REPO = DEFAULT_UPDATE_REPO;
 export const GITHUB_RELEASES_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
 /** 订阅通道（固定 stable） */
@@ -70,10 +77,29 @@ export type LatestInfo = {
 };
 
 // ============== HTTP 工具（不走 axios / fetch，保持零依赖） ==============
-// 唯一调用方是 GitHub Releases API（恒 https），不再需要 http 分支
+// 调用方恒为 https（GitHub Releases API / 自定义清单），不再需要 http 分支
+
+/** ⛔ 只给 GitHub 自家主机带我们的令牌：资产会 302 到签名 CDN
+ *  （`release-assets.githubusercontent.com`），那里凭的是签名 URL，
+ *  把 Authorization 一起转过去既不必要、也把令牌多暴露一跳。 */
+function isGithubHost(hostname: string): boolean {
+  return hostname === "github.com" || hostname === "api.github.com";
+}
+
+/** GitHub API 请求头（带令牌即可读私有仓；**只读用途，绝不需要写权限**）。 */
+function githubHeaders(token: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
 function requestJson(
   url: string,
-  timeoutMs = 8000
+  timeoutMs = 8000,
+  extraHeaders: Record<string, string> = {}
 ): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }> {
   return new Promise((resolve, reject) => {
     let parsed: URL;
@@ -90,7 +116,7 @@ function requestJson(
         port: parsed.port || 443,
         path: parsed.pathname + parsed.search,
         timeout: timeoutMs,
-        headers: { "User-Agent": "CodexHarness/0.1" },
+        headers: { "User-Agent": "CodexHarness/0.1", ...extraHeaders },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -112,59 +138,191 @@ function requestJson(
   });
 }
 
+/** 归一化后的「候选版本」——两个取源（GitHub Releases / 自定义清单）都产出这个形状。 */
+type ReleaseCandidate = {
+  version: string;        // 已剥掉 v 前缀
+  prerelease: boolean;
+  changelog: string;
+  downloadUrl: string;    // "" = 该平台没有可下载的资产
+  filename?: string;
+  size?: number;
+  sha256?: string;
+};
+
+/** GitHub 资产的 `digest` 形如 `sha256:abcd…`；清单里的 `sha256` 两种写法都收。取不出则 undefined（跳过校验）。 */
+function sha256Of(value: unknown): string | undefined {
+  const m = String(value ?? "").trim().match(/(?:sha256:)?([0-9a-f]{64})/i);
+  return m ? m[1].toLowerCase() : undefined;
+}
+
 /**
- * 检查更新（GitHub Releases，唯一源）
+ * 检查更新。取源两条：
+ *   · 默认 —— GitHub Releases API（**私有仓必须带只读令牌**，见 update-source.ts）
+ *   · 配置了 `manifestUrl` —— 自定义清单（任意 https 主机；令牌可以留在服务端，客户端零秘密）
  * @param currentVersion 当前应用版本（形如 0.4.1，可带 v 前缀）
  * @param platform 按平台挑资产：win32→exe，darwin→mac zip
  * @param arch mac 下区分 x64/arm64
+ * @param source 更新源；不传则现读（用户在应用内配置的那份）
  */
 export async function checkLatestUpdate(
   currentVersion: string,
   platform: NodeJS.Platform = process.platform,
   arch = process.arch,
+  source: UpdateSourceConfig = readUpdateSource(),
 ): Promise<LatestInfo> {
-  const res = await requestJson(GITHUB_RELEASES_API);
-  if (res.status < 200 || res.status >= 300) {
-    throw new Error(`HTTP ${res.status}`);
+  const release = source.manifestUrl
+    ? await fetchManifestRelease(source.manifestUrl, platform, arch)
+    : await fetchGithubRelease(source, platform, arch);
+  if (!release || !release.version) {
+    return { hasUpdate: false, reason: "no_release", channel: UPDATE_CHANNEL };
   }
-  let release: any;
-  try {
-    release = JSON.parse(res.body) as any;
-  } catch {
-    throw new Error("invalid_json");
-  }
-  if (!release?.tag_name) throw new Error("no_release");
-  const version = String(release.tag_name).replace(/^v/i, "");
+  const version = release.version;
   // ⛔ 09-24 修：改为 semver 比较 —— 旧写法「字符串不等即更新」会把**更旧的 tag** 也报成有更新。
-  //    同时尊重 GitHub 的 prerelease 标志：stable 通道下不推预发布版
+  //    同时尊重 prerelease 标志：stable 通道下不推预发布版
   //    （**例外**：本地本身就是预发布版，如 0.0.26-b，否则 beta 用户永远收不到更新）。
   const localPre = Boolean(parseVersion(currentVersion)?.pre);
-  const remotePre = Boolean(release?.prerelease) || Boolean(parseVersion(version)?.pre);
+  const remotePre = release.prerelease || Boolean(parseVersion(version)?.pre);
   if (remotePre && UPDATE_CHANNEL === "stable" && !localPre) {
     return { hasUpdate: false, reason: "prerelease_not_on_stable_channel", channel: UPDATE_CHANNEL, version };
   }
   if (compareVersions(version, currentVersion) <= 0) {
     return { hasUpdate: false, reason: "up_to_date", channel: UPDATE_CHANNEL, version };
   }
-  // 按平台选资产：Windows → *.exe；mac → 按架构 *-mac-arm64.zip / *-mac-x64.zip（含 mac 即可）
-  const assets: { name: string; browser_download_url: string; size?: number }[] = Array.isArray(release.assets) ? release.assets : [];
-  let match: { name: string; browser_download_url: string; size?: number } | undefined;
-  if (platform === "darwin") {
-    match = assets.find((a) => a.name.includes("mac") && a.name.endsWith(".zip") && a.name.includes(arch));
-  } else {
-    match = assets.find((a) => a.name.endsWith(".exe"));
+  if (!release.downloadUrl) {
+    return { hasUpdate: false, reason: "no_asset_for_platform", channel: UPDATE_CHANNEL, version };
   }
-  if (!match) return { hasUpdate: false, reason: "no_asset_for_platform", channel: UPDATE_CHANNEL, version };
   return {
     hasUpdate: true,
     reason: "available",
     channel: UPDATE_CHANNEL,
     version,
-    filename: match.name,
-    size: match.size,
-    changelog: release.body?.slice(0, 2000) || "",
-    downloadUrl: match.browser_download_url,
+    filename: release.filename,
+    size: release.size,
+    sha256: release.sha256,
+    changelog: release.changelog,
+    downloadUrl: release.downloadUrl,
   };
+}
+
+/**
+ * GitHub Releases 取源（默认）。
+ * ⛔ 私有仓的坑都集中在这里，三条都别改回去：
+ *   ① 匿名读私有仓的 `releases/latest` 与「一次都没发布过」**同为 404** ⇒ 必须再探一次
+ *      仓库元信息才分得清「没权限」和「还没发布」；
+ *   ② 私有仓的资产**不能**用 `browser_download_url`（那是给匿名读公开仓的）
+ *      ⇒ 有令牌时改走资产 API + `Accept: application/octet-stream`；
+ *   ③ 令牌只发给 api.github.com / github.com，302 到 CDN 的那一跳不带。
+ */
+async function fetchGithubRelease(
+  source: UpdateSourceConfig,
+  platform: NodeJS.Platform,
+  arch: string,
+): Promise<ReleaseCandidate | null> {
+  const repo = source.repo || GITHUB_REPO;
+  const token = source.token;
+  const res = await requestJson(
+    repo === GITHUB_REPO ? GITHUB_RELEASES_API : `https://api.github.com/repos/${repo}/releases/latest`,
+    12000,
+    githubHeaders(token),
+  );
+  if (res.status === 401) throw new Error("token_invalid");
+  if (res.status === 403) throw new Error("github_forbidden");
+  if (res.status === 404) {
+    const probe = await requestJson(`https://api.github.com/repos/${repo}`, 8000, githubHeaders(token));
+    if (probe.status === 401) throw new Error("token_invalid");
+    if (probe.status === 404) {
+      throw new Error(token ? "repo_not_found_or_no_access" : "private_repo_needs_token");
+    }
+    return null;   // 仓库读得到 ⇒ 真的还没发布过任何版本
+  }
+  if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
+  let release: any;
+  try {
+    release = JSON.parse(res.body) as any;
+  } catch {
+    throw new Error("invalid_json");
+  }
+  if (!release?.tag_name) return null;
+  // 按平台选资产：Windows → *.exe；mac → 按架构 *-mac-arm64.zip / *-mac-x64.zip（含 mac 即可）
+  const assets: { id?: number; name: string; browser_download_url: string; size?: number; digest?: string }[] =
+    Array.isArray(release.assets) ? release.assets : [];
+  const match = platform === "darwin"
+    ? assets.find((a) => a.name.includes("mac") && a.name.endsWith(".zip") && a.name.includes(arch))
+    : assets.find((a) => a.name.endsWith(".exe"));
+  return {
+    version: String(release.tag_name).replace(/^v/i, ""),
+    prerelease: Boolean(release.prerelease),
+    changelog: String(release.body ?? "").slice(0, 2000),
+    downloadUrl: match
+      ? (token && match.id
+        ? `https://api.github.com/repos/${repo}/releases/assets/${match.id}`
+        : match.browser_download_url)
+      : "",
+    filename: match?.name,
+    size: match?.size,
+    sha256: sha256Of(match?.digest),
+  };
+}
+
+/**
+ * 自定义清单取源（`manifestUrl`）——用来「在私有仓前挂一层代理」或直接自建分发。
+ * 期望形状（除 `version` 外全部可选）：
+ * ```json
+ * {
+ *   "version": "0.0.37", "changelog": "…", "prerelease": false,
+ *   "assets": {
+ *     "win32":        { "url": "https://…/PPcode-Setup.exe", "size": 1234, "sha256": "…" },
+ *     "darwin-arm64": { "url": "https://…/PPcode-mac-arm64.zip" }
+ *   }
+ * }
+ * ```
+ * 也接受「不分子平台」的平铺写法：`{ version, url, filename, size, sha256 }`。
+ */
+async function fetchManifestRelease(
+  manifestUrl: string,
+  platform: NodeJS.Platform,
+  arch: string,
+): Promise<ReleaseCandidate | null> {
+  const res = await requestJson(manifestUrl, 12000);
+  if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
+  let manifest: any;
+  try {
+    manifest = JSON.parse(res.body) as any;
+  } catch {
+    throw new Error("invalid_json");
+  }
+  const version = String(manifest?.version ?? "").trim().replace(/^v/i, "");
+  if (!version) return null;
+  const entry: any = pickManifestAsset(manifest?.assets, platform, arch) ?? manifest;
+  const url = String(entry?.url ?? "").trim();
+  if (url && !/^https:\/\//i.test(url)) throw new Error("清单里的更新包地址必须是 https");
+  let filename = entry?.filename ? String(entry.filename) : "";
+  if (!filename && url) {
+    try { filename = path.basename(new URL(url).pathname); } catch { filename = ""; }
+  }
+  return {
+    version,
+    prerelease: Boolean(manifest?.prerelease) || Boolean(parseVersion(version)?.pre),
+    changelog: String(manifest?.changelog ?? "").slice(0, 2000),
+    downloadUrl: url,
+    filename: filename || undefined,
+    size: Number.isFinite(Number(entry?.size)) && Number(entry?.size) > 0 ? Number(entry.size) : undefined,
+    sha256: sha256Of(entry?.sha256),
+  };
+}
+
+/** 清单里按平台挑资产：先试「平台-架构」，再试平台别名，最后 `all`/`default`。 */
+function pickManifestAsset(assets: unknown, platform: NodeJS.Platform, arch: string): any | undefined {
+  if (!assets || typeof assets !== "object") return undefined;
+  const table = assets as Record<string, unknown>;
+  const keys = platform === "darwin"
+    ? [`darwin-${arch}`, "darwin", "mac", "macos", "all", "default"]
+    : ["win32", "windows", "win", "all", "default"];
+  for (const key of keys) {
+    const hit = table[key];
+    if (hit && typeof hit === "object") return hit;
+  }
+  return undefined;
 }
 
 export type DownloadProgress = (info: {
@@ -178,7 +336,10 @@ export async function downloadUpdate(
   destPath: string,
   onProgress?: DownloadProgress,
   expectedSha256?: string,
+  opts: { token?: string } = {},
 ): Promise<{ path: string; bytes: number }> {
+  // 私有仓的资产必须带只读令牌；令牌只发给 GitHub 自家主机（见 isGithubHost）。
+  const token = String(opts.token ?? "");
   // ⛔ 09-16 实测：GitHub 的 `browser_download_url` **不是**资源本身，而是 302 到
   //    `release-assets.githubusercontent.com`（带签名的临时地址）。这里过去是裸 https.request +
   //    `status >= 300 就 reject`，**不跟随重定向** ⇒ 用户点「下载并安装」直接报 `HTTP 302`。
@@ -192,13 +353,18 @@ export async function downloadUpdate(
     // 重定向的每一跳都要重新校验，防止从 https 掉到 http。
     if (parsed.protocol !== "https:") throw new Error(`更新包地址必须是 https（收到 ${parsed.protocol}）`);
     return await new Promise<{ path: string; bytes: number }>((resolve, reject) => {
+      // 每一跳按**主机**决定带什么：api.github.com 要令牌 + octet-stream（读私有资产），
+      // github.com 要令牌；302 之后的 CDN 凭签名 URL，什么都不带。
+      const headers: Record<string, string> = { "User-Agent": "CodexHarness/0.1" };
+      if (token && isGithubHost(parsed.hostname)) headers.Authorization = `Bearer ${token}`;
+      if (parsed.hostname === "api.github.com") headers.Accept = "application/octet-stream";
       const req = https.request(
         {
           method: "GET",
           hostname: parsed.hostname,
           port: parsed.port || 443,
           path: parsed.pathname + parsed.search,
-          headers: { "User-Agent": "CodexHarness/0.1" },
+          headers,
         },
         (res) => {
           const status = res.statusCode ?? 0;
@@ -275,9 +441,9 @@ async function sha256OfFile(filePath: string): Promise<string> {
   });
 }
 
-/** 默认下载目录 = app.getPath('downloads') 下的 codex-harness 子目录 */
+/** 默认下载目录 = 系统「下载」目录下的 PPcode 子目录（改名残留收口：原为 codex-harness）。 */
 export function defaultDownloadDir(appDownloads: string): string {
-  return path.join(appDownloads, "codex-harness");
+  return path.join(appDownloads, "PPcode");
 }
 
 /**

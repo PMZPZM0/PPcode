@@ -713,6 +713,10 @@ interface Window {
     relayPublicSettings(input?: { baseUrl?: string }): Promise<{ siteName: string; siteSubtitle: string; siteLogo: string; registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; promoCodeEnabled: boolean; affiliateEnabled: boolean; captchaRequired: boolean; emailSuffixWhitelist: string[]; apiBaseUrl: string; contactInfo: string }>;
     /* 注册邮箱验证码（sub2api `POST /api/v1/auth/send-verify-code`）：开了邮箱验证的站点注册必经这一步；图形验证码站点在此返回可读错误，渲染层降级为外链注册 */
     relaySendCode(input: { baseUrl?: string; email: string }): Promise<{ message: string; countdown: number }>;
+    /* 改已有密钥的分组（上游 PUT /api/v1/keys/:id）。⛔ 上游对 group_id=null 是「不修改」⇒ 解绑成无分组做不到，UI 只提供分组间切换；改当前生效密钥时同步 selectedGroupId */
+    relayUpdateKeyGroup(input: { id: number; groupId: number; accountId?: string }): Promise<any>;
+    /* 删除密钥（上游 DELETE /api/v1/keys/:id）。⛔ 正在使用的密钥（selectedKeyId）拒绝删除 —— 删掉后当前供应商拿着死 key 全部 401，先切再删 */
+    relayDeleteKey(input: { id: number; accountId?: string }): Promise<{ ok: boolean }>;
     relayPaymentPlans(): Promise<any[]>;
     relayOpenPurchase(): Promise<{ ok: boolean; url: string }>;
     enhancePrompt(text: string): Promise<{ ok: boolean; text?: string; error?: string }>;

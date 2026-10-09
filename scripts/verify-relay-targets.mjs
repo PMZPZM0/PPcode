@@ -30,6 +30,13 @@ const ok = (cond, msg) => {
 };
 const section = (t) => console.log("\n" + t);
 
+/** 剥注释后的源码（负向断言必须剥，否则被自己的说明顶红 —— 本仓多次踩过）。 */
+const strip = (src) => src
+  .replace(/\/\*[\s\S]*?\*\//g, " ")
+  .split(/\r?\n/)
+  .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))
+  .join("\n");
+
 /** 固定的"现在"，避免用真实时间导致判据飘。 */
 const NOW = Date.parse("2026-10-09T12:00:00Z");
 const iso = (days) => new Date(NOW + days * 86_400_000).toISOString();
@@ -175,14 +182,38 @@ ok(keyNameForCandidate({ mode: "balance", groupId: 5, groupName: "默认分组" 
 ok(keyNameForCandidate({ mode: "plan", groupId: 7, groupName: "Pro" }) === "Harness-Pro", "套餐候选 ⇒ Harness-<套餐名>");
 ok(keyNameForCandidate({ mode: "plan", groupId: 7, groupName: "" }) === "Harness-7", "组名为空 ⇒ 退回 Harness-<groupId>（不留空名）");
 
+/* ── ⑥b 输入净化（10-09 报障：同一套凭据 curl 200、应用里 invalid）────────── */
+section("⑥b normalizeCredential（全角/空白/零宽 —— 肉眼看不出、字节上必判 invalid）");
+{
+  const normalizeCredential = (await import("../src/lib/relay-input.mjs")).normalizeCredential;
+  const describeCredentialFix = (await import("../src/lib/relay-input.mjs")).describeCredentialFix;
+  const credentialRejectedHint = (await import("../src/lib/relay-input.mjs")).credentialRejectedHint;
+
+  ok(normalizeCredential("123456789Pzm＠qq.com") === "123456789Pzm@qq.com",
+    "全角 ＠ 转半角 @（中文输入法全角模式最常见，页面上几乎看不出来）");
+  ok(normalizeCredential("１２３ＡＢｃ") === "123ABc", "全角数字/字母转半角");
+  ok(normalizeCredential("  pw123  \n") === "pw123", "首尾空白/换行去除（复制粘贴最常见）");
+  ok(normalizeCredential("pw\u200bx\ufeff") === "pwx", "零宽字符 / BOM 去除");
+  ok(normalizeCredential("ab cd").includes(" "), "⛔ **密码中间**的空格必须保留（它是合法字符，不许顺手删）");
+  ok(normalizeCredential("ａｂ＠ｑｑ．ｃｏｍ") === "ab@qq.com", "邮箱整串全角也能救回来");
+  ok(normalizeCredential(undefined) === "" && normalizeCredential(null) === "", "null/undefined ⇒ 空串（不抛异常）");
+
+  ok(describeCredentialFix("ａｂ＠ｑｑ.com").includes("全角"), "有改动时给用户一句话（静默改会让用户以后更懵）");
+  ok(describeCredentialFix("clean@mail.com") === "", "没改动 ⇒ 空串（不显示）");
+  ok(credentialRejectedHint("invalid email or password", "api.pptoken.cc").includes("api.pptoken.cc"),
+    "站点拒绝凭据时，提示里必须带**打到了哪个站点**（否则分不清是账号问题还是打错了站）");
+
+  const loginSrc = readFileSync(path.join(ROOT, "src", "features", "auth", "LoginScreen.tsx"), "utf8");
+  ok(/normalizeCredential\(email\)/.test(loginSrc) && /normalizeCredential\(password\)/.test(loginSrc),
+    "登录页在提交前净化邮箱与密码");
+  const relayTs = strip(readFileSync(path.join(ROOT, "src", "lib", "relay.ts"), "utf8"));
+  ok(/normalizeCredential\(input\.password\)/.test(relayTs),
+    "⛔ relay.ts 里也净化一次（兜住面板/引导弹窗这些没走登录页的入口）");
+}
+
 /* ── ⑦ 源码接线（负向断言前先剥注释，否则被自己的说明顶红）─────────── */
 section("⑦ relay.ts 的接线（候选链真被用上 / 旧的单候选写法不许复活）");
 {
-  const strip = (src) => src
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .split(/\r?\n/)
-    .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))
-    .join("\n");
   const relaySrc = strip(readFileSync(path.join(ROOT, "src", "lib", "relay.ts"), "utf8"));
 
   ok(/for \(const cand of candidates\)/.test(relaySrc),
@@ -223,11 +254,6 @@ section("⑧ 全仓扫描（防止第 N 处又自己写一份分组挑选）");
     }
     return out;
   };
-  const strip = (src) => src
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .split(/\r?\n/)
-    .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))
-    .join("\n");
   const files = walk(path.join(ROOT, "src"));
   const offenders = files.filter((file) => /subs\s*\[\s*0\s*\]|subscriptions\s*\[\s*0\s*\]/.test(strip(readFileSync(file, "utf8"))));
   ok(offenders.length === 0,

@@ -1,5 +1,5 @@
 /**
- * 中转站账户域（14 个 handler：登录 / 多账户 / 余额套餐密钥 / 订阅支付 / keys-all）
+ * 中转站账户域（16 个 handler：登录 / 注册（邮箱验证码 + 邀请归因）/ 多账户 / 余额套餐密钥 / 订阅支付 / keys-all）
  *
  * ── 10-03：改为插件形态 + 接缝化（方案 §6 阶段 2/3）────────────────────────
  * 原为「函数式注册」：deps 由 main.ts 传参 + `main.ts` 那一行调 `registerRelayIpc()`。
@@ -65,6 +65,8 @@ const RELAY_CHANNELS = [
   "relay:switch-account", "relay:remove-account", "relay:overview", "relay:create-key",
   "relay:select", "relay:key-billing", "relay:register", "relay:payment-plans",
   "relay:open-purchase", "relay:keys-all",
+  // 10-09 注册链路补两条：站点公开设置（注册流程站点可配）+ 邮箱验证码（pptoken 强制）
+  "relay:public-settings", "relay:send-code",
 ];
 
 /**
@@ -375,7 +377,45 @@ function registerRelayIpc(deps: RelayIpcDeps) {
   // 协议实证（Wei-Shaw/sub2api + pptoken 实测 09-12）：
   //   POST /api/v1/auth/register {email,password,aff_code?}（站点可选用 verify_code/turnstile，
   //   未开启时三字段即可；开启时报错原文透传，渲染层降级为外部注册页）
-  ipcHost.handle("relay:register", async (_e, input: { baseUrl: string; email: string; password: string; affCode?: string }) => {
+  /* 站点**公开设置**（sub2api `GET /api/v1/settings/public`，无需鉴权）。
+     ⛔ 为什么必须真读而不是写死：注册流程是**站点可配**的 —— 邮箱验证码 / 邀请码 / 优惠码 /
+     图形验证码 / 邮箱后缀白名单都可能是开或关（实测 pptoken：email_verify_enabled=true、
+     affiliate_enabled=true，三种图形验证码全关）。写死任何一条，站点一改配置注册就整条失效。 */
+  ipcHost.handle("relay:public-settings", async (_e, input?: { baseUrl?: string }) => {
+    const baseUrl = relayBase(input?.baseUrl);
+    const { ok, data, message } = await relayRequest(`${baseUrl}/api/v1/settings/public`);
+    if (!ok) throw new Error("读取站点设置失败：" + (message || "站点未开放公开设置接口"));
+    return {
+      siteName: String(data?.site_name ?? ""),
+      siteSubtitle: String(data?.site_subtitle ?? ""),
+      siteLogo: String(data?.site_logo ?? ""),
+      registrationEnabled: data?.registration_enabled !== false,
+      emailVerifyEnabled: data?.email_verify_enabled === true,
+      invitationCodeEnabled: data?.invitation_code_enabled === true,
+      promoCodeEnabled: data?.promo_code_enabled === true,
+      affiliateEnabled: data?.affiliate_enabled === true,
+      captchaRequired: data?.turnstile_enabled === true || data?.tencent_captcha_enabled === true || data?.aliyun_captcha_enabled === true,
+      emailSuffixWhitelist: Array.isArray(data?.registration_email_suffix_whitelist) ? data.registration_email_suffix_whitelist.map(String) : [],
+      apiBaseUrl: String(data?.api_base_url ?? ""),
+      contactInfo: String(data?.contact_info ?? ""),
+    };
+  });
+  /* 注册**邮箱验证码**（sub2api `POST /api/v1/auth/send-verify-code`）。
+     ⛔ 这是 pptoken 这类开了邮箱验证的站点注册的**必经一步**：不先拿码，register 必被拒。
+     图形验证码站点（本仓暂不内置 widget）会在这里拿到可读错误，渲染层据此降级为外链注册。 */
+  ipcHost.handle("relay:send-code", async (_e, input: { baseUrl?: string; email: string }) => {
+    const baseUrl = relayBase(input?.baseUrl);
+    const email = String(input?.email ?? "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("邮箱格式不正确");
+    const { ok, data, message } = await relayRequest(`${baseUrl}/api/v1/auth/send-verify-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    if (!ok) throw new Error("验证码发送失败：" + (message || `HTTP ${data?.status ?? ""}`));
+    return { message: String(data?.message ?? "验证码已发送"), countdown: Number(data?.countdown ?? 60) || 60 };
+  });
+  ipcHost.handle("relay:register", async (_e, input: { baseUrl: string; email: string; password: string; affCode?: string; verifyCode?: string }) => {
     const baseUrl = relayBase(input.baseUrl);
     const email = String(input.email ?? "").trim();
     const password = String(input.password ?? "");
@@ -384,7 +424,13 @@ function registerRelayIpc(deps: RelayIpcDeps) {
     const { ok, data, message } = await relayRequest(`${baseUrl}/api/v1/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, ...(input.affCode ? { aff_code: input.affCode } : {}) }),
+      // ⛔ 字段名是**站点契约**（sub2api RegisterRequest）：verify_code / aff_code，别名一律不认
+      body: JSON.stringify({
+        email,
+        password,
+        ...(input.verifyCode ? { verify_code: input.verifyCode } : {}),
+        ...(input.affCode ? { aff_code: input.affCode } : {}),
+      }),
     });
     if (!ok) throw new Error("注册失败：" + (message || `HTTP ${data?.status ?? ""}`));
     // 注册成功 = 立即登录（同一套凭据），落多账号库并设为当前 —— 真正的「注册完自动登录」

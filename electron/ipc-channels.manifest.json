@@ -1,7 +1,7 @@
 {
   "_comment": "IPC 桥的单一真相源。加/改接口只改这里，然后跑 `npm run gen:ipc`。字段：paramsImpl=preload 实现参数（含默认值），paramsDecl=d.ts 声明参数，returns=返回类型，cast=invoke 后的 as 尾转换（没有则 null），note=显示在生成物里的备注。事件订阅等非 invoke 成员不在这里（仍在 preload.ts 手写）。",
   "generatedAt": "2026-10-09",
-  "count": 432,
+  "count": 434,
   "channels": [
     {
       "name": "request",
@@ -2496,12 +2496,32 @@
     {
       "name": "relayRegister",
       "channel": "relay:register",
-      "paramsImpl": "input: { baseUrl: string; email: string; password: string; affCode?: string }",
-      "paramsDecl": "input: { baseUrl: string; email: string; password: string; affCode?: string }",
+      "paramsImpl": "input: { baseUrl: string; email: string; password: string; affCode?: string; verifyCode?: string }",
+      "paramsDecl": "input: { baseUrl: string; email: string; password: string; affCode?: string; verifyCode?: string }",
       "returns": "Promise<{ email: string; baseUrl: string; balance: number }>",
       "invokeArgs": "input",
       "cast": null,
-      "note": null
+      "note": "注册中转站账号（sub2api `POST /api/v1/auth/register`）：body 带 verify_code（站点开邮箱验证时必填）与 aff_code（邀请归因）；成功后立刻用同套凭据登录并落多账号库 ⇒ 真正的「注册完自动登录」"
+    },
+    {
+      "name": "relayPublicSettings",
+      "channel": "relay:public-settings",
+      "paramsImpl": "input?: { baseUrl?: string }",
+      "paramsDecl": "input?: { baseUrl?: string }",
+      "returns": "Promise<{ siteName: string; siteSubtitle: string; siteLogo: string; registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; promoCodeEnabled: boolean; affiliateEnabled: boolean; captchaRequired: boolean; emailSuffixWhitelist: string[]; apiBaseUrl: string; contactInfo: string }>",
+      "invokeArgs": "input",
+      "cast": null,
+      "note": "站点公开设置（sub2api `GET /api/v1/settings/public`，免鉴权）：注册流程站点可配 —— 邮箱验证/邀请码/优惠码/图形验证码/邮箱后缀白名单都以它为准，⛔ 别写死"
+    },
+    {
+      "name": "relaySendCode",
+      "channel": "relay:send-code",
+      "paramsImpl": "input: { baseUrl?: string; email: string }",
+      "paramsDecl": "input: { baseUrl?: string; email: string }",
+      "returns": "Promise<{ message: string; countdown: number }>",
+      "invokeArgs": "input",
+      "cast": null,
+      "note": "注册邮箱验证码（sub2api `POST /api/v1/auth/send-verify-code`）：开了邮箱验证的站点注册必经这一步；图形验证码站点在此返回可读错误，渲染层降级为外链注册"
     },
     {
       "name": "relayPaymentPlans",

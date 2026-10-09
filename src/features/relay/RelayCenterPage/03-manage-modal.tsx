@@ -7,6 +7,8 @@ import { Spinner } from "../../../components/CardShell";
 import { AppSelect } from "../../../components/AppSelect";
 import { copyTextToClipboard } from "../../../lib/clipboard";
 import { shortGroupName } from "../RelayCenterPage/01-balance-badge";
+import { RelayModal } from "./relay-modal";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   account: { id?: string | undefined; baseUrl: string; email: string; } | null;
@@ -17,8 +19,8 @@ type Props = {
   createKey: () => Promise<void>;
   creatingKey: boolean;
   deleteKey: (group: any, k: any) => Promise<void>;
-  editingKey: { id: number; groupId: string; } | null;
-  setEditingKey: React.Dispatch<React.SetStateAction<{ id: number; groupId: string; } | null>>;
+  keyManage: { accountId?: string; id: number; name: string; key: string; groupId: number | null; } | null;
+  setKeyManage: React.Dispatch<React.SetStateAction<{ accountId?: string; id: number; name: string; key: string; groupId: number | null; } | null>>;
   currentKey: any;
   groupNameOf: (gid: any) => string;
   isActiveProvider: boolean;
@@ -48,10 +50,26 @@ type Props = {
   working: string;
 };
 
-export function RelayCenterPageManageModal({ account, accounts, active, busy, changeKeyGroup, createKey, creatingKey, deleteKey, editingKey, currentKey, groupNameOf, isActiveProvider, isLiveRow, keyGroups, keyVisible, keysCollapsed, load, manageOpen, maskKey, newKey, onNotice, onOpenModelSettings, overview, progress, refreshing, removeAccount, setKeyVisible, setKeysCollapsed, setManageOpen, setEditingKey, setNewKey, setShowKeyForm, showKeyForm, subs, switchTarget, useKeyFromGroup, working }: Props) {
+export function RelayCenterPageManageModal({ account, accounts, active, busy, changeKeyGroup, createKey, creatingKey, deleteKey, keyManage, currentKey, groupNameOf, isActiveProvider, isLiveRow, keyGroups, keyVisible, keysCollapsed, load, manageOpen, maskKey, newKey, onNotice, onOpenModelSettings, overview, progress, refreshing, removeAccount, setKeyVisible, setKeysCollapsed, setManageOpen, setKeyManage, setNewKey, setShowKeyForm, showKeyForm, subs, switchTarget, useKeyFromGroup, working }: Props) {
+  /* 第三级弹窗的本地态：分组草稿 + 两段式删除确认（⛔ 不再叠第四层 confirm 弹窗） */
+  const [draftGroup, setDraftGroup] = useState("");
+  const [armDelete, setArmDelete] = useState(false);
+  const armTimer = useRef(0);
+  useEffect(() => {
+    setDraftGroup(keyManage ? String(keyManage.groupId ?? "") : "");
+    setArmDelete(false);
+    if (armTimer.current) { window.clearTimeout(armTimer.current); armTimer.current = 0; }
+  }, [keyManage]);
+  const groupOptions = [
+    ...(overview?.groups ?? []).map((g: any) => ({ value: String(g.group_id ?? g.id), label: g.group_name ?? g.name ?? `分组 ${g.group_id ?? g.id}` })),
+    ...(overview?.subscriptions ?? []).filter((sx: any) => !(overview?.groups ?? []).some((g: any) => Number(g.group_id ?? g.id) === Number(sx.group_id))).map((sx: any) => ({ value: String(sx.group_id), label: `${sx.group_name}（订阅分组）` })),
+  ];
+  const isCurrentManaged = Boolean(keyManage && active?.apiKey && keyManage.key && String(active.apiKey) === String(keyManage.key));
+
   return (
-    manageOpen && account && (
-            <div className="relay-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setManageOpen(false); }}>
+    <>
+      {manageOpen && account && (
+            <RelayModal onClose={() => setManageOpen(false)}>
               <div className="relay-manage-modal">
                 <div className="relay-keys-head">
                   <strong className="relay-modal-title"><Wallet size={15} />{account.email}</strong>
@@ -149,24 +167,13 @@ export function RelayCenterPageManageModal({ account, accounts, active, busy, ch
                               <span className="relay-key-status" data-status={k.status === "active" ? "on" : "off"} title={k.status} />
                               <span className="relay-key-name" title={k.name}>{k.name || `密钥 #${k.id}`}</span>
                               <code className="relay-key-tail">{String(k.key ?? "").slice(0, 6)}••••{String(k.key ?? "").slice(-4)}</code>
-                              {editingKey?.id === Number(k.id) ? (
-                                <span className="relay-key-manage">
-                                  <AppSelect value={editingKey.groupId} onChange={(v) => setEditingKey({ id: Number(k.id), groupId: String(v) })} ariaLabel="改绑到哪个分组" options={groupOptions} />
-                                  <button className="secondary-setting" disabled={working !== "" || !editingKey.groupId} title="站点不支持解绑成无分组，只能在分组间切换" onClick={() => void changeKeyGroup(group, k, editingKey.groupId)}>{working === `kg${k.id}` ? <Spinner /> : <Check size={13} />}确定</button>
-                                  <button className="secondary-setting" disabled={working !== ""} onClick={() => setEditingKey(null)}>取消</button>
-                                </span>
-                              ) : (
-                                <>
-                                  <small className="relay-key-group">{groupNameOf(k.group_id)}</small>
-                                  <span className="relay-key-manage">
-                                    {isCurrent
-                                      ? <span className="relay-plan-live"><Check size={11} />使用中</span>
-                                      : <button className="secondary-setting" disabled={busy || working !== "" || !isLiveRow(account.id)} title={isLiveRow(account.id) ? undefined : "该账号不是当前生效账号：先回卡片点「设为当前」"} onClick={() => void useKeyFromGroup(group, k)}>{working === `key${k.id}` ? <Spinner /> : <Play size={13} />}使用</button>}
-                                    <button className="relay-key-act" title="改绑分组（站点不支持解绑成无分组）" disabled={busy || working !== "" || !isLiveRow(account.id)} onClick={() => setEditingKey({ id: Number(k.id), groupId: String(k.group_id ?? "") })}><Settings2 size={13} /></button>
-                                    <button className="relay-key-act relay-key-danger" title={isCurrent ? "正在使用中：先切换到别的密钥或套餐再删除" : "删除这把密钥"} disabled={busy || working !== "" || isCurrent || !isLiveRow(account.id)} onClick={() => void deleteKey(group, k)}>{working === `kd${k.id}` ? <Spinner /> : <Trash2 size={13} />}</button>
-                                  </span>
-                                </>
-                              )}
+                              <small className="relay-key-group">{groupNameOf(k.group_id)}</small>
+                              <span className="relay-key-manage">
+                                {isCurrent
+                                  ? <span className="relay-plan-live"><Check size={11} />使用中</span>
+                                  : <button className="secondary-setting" disabled={busy || working !== "" || !isLiveRow(account.id)} title={isLiveRow(account.id) ? undefined : "该账号不是当前生效账号：先回卡片点「设为当前」"} onClick={() => void useKeyFromGroup(group, k)}>{working === `key${k.id}` ? <Spinner /> : <Play size={13} />}使用</button>}
+                                <button className="secondary-setting relay-key-manage-btn" disabled={busy || working !== "" || !isLiveRow(account.id)} title="改绑分组 / 删除" onClick={() => setKeyManage({ accountId: group?.id, id: Number(k.id), name: String(k.name ?? ""), key: String(k.key ?? ""), groupId: k.group_id ?? null })}><Settings2 size={13} />管理</button>
+                              </span>
                             </div>
                           );
                         })}
@@ -179,7 +186,49 @@ export function RelayCenterPageManageModal({ account, accounts, active, busy, ch
                 </div>
                 <p className="relay-center-foot">{isActiveProvider ? <>当前供应商即中转站生成的「{active!.label}」，输入框旁的余额徽标实时同步。</> : <>点套餐卡的「使用此套餐」或密钥列表的「使用」，会自动生成供应商并切换，无需手动去模型设置新增。</>}</p>
               </div>
+            </RelayModal>
+      )}
+      {keyManage && (
+        <RelayModal onClose={() => setKeyManage(null)} backdropClassName="relay-key-modal-backdrop">
+          <div className="relay-manage-modal relay-key-manage-modal">
+            <div className="relay-keys-head">
+              <strong className="relay-modal-title">管理密钥</strong>
+              <button className="icon-button relay-modal-close" title="关闭" onClick={() => setKeyManage(null)}><X size={15} /></button>
             </div>
-          )
+            <div className="relay-keymeta">
+              <strong>{keyManage.name || `密钥 #${keyManage.id}`}</strong>
+              <code>{maskKey(keyManage.key)}</code>
+              <small>当前分组：{groupNameOf(keyManage.groupId)}</small>
+            </div>
+            <label className="se-field">
+              <span>改绑分组（站点不支持解绑成无分组，只能在分组间切换）</span>
+              <AppSelect value={draftGroup} onChange={(v) => setDraftGroup(String(v))} ariaLabel="改绑到哪个分组" options={groupOptions} />
+            </label>
+            <div className="relay-keymeta-actions">
+              <button
+                className={`secondary-setting relay-keymeta-delete${armDelete ? " armed" : ""}`}
+                disabled={working !== "" || isCurrentManaged}
+                title={isCurrentManaged ? "正在使用中：先切换到别的密钥或套餐，再删除" : undefined}
+                onClick={() => {
+                  if (!armDelete) { setArmDelete(true); armTimer.current = window.setTimeout(() => setArmDelete(false), 4000); return; }
+                  if (armTimer.current) { window.clearTimeout(armTimer.current); armTimer.current = 0; }
+                  void deleteKey({ id: keyManage.accountId }, { id: keyManage.id, name: keyManage.name });
+                }}
+              >
+                {working === `kd${keyManage.id}` ? <Spinner /> : <Trash2 size={13} />}{armDelete ? "再点一次确认删除" : "删除这把密钥"}
+              </button>
+              <button
+                className="primary-setting"
+                disabled={working !== "" || draftGroup === String(keyManage.groupId ?? "")}
+                title="改绑后立即生效；改当前生效密钥时余额徽标与概览会同步"
+                onClick={() => void changeKeyGroup({ id: keyManage.accountId }, { id: keyManage.id, name: keyManage.name }, draftGroup)}
+              >
+                {working === `kg${keyManage.id}` ? <Spinner /> : <Check size={13} />}保存分组
+              </button>
+            </div>
+          </div>
+        </RelayModal>
+      )}
+    </>
   );
 }

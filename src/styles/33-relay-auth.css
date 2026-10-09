@@ -76,7 +76,20 @@
 }
 .authx-logo img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .authx-brand-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.authx-brand-text strong { font-size: 17px; letter-spacing: .2px; color: var(--text); }
+.authx-brand-text strong {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  /* 与侧栏品牌字**同一套流动渐变**（`--brand-ink` 定义在 01-base-and-chrome.css 的 :root，
+     两处共用一份色标；10-09 用户要求"两侧对应位置同步修改"）。三件套见那边的注释。 */
+  background-image: var(--brand-ink);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--text);   /* 兜底：渐变万一不生效也是实心字，不会"字消失" */
+  animation: brand-ink-flow 7s linear infinite;
+}
 .authx-brand-text em { font-style: normal; font-size: 11.5px; color: var(--muted); }
 
 /* ── 页签（登录 / 注册）── */

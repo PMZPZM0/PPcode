@@ -707,7 +707,12 @@ interface Window {
     relayCreateKey(input: { name: string; groupId?: number | null; accountId?: string }): Promise<{ id: number; key: string; name: string; group_id: number | null; status: string }>;
     relaySelect(input: { mode: "balance" | "plan"; groupId: number | null; keyId?: number; keyName?: string }): Promise<{ ok: boolean }>;
     relayKeyBilling(input: { baseUrl: string; apiKey: string }): Promise<any>;
-    relayRegister(input: { baseUrl: string; email: string; password: string; affCode?: string }): Promise<{ email: string; baseUrl: string; balance: number }>;
+    /* 注册中转站账号（sub2api `POST /api/v1/auth/register`）：body 带 verify_code（站点开邮箱验证时必填）与 aff_code（邀请归因）；成功后立刻用同套凭据登录并落多账号库 ⇒ 真正的「注册完自动登录」 */
+    relayRegister(input: { baseUrl: string; email: string; password: string; affCode?: string; verifyCode?: string }): Promise<{ email: string; baseUrl: string; balance: number }>;
+    /* 站点公开设置（sub2api `GET /api/v1/settings/public`，免鉴权）：注册流程站点可配 —— 邮箱验证/邀请码/优惠码/图形验证码/邮箱后缀白名单都以它为准，⛔ 别写死 */
+    relayPublicSettings(input?: { baseUrl?: string }): Promise<{ siteName: string; siteSubtitle: string; siteLogo: string; registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; promoCodeEnabled: boolean; affiliateEnabled: boolean; captchaRequired: boolean; emailSuffixWhitelist: string[]; apiBaseUrl: string; contactInfo: string }>;
+    /* 注册邮箱验证码（sub2api `POST /api/v1/auth/send-verify-code`）：开了邮箱验证的站点注册必经这一步；图形验证码站点在此返回可读错误，渲染层降级为外链注册 */
+    relaySendCode(input: { baseUrl?: string; email: string }): Promise<{ message: string; countdown: number }>;
     relayPaymentPlans(): Promise<any[]>;
     relayOpenPurchase(): Promise<{ ok: boolean; url: string }>;
     enhancePrompt(text: string): Promise<{ ok: boolean; text?: string; error?: string }>;

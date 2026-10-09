@@ -99,6 +99,49 @@ export async function resolveRelayAutoTarget(): Promise<{ mode: "balance" | "pla
 }
 
 /**
+ * 中转站账户**注册**的完整链路：注册（带邀请归因 + 邮箱验证码）→ 自动登录 → 生成供应商 → 生效。
+ *
+ * ⛔ 为什么收尾直接复用 `performRelayLogin`：
+ *   · 主进程的 `relay:register` 成功时**已经**用同套凭据登录并落多账号库了；这里再走一次登录是
+ *     幂等的（多一次请求，换零重复代码）；
+ *   · 真正值钱的是登录之后的收尾（按套餐/余额选计费 + 「无分组 key 被网关 403 时改绑第一个
+ *     订阅分组重试」那段兜底）。复制第二份 = 下一次改兜底必然只改一处 ⇒ 这条路径的用户卡死。
+ *
+ * 邀请归因：`affCode` 由调用方经 `resolveAffiliateCode()` 归一化后传入（URL `?aff=` → 本地存储
+ * → 内置默认码），本函数**不再自己兜默认值**，避免两处各有一套优先级。
+ */
+export async function performRelayRegister(input: {
+  baseUrl: string;
+  email: string;
+  password: string;
+  affCode?: string;
+  verifyCode?: string;
+  username?: string;
+  onLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string }) => Promise<boolean>;
+}): Promise<{ ok: boolean; message?: string; active?: RelayActive }> {
+  try {
+    await window.codex.relayRegister({
+      baseUrl: input.baseUrl.trim(),
+      email: input.email.trim(),
+      password: input.password,
+      affCode: input.affCode,
+      verifyCode: input.verifyCode,
+    });
+  } catch (error: any) {
+    const raw = String(error?.message ?? error).replace(/^Error invoking remote method '[^']+':\s*/i, "");
+    return { ok: false, message: raw || "注册失败" };
+  }
+  // 注册成功即已登录（主进程做了），这里继续走同一条「选计费 → 生成供应商 → 生效」的收尾
+  return performRelayLogin({
+    baseUrl: input.baseUrl,
+    email: input.email,
+    password: input.password,
+    username: input.username,
+    onLogin: input.onLogin,
+  });
+}
+
+/**
  * 中转站账户登录的**完整链路**：登录 → 自动选计费方式（有套餐用套餐，否则余额）→ 生成供应商 → 生效。
  *
  * ⛔ 抽出来是因为它有**两个入口**（登录页 + 模型配置引导弹窗）。分两处各写一份必然漂移 ——

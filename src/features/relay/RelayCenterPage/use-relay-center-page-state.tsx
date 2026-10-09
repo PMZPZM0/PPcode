@@ -5,6 +5,7 @@
  *    （同一渲染周期、同一顺序）。组件侧用**同名解构**接回来，所以 JSX 一字不改。
  */
 import { resolveRelayTarget, writeRelayActive, readRelayActive, RelayActive } from "../../../lib/relay";
+import { resolveAffiliateCode } from "../../../lib/relay-affiliate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { shortGroupName } from "../RelayCenterPage/01-balance-badge";
 
@@ -230,7 +231,10 @@ export function useRelayCenterPageState({ busy, activeProvider, onActivate, onNo
   // ── 付费订阅：应用内注册 → 套餐市场 → 站内付款 → 自动建 key 生效（正向联动）──
   // 反向联动不需要额外代码：置顶卡是派生态（relay-active + selectedGroupId + summary），
   // 手动切套餐/切 key/切账号都会在 60s 静默刷新或下一次 overview 拉取时自动跟上。
-  const AFF_CODE = "X82JSNVC3W3S"; // 中转站邀请返利码（注册请求 aff_code 字段）
+  /* 中转站邀请返利码（注册请求 aff_code 字段）。
+     ⛔ **单一真相源** = lib/relay-affiliate（URL `?aff=` → 本地 30 天 → 内置默认码）；
+       这里原来写死字面量，与首屏登录页/引导弹窗各存一份必然漂移（10-09 收口）。 */
+  const AFF_CODE = useMemo(() => resolveAffiliateCode().code, []);
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
   const [regDraft, setRegDraft] = useState({ email: "", password: "", confirm: "" });
   const [plansOpen, setPlansOpen] = useState(false);

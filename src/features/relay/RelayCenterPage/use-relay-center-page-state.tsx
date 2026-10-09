@@ -363,6 +363,35 @@ export function useRelayCenterPageState({ busy, activeProvider, onActivate, onNo
       void loadKeyGroups();
     } catch { /* switchTarget 已常驻报错 */ }
   };
+  /* ── 密钥管理（10-09 用户令：已建的密钥要能删、能换分组）─────────────────────
+     ⛔ 上游 `PUT /keys/:id` 对 `group_id=null` 是「不修改」⇒ **解绑成无分组做不到**，
+        界面只提供分组间的切换（站点要求绑分组时本来也不该解绑）。 */
+  const [editingKey, setEditingKey] = useState<{ id: number; groupId: string } | null>(null);
+  const changeKeyGroup = async (group: any, k: any, groupId: string) => {
+    setWorking(`kg${k.id}`); setErr("");
+    try {
+      await window.codex.relayUpdateKeyGroup({ id: Number(k.id), groupId: Number(groupId), accountId: group?.id });
+      setEditingKey(null);
+      setOverview(await window.codex.relayOverview(group?.id).catch(() => null));
+      void loadKeyGroups();
+      onNotice(`密钥「${k.name || `#${k.id}`}」已改绑分组`);
+    } catch (e: any) { setErr("改分组失败：" + (e.message ?? e)); } finally { setWorking(""); }
+  };
+  const deleteKey = async (group: any, k: any) => {
+    const confirmed = await openAppConfirm(
+      `删除密钥「${k.name || `#${k.id}`}」？`,
+      "删除后该密钥立即失效，站点侧不可恢复。正在使用中的密钥会被拒绝（先切换到别的密钥或套餐再删）。",
+      "删除",
+    );
+    if (!confirmed) return;
+    setWorking(`kd${k.id}`); setErr("");
+    try {
+      await window.codex.relayDeleteKey({ id: Number(k.id), accountId: group?.id });
+      setOverview(await window.codex.relayOverview(group?.id).catch(() => null));
+      void loadKeyGroups();
+      onNotice("密钥已删除");
+    } catch (e: any) { setErr(String(e?.message ?? e).replace(/^Error invoking remote method '[^']+':\s*/i, "")); } finally { setWorking(""); }
+  };
   // 当前生效密钥：按已选 keyId / 计费方式与分组从密钥列表匹配（与 resolveRelayTarget 同规则）
   const [keyVisible, setKeyVisible] = useState(false);
   const currentKey = useMemo(() => {
@@ -378,5 +407,5 @@ export function useRelayCenterPageState({ busy, activeProvider, onActivate, onNo
   }, [overview]);
   const maskKey = (key: string) => key.length > 14 ? `${key.slice(0, 10)}••••••••${key.slice(-4)}` : key;
 
-  return { busy, activeProvider, onActivate, onNotice, onOpenModelSettings, openAppConfirm, account, setAccount, draft, setDraft, overview, setOverview, err, setErr, working, setWorking, active, isActiveProvider, refreshing, setRefreshing, load, accounts, setAccounts, manageOpen, setManageOpen, loginModalOpen, setLoginModalOpen, reloadAccounts, isLiveRow, autoConfigure, login, switchAccount, removeAccount, toggleAccount, openManage, switchTarget, subs, progress, showKeyForm, setShowKeyForm, newKey, setNewKey, creatingKey, setCreatingKey, keyGroups, setKeyGroups, collapsedGroups, setCollapsedGroups, keysCollapsed, setKeysCollapsed, loadKeyGroups, authTab, setAuthTab, regDraft, setRegDraft, plansOpen, setPlansOpen, plans, setPlans, plansLoading, setPlansLoading, plansErr, setPlansErr, watching, setWatching, watchRef, subChangeKey, stopWatch, verifyPayment, startWatch, openPurchase, openPlans, register, groupNameOf, createKey, useKeyFromGroup, keyVisible, setKeyVisible, currentKey, maskKey };
+  return { busy, activeProvider, onActivate, onNotice, onOpenModelSettings, openAppConfirm, account, setAccount, draft, setDraft, overview, setOverview, err, setErr, working, setWorking, active, isActiveProvider, refreshing, setRefreshing, load, accounts, setAccounts, manageOpen, setManageOpen, loginModalOpen, setLoginModalOpen, reloadAccounts, isLiveRow, autoConfigure, login, switchAccount, removeAccount, toggleAccount, openManage, switchTarget, subs, progress, showKeyForm, setShowKeyForm, newKey, setNewKey, creatingKey, setCreatingKey, keyGroups, setKeyGroups, collapsedGroups, setCollapsedGroups, keysCollapsed, setKeysCollapsed, loadKeyGroups, authTab, setAuthTab, regDraft, setRegDraft, plansOpen, setPlansOpen, plans, setPlans, plansLoading, setPlansLoading, plansErr, setPlansErr, watching, setWatching, watchRef, subChangeKey, stopWatch, verifyPayment, startWatch, openPurchase, openPlans, register, groupNameOf, createKey, useKeyFromGroup, editingKey, setEditingKey, changeKeyGroup, deleteKey, keyVisible, setKeyVisible, currentKey, maskKey };
 }

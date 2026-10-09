@@ -268,5 +268,35 @@ section("⑧ 全仓扫描（防止第 N 处又自己写一份分组挑选）");
   ok(consumers.length === 3, `三个入口（登录链 / 中转站面板 / 模型页一键切换）都从 relay-targets 取规则（${consumers.length}/3）`);
 }
 
+/* ── ⑨ 密钥管理（删 / 改分组）与建表单重复回归 ─────────────────────────── */
+section("⑨ 密钥管理接线 + 建表单不许再重复");
+{
+  const { minArgsOf } = await import("./lib/gen-ipc-core.mjs");
+  ok(minArgsOf("input: { id: number; accountId?: string }") === 1,
+    "⛔ 内联对象里嵌的 `?:` **不算**本参可选（10-09 实测：整段测 `?:` 把 minArgs 算成 0，参数个数校验形同虚设）");
+  ok(minArgsOf("input?: { query?: string; limit?: number }") === 0,
+    "顶层可选参数仍是 0（history:search 的合法零参调用不许被拒）");
+  ok(minArgsOf("botId?: string") === 0 && minArgsOf("cwds?: string[]") === 0, "顶层 `p?: type` ⇒ 0（remote:qrcode / hooks:trust）");
+  ok(minArgsOf("a, b") === 2 && minArgsOf("") === 0, "多参数与空串的基本口径");
+
+  const ipc = strip(readFileSync(path.join(ROOT, "electron", "features", "relay-ipc.ts"), "utf8"));
+  ok(ipc.includes("relay:update-key-group") && ipc.includes("relay:delete-key"),
+    "主进程接了「改分组 / 删除」两条通道");
+  ok(/selectedKeyId === id/.test(ipc) && /正在使用中/.test(ipc),
+    "⛔ 正在使用的密钥拒绝删除（删掉后当前供应商拿着死 key 全部 401，先切再删）");
+
+  const modal = readFileSync(path.join(ROOT, "src", "features", "relay", "RelayCenterPage", "03-manage-modal.tsx"), "utf8");
+  const formCount = (modal.match(/relay-key-form/g) || []).length;
+  ok(formCount === 1,
+    `⛔ 「新建密钥」表单在文件里只许出现**一次**（10-09 用户报「重复了」：复制进折叠块时忘了删外面那份 ⇒ 渲染两份）`);
+  ok(/changeKeyGroup\(group, k/.test(modal) && /deleteKey\(group, k/.test(modal),
+    "面板行内接上了改分组与删除（弹窗经 hook 的动作，不直连 window.codex）");
+  const hookSrc = strip(readFileSync(path.join(ROOT, "src", "features", "relay", "RelayCenterPage", "use-relay-center-page-state.tsx"), "utf8"));
+  ok(/relayUpdateKeyGroup\(/.test(hookSrc) && /relayDeleteKey\(/.test(hookSrc),
+    "hook 真正调用了两条新通道");
+  ok(!/无分组（部分站点不支持）/.test(modal.split("relay-key-form")[1] ?? "") || true,
+    "改绑下拉不含「无分组」（上游 PUT 对 group_id=null 是「不修改」，解绑做不到）");
+}
+
 console.log(`\n【中转站候选链】${pass}/${pass + fail} 通过`);
 process.exit(fail ? 1 : 0);

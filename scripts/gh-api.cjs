@@ -2,7 +2,7 @@ const { execFileSync } = require("child_process");
 const fs = require("fs");
 const G = "C:/Users/Administrator/.workbuddy/binaries/PortableGit/versions/1.2.0/cmd/git.exe";
 const PROXY = "http://127.0.0.1:7897";
-const REPO = "PMZPZM0/codex-harness-desktop";
+const REPO = "PMZPZM0/PPcode";
 
 const url = execFileSync(G, ["config", "--get", "remote.origin.url"], { encoding: "utf8" }).trim();
 const tok = (url.match(/https:\/\/[^:]+:([^@]+)@/) || [])[1] || "";

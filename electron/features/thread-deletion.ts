@@ -24,7 +24,7 @@ import { healRolloutLineageAsync, purgeRolloutFilesAsync } from "../rollout-pool
 //   而 thread/list 带 rollout 兜底扫描（见下面的 thread/list 分支），它把「索引里没有、
 //   磁盘上有」的会话当权威源合回侧栏 ⇒ 删掉的会话重启后又冒出来。
 //   用户机实测：state 库 11 条、磁盘 18 个 rollout，其中 12 条「已从索引删除但文件还在」，
-//   侧栏那 7 个分组名与它们的 cwd 一一对应（D:\2 四条、D:\Codex Harness Desktop 五条…）。
+//   侧栏那 7 个分组名与它们的 cwd 一一对应（D:\2 四条、D:\PPcode 五条…）。
 //
 //   收尾两件事，缺一不可：
 //     ① 删掉磁盘 rollout —— 真正的清理，不删就永远会复活；
@@ -37,7 +37,7 @@ import { healRolloutLineageAsync, purgeRolloutFilesAsync } from "../rollout-pool
 // ⛔ 不能写成模块顶层 `const deletedThreadsFile = path.join(app.getPath("userData"), …)`（09-22 code review 抓出）：
 //    本模块在 main.ts 的 **import 期**求值，而 `app.setPath("userData", …)` 是 main.ts 的**模块体语句**
 //    （编译产物里 require 在前、setPath 在后）⇒ 顶层求值拿到默认 userData `%APPDATA%\<package.json name>`，
-//    而应用真正用的是 setPath 之后的 `%APPDATA%\Codex Harness Desktop` ⇒ 墓碑会写进另一个目录，
+//    而应用真正用的是 setPath 之后的 `%APPDATA%\PPcode` ⇒ 墓碑会写进另一个目录，
 //    旧目录里已有的墓碑被忽略 = 「删掉的会话重启复活」这个 bug 会复发。惰性求值（同 electron/personalization.ts 约定）。
 function deletedThreadsFile(): string {
   return path.join(app.getPath("userData"), "deleted-threads.json");

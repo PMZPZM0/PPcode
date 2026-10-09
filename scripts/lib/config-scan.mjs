@@ -86,7 +86,7 @@ function shouldScanFile(name, size) {
 
 /** 推导当前用户的 userData 目录（各平台路径不同；拿不到就返回 ""，调用方按「跳过用户侧扫描」处理）。 */
 export function defaultUserDataDir({ platform = process.platform, env = process.env, homedir = "" } = {}) {
-  const appName = "Codex Harness Desktop";
+  const appName = "PPcode";
   if (platform === "win32") return env.APPDATA ? `${env.APPDATA}\\${appName}` : "";
   if (platform === "darwin") return homedir ? `${homedir}/Library/Application Support/${appName}` : "";
   return env.XDG_CONFIG_HOME ? `${env.XDG_CONFIG_HOME}/${appName}` : homedir ? `${homedir}/.config/${appName}` : "";

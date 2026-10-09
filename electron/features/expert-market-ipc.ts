@@ -14,7 +14,7 @@ import type { IpcHost } from "../ipc-host";
 import { listSkillHubSkillsets, installSkillHubSkillset } from "../skillhub-packages";
 
 // ⛔ 惰性求值（handler 调用时再取）：模块顶层读 codexHome 会拿到初始化前的值，路径漂移成
-// 进程 cwd 下的 skills/ —— 实测技能包被装进 D:/Codex Harness Desktop/skills/（10-01 用户反馈
+// 进程 cwd 下的 skills/ —— 实测技能包被装进 D:/PPcode/skills/（10-01 用户反馈
 // 「市场里不显示已安装」的根因，AGENTS.md 【91】同型坑）。
 const userSkillsDir = () => path.join(codexHome, "skills");
 

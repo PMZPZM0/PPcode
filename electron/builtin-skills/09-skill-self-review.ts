@@ -46,7 +46,7 @@ description: 任务收尾时的自我复盘与纠错沉淀手册。当你（1）
 
 | 结论形态 | 写到哪 |
 |---|---|
-| 用户说我错了 | \`<workspace>/.codex-harness/memory/lessons/corrections.md\`（**最高优先、注入最前、永不自动清**） |
+| 用户说我错了 | \`<workspace>/.ppcode-harness/memory/lessons/corrections.md\`（**最高优先、注入最前、永不自动清**） |
 | 我自己踩的坑 | \`lessons/pitfalls.md\` |
 | 这次定下来的流程/约定 | \`lessons/sop.md\`（或升格进 \`project/MEMORY.md\`） |
 | 用户的偏好/禁忌 | \`lessons/preferences.md\`（L0 跨项目画像另见 \`USER.md\`） |

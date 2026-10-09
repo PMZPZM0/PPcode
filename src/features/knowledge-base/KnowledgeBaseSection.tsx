@@ -1,6 +1,6 @@
 /**
  * 知识库设置页（knowledge-base 域，10-01 立项）：**项目级**本地知识库。
- * 落点 = <项目>/.codex-harness/knowledge/（随项目走）；v1 检索 = 分块全文评分（零依赖）。
+ * 落点 = <项目>/.ppcode-harness/knowledge/（随项目走）；v1 检索 = 分块全文评分（零依赖）。
  * 自包含形态（组件库页同款）：列表 / 导入（多选 md·txt 等文本文件 + 粘贴文本）/ 搜索 / 删除。
  * ⛔ 未选工作区时功能不可用——知识库是项目级的，必须先有项目。
  */
@@ -124,7 +124,7 @@ export function KnowledgeBaseSection({ workspace, setNotice }: KnowledgeBaseSect
   if (!workspace) {
     return (
       <section className="settings-section stack kb-page">
-        <div className="settings-copy"><h2>知识库<PageInfo text="项目级本地知识库：文档落在 <项目>/.codex-harness/knowledge/，随项目走。" helpKey="knowledge-base" label="知识库" /></h2></div>
+        <div className="settings-copy"><h2>知识库<PageInfo text="项目级本地知识库：文档落在 <项目>/.ppcode-harness/knowledge/，随项目走。" helpKey="knowledge-base" label="知识库" /></h2></div>
         <p className="muted">还没有选择工作目录——知识库是**项目级**的，先在会话里选择一个工作文件夹。</p>
       </section>
     );
@@ -132,7 +132,7 @@ export function KnowledgeBaseSection({ workspace, setNotice }: KnowledgeBaseSect
 
   return (
     <section className="settings-section stack kb-page">
-      <div className="settings-copy"><h2>知识库<PageInfo text={<>项目级本地知识库：文档落在 <code>{workspace}\.codex-harness\knowledge\</code>，随项目走。检索 v1 = 分块全文评分（零依赖、离线可用）；语义向量检索后端（LanceDB + 本地 embedding）将在开发工具页按需提供。</>} helpKey="knowledge-base" label="知识库" /></h2></div>
+      <div className="settings-copy"><h2>知识库<PageInfo text={<>项目级本地知识库：文档落在 <code>{workspace}\.ppcode-harness\knowledge\</code>，随项目走。检索 v1 = 分块全文评分（零依赖、离线可用）；语义向量检索后端（LanceDB + 本地 embedding）将在开发工具页按需提供。</>} helpKey="knowledge-base" label="知识库" /></h2></div>
 
       {/* 本地语义后端：未安装时给下载卡片（进度/速度/剩余），装完卡片消失 */}
       {embedInstalled === false ? (

@@ -2131,7 +2131,7 @@ shouldFold（= 已被后续正文隔开）把那一段收成 FoldGroup（autoFol
   字面量，脚本作者自己的输出标签就是用途；提炼不出退回剥壳截断原文，**绝不硬编假标签**），
   目标 = `commandTarget`。真机例：`$ws='D:\…\memory'; "=== 结构 ==="; Get-ChildItem -Recurse`
   → 「已定位 结构」；日志那条 → 「已查看 捕获链日志（末 8 行） · ud/memory-capture-debug.log」。
-  ⛔ 顺带修两处脏形态：目标提取的扩展名字符集不含 `-` 且无尾部负向断言 ⇒ `.codex-harness`
+  ⛔ 顺带修两处脏形态：目标提取的扩展名字符集不含 `-` 且无尾部负向断言 ⇒ `.ppcode-harness`
   被截成半截 `.codex`（加 `(?![A-Za-z0-9_-])` + ext 允许 `-`）；`shortenPath` 不压多分隔符
   ⇒ 界面出现 `D://x//y`（现在 `//{2,}` 压成 `/`）。守卫【127】共 14 条钉住（含「不许退回
   写死的已运行」这条反向绊线）。展开里的完整命令仍保留引擎原文（要能照着复现）。
@@ -2398,7 +2398,7 @@ localStorage 脏值。外观页由注册表 `map` 渲染，**新增主题 = 表�
   现在检测到环境类失败时只告警并提示复核，环境正常才硬卡（基准 2276，改守卫必须同步）。
 - ⚠️ **报告 §6 的一条结论已过时**：`.codex/skills/preflight-guard-authoring/SKILL.md:32` 实际已经改成
   「不做反证，此前要求的『故意改坏一次』已作废」——不必再改。真冲突的是
-  `.codex-harness/memory/lessons/pitfalls.md:4`（记着"搬路径常量别再试第二次"，与已落地的
+  `.ppcode-harness/memory/lessons/pitfalls.md:4`（记着"搬路径常量别再试第二次"，与已落地的
   runtime-paths 冲突），已改写为「结论作废 + 已落地做法」（该文件 gitignore，评审看不到，故同步于此）。
 
 ### 搜索改为「当前会话内」+ 修用户消息搜不到（09-24 下午，副本待提交）

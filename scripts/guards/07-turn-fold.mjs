@@ -4332,8 +4332,8 @@ export async function run() {
 
     if (cd) {
       /* ① 剥壳（真跑）：宿主包上去的 shell 启动器不许出现在界面上 —— 真机原样见 command-display.mjs 文件头 */
-      const LAUNCHER = `"D:\\Codex Harness Desktop-refactor\\resources\\tools\\pwsh\\pwsh.exe"`;
-      const innerCommand = `Get-Content -LiteralPath 'D:\\Codex Harness Desktop-refactor\\src\\App.tsx'`;
+      const LAUNCHER = `"D:\\PPcode Desktop-refactor\\resources\\tools\\pwsh\\pwsh.exe"`;
+      const innerCommand = `Get-Content -LiteralPath 'D:\\PPcode Desktop-refactor\\src\\App.tsx'`;
       const stripped = cd.stripShellLauncher(`${LAUNCHER} -Command "${innerCommand}"`);
       (stripped === innerCommand ? ok : fail)(`【118】剥掉 pwsh 启动器外壳（实得 ${JSON.stringify(stripped).slice(0, 60)}）`);
       (cd.stripShellLauncher(`${LAUNCHER} -NoProfile -ExecutionPolicy Bypass -Command "npm run check"`) === "npm run check"
@@ -4357,9 +4357,9 @@ export async function run() {
       (cd.commandTarget("curl -X POST https://a.b.org/v1/x.json -d '{}'") === "" ? ok : fail)(
         `【118】URL 不当文件目标（实得 ${JSON.stringify(cd.commandTarget("curl -X POST https://a.b.org/v1/x.json -d '{}'"))}）`
       );
-      /* ⛔ 带空格的路径（`D:\Codex Harness Desktop-refactor\…`）必须保住盘符 ——
+      /* ⛔ 带空格的路径（`D:\PPcode Desktop-refactor\…`）必须保住盘符 ——
          第一版把 `\` 算进盘符前缀，这类路径直接匹配不到、盘符被吃掉。 */
-      const spaced = cd.commandTarget(`${LAUNCHER} -Command "Get-Content -LiteralPath 'D:\\Codex Harness Desktop-refactor\\src\\App.tsx'"`);
+      const spaced = cd.commandTarget(`${LAUNCHER} -Command "Get-Content -LiteralPath 'D:\\PPcode Desktop-refactor\\src\\App.tsx'"`);
       (/^D:\//.test(spaced) && /App\.tsx$/.test(spaced) ? ok : fail)(
         `【118】带空格路径保住盘符并归一为正斜杠（实得 ${JSON.stringify(spaced)}）`
       );
@@ -4571,7 +4571,7 @@ export async function run() {
       "【127】表头串 = 用途 · 目标（两者都显示，看不出目的才算没映射）"
     );
     (/\(\?!\[A-Za-z0-9_-\]\)/.test(cmdCode) ? ok : fail)(
-      "【127】目标提取带尾部负向断言（防 `.codex-harness` 被截成半截 `.codex`）"
+      "【127】目标提取带尾部负向断言（防 `.ppcode-harness` 被截成半截 `.codex`）"
     );
     /* ── 技能归属映射（09-24 用户：「还有使用了技能类似没看见」）── */
     const toolLib = join(ROOT, "src", "lib", "tool-display.mjs");

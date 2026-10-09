@@ -20,7 +20,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const IGNORE = new Set(["node_modules", ".git", ".codex", ".codex-harness", "dist", "dist-electron", "build", "out", ".next", ".cache", "coverage", "venv", "__pycache__", "release", "win-unpacked", "linux-unpacked", "mac-arm64", "mac-x64", "mac-universal", "DerivedData", "Pods", "target"]);
+const IGNORE = new Set(["node_modules", ".git", ".codex", ".ppcode-harness", "dist", "dist-electron", "build", "out", ".next", ".cache", "coverage", "venv", "__pycache__", "release", "win-unpacked", "linux-unpacked", "mac-arm64", "mac-x64", "mac-universal", "DerivedData", "Pods", "target"]);
 const TEXT_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".md", ".txt", ".css", ".scss", ".html", ".py", ".rs", ".go", ".java", ".toml", ".yml", ".yaml", ".sh", ".xml", ".svg", ".csv", ".mdx"]);
 const MAX_FILE_BYTES = 512 * 1024;
 const MAX_TOTAL_BYTES = 24 * 1024 * 1024;

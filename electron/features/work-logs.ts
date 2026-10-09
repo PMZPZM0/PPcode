@@ -3,7 +3,7 @@
  * 工作日志这个没有地方管理懂吗」）。
  *
  * 管的**不是**会话本身（会话的归档 / 删除在「归档管理」页），而是 **Codex 在每个项目里
- * 写下的工作日志与项目记忆**：`<项目>/.codex-harness/memory/**`
+ * 写下的工作日志与项目记忆**：`<项目>/.ppcode-harness/memory/**`
  *   · MEMORY.md          项目长期记忆
  *   · LESSONS.md         坑与纪律
  *   · logs/YYYY-MM-DD.md 每日工作日志（需求 → 结论，写入方 = 记忆捕获链）
@@ -11,7 +11,7 @@
  *   · archive/ project/  归档与项目资料
  *
  * 项目清单来源：rollout 首行扫出的 cwd 集合（曾跑过会话的目录）+ 当前活跃会话的工作目录。
- * 安全口径：目标由主进程自己拼、必须落在该项目的 `.codex-harness/memory`
+ * 安全口径：目标由主进程自己拼、必须落在该项目的 `.ppcode-harness/memory`
  * 之下、必须是 `.md`/`.txt` **文件**（目录拒绝）。
  * ⛔ 删除是销毁性的（工作日志删了不重建），UI 侧必须二次确认。
  */
@@ -21,7 +21,7 @@ import { codexHome } from "../runtime-refs";
 import { defineFeature } from "../context";
 import type { IpcHost } from "../ipc-host";
 
-const MEM_DIR = path.join(".codex-harness", "memory");
+const MEM_DIR = path.join(".ppcode-harness", "memory");
 const READABLE_RE = /\.(md|txt|jsonl?)$/i;
 
 /** memory 目录下的相对路径 → 分类（UI 分组用） */
@@ -140,7 +140,7 @@ async function readWorkLog(input: { path: string }) {
   const target = path.resolve(String(input?.path ?? ""));
   const dirs = await knownProjectDirs();
   const rooted = dirs.find((cwd) => target.startsWith(path.join(cwd, MEM_DIR) + path.sep));
-  if (!rooted) throw new Error("只能读取项目工作日志目录（.codex-harness/memory）内的文件");
+  if (!rooted) throw new Error("只能读取项目工作日志目录（.ppcode-harness/memory）内的文件");
   const stat = await fs.stat(target).catch(() => null);
   if (!stat?.isFile()) throw new Error("文件不存在");
   if (stat.size > 512 * 1024) throw new Error("文件过大（>512KB），请到文件管理器打开");

@@ -3,7 +3,7 @@
  *
  * ⛔ 为什么指路牌不放 userData 里：数据目录**本身**就是要被切的对象，切走之后
  *    指路牌必须留在一个**固定锚点**（appData 根下的默认目录）才能被下一次启动找到。
- *    ⇒ `%APPDATA%\Codex Harness Desktop\data-dir.json`，与用户数据本体隔离。
+ *    ⇒ `%APPDATA%\PPcode\data-dir.json`，与用户数据本体隔离。
  *
  * ⛔【91】本模块是叶子：只依赖 electron app + node 内置，模块体零副作用。
  *
@@ -29,7 +29,7 @@ export type DataDirBootstrap = { dir?: string; migrate?: boolean };
 
 /** 固定锚点：默认 userData（appData 下的应用目录），bootstrap 指路牌所在。 */
 export function defaultUserDataDir(): string {
-  return path.join(app.getPath("appData"), "Codex Harness Desktop");
+  return path.join(app.getPath("appData"), "PPcode");
 }
 
 function bootstrapFile(): string {

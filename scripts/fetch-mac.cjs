@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const { api } = require("./gh-api.cjs");
 
 const VERSION = "0.0.17";
-const ROOT = "D:/Codex Harness Desktop";
+const ROOT = "D:/PPcode";
 const OUT = path.join(ROOT, "release-mac-" + VERSION);
 const ITEMS = [
   { arch: "arm64", artifactId: "10351553266" },
@@ -40,7 +40,7 @@ function unzip(zip, dest) {
     console.log(`[${it.arch}] 下载 artifact ${it.artifactId} …`);
     const t0 = Date.now();
     const args = ["-sL", "-x", "http://127.0.0.1:7897", "--max-time", "1800", "-H", "Authorization: Bearer " + require("./gh-api.cjs").tok, "-o", raw,
-      `https://api.github.com/repos/PMZPZM0/codex-harness-desktop/actions/artifacts/${it.artifactId}/zip`];
+      `https://api.github.com/repos/PMZPZM0/PPcode/actions/artifacts/${it.artifactId}/zip`];
     execFileSync("curl.exe", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 1900000 });
     const rawSize = fs.statSync(raw).size;
     console.log(`[${it.arch}] 下载完成 ${(rawSize / 1048576).toFixed(0)}MB  用时 ${((Date.now() - t0) / 1000).toFixed(0)}s`);
@@ -60,7 +60,7 @@ function unzip(zip, dest) {
     if (hit.length !== 1) { console.log(`!! [${it.arch}] 命中 ${hit.length} 个含 ${VERSION} 的 zip，需人工确认`); process.exit(2); }
     const finalDir = path.join(OUT, "final");
     fs.mkdirSync(finalDir, { recursive: true });
-    const finalName = `Codex Harness Desktop-${VERSION}-${it.arch}-mac.zip`;
+    const finalName = `PPcode-${VERSION}-${it.arch}-mac.zip`;
     const finalPath = path.join(finalDir, finalName);
     fs.copyFileSync(hit[0], finalPath);
     const size = fs.statSync(finalPath).size;

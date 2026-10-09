@@ -20,7 +20,7 @@
 |---|---|---|
 | 实现 | `memory-layers.ts`（53KB）+ `memory-store.ts` 碎片池 | `role-memory.ts`（15KB） |
 | 谁写 | **只有主会话**（`memory_save` 工具 → 分类） | **只有角色会话**（`role_memory_save`） |
-| 存哪 | L1/L1.5 在 `<workspace>/.codex-harness/memory/`；碎片池在 `userData/memory.json`（**全局一个**） | `<workspace>/.codex-harness/memory/roles/<键>/MEMORY.md` |
+| 存哪 | L1/L1.5 在 `<workspace>/.ppcode-harness/memory/`；碎片池在 `userData/memory.json`（**全局一个**） | `<workspace>/.ppcode-harness/memory/roles/<键>/MEMORY.md` |
 | 读 | 全体（含被委派会话，经 `delegate-memory.ts` 补齐） | 仅该角色自己 |
 | 条目形态 | **纯 Markdown 追加行** | **纯 Markdown 追加行** |
 
@@ -151,7 +151,7 @@ type MemoryEntry = {
 };
 ```
 
-**落盘格式**：`<workspace>/.codex-harness/memory/fabric/<namespace>/entries.jsonl`
+**落盘格式**：`<workspace>/.ppcode-harness/memory/fabric/<namespace>/entries.jsonl`
 ⛔ 选 `.jsonl` 而非 `.md`：需要按条目做元数据过滤与排序，Markdown 行解析做不到
 （上一轮的 `MEMORY.md` 只能整段注入，这是它"无法按相关性排序"的根因）。
 

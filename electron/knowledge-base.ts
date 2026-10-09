@@ -1,5 +1,5 @@
 // 本地知识库（10-01 立项，独立板块 knowledge-base）：**项目级**知识库。
-// 落点：<项目>/.codex-harness/knowledge/<docId>/——文档原文(source.md) + meta.json，全部跟项目走。
+// 落点：<项目>/.ppcode-harness/knowledge/<docId>/——文档原文(source.md) + meta.json，全部跟项目走。
 // 检索有两档（全局搜索时**自动合并**，任何一档不可用都不影响另一档）：
 //   · 全文评分（零依赖、永远可用）
 //   · 语义向量（可选）：复用用户已配置供应商的 /embeddings 接口生成向量，纯 JS 余弦检索——
@@ -12,7 +12,7 @@ import path from "node:path";
 export type KbDocMeta = { id: string; title: string; source: string; chunks: number; addedAt: string; bytes: number };
 export type KbHit = { docId: string; title: string; chunkIndex: number; score: number; snippet: string };
 
-const KB_DIR = path.join(".codex-harness", "knowledge");
+const KB_DIR = path.join(".ppcode-harness", "knowledge");
 const CHUNK_SIZE = 700;      // 每块约 700 字符（按段落切，块间不重叠）
 const MAX_DOCS = 500;
 const MAX_FILE_BYTES = 20 * 1024 * 1024;

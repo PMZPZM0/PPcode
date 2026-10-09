@@ -35,7 +35,7 @@ import { readRoleMemory, type RoleRef } from "./role-memory";
 
 /* ⛔ 与 memory-layers.ts 同源（不 import 它的私有常量，故重声明同值；
    守卫 11l 钉住两处一致 —— 漂了就会写到别处、读时找不到）。 */
-const MEMORY_DIR = ".codex-harness";
+const MEMORY_DIR = ".ppcode-harness";
 const MEMORY_SUB = "memory";
 const FABRIC_DIR = "fabric";
 const ENTRIES_FILE = "entries.jsonl";

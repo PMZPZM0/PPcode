@@ -1,5 +1,5 @@
 {
-  "name": "codex-harness-desktop",
+  "name": "ppcode",
   "version": "0.0.35",
   "private": true,
   "description": "Independent desktop harness for OpenAI Codex",
@@ -83,8 +83,8 @@
     "wait-on": "^9.0.3"
   },
   "build": {
-    "appId": "com.codexharness.desktop",
-    "productName": "Codex Harness Desktop",
+    "appId": "com.ppcode.desktop",
+    "productName": "PPcode",
     "npmRebuild": false,
     "beforePack": "scripts/before-pack.cjs",
     "directories": {

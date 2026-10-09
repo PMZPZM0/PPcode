@@ -211,7 +211,7 @@ export class WeixinGateway {
     const userId = this.lastUserId.trim();
     if (!userId) return;
     const greeting = [
-      "你好，我是 Codex Harness 的桌面助手机器人 🤖",
+      "你好，我是 PPcode 的桌面助手机器人 🤖",
       "连接成功！之后在这里发消息我随时接活：写代码、查资料、排查问题、操作电脑上的应用都可以。",
       "想让我给自己开发插件、修改应用功能，直接说就行～",
     ].join("\n");

@@ -12,11 +12,11 @@ import { effectiveMemoryBackend } from "./memory-backend";
  * L0 用户档案：跨所有项目，只在设置页手动维护
  *   → {userData}/memory/USER.md
  * L1 项目长期记忆：跟随工作区，只由蒸馏或手动置顶写入
- *   → {workspace}/.codex-harness/memory/MEMORY.md
+ *   → {workspace}/.ppcode-harness/memory/MEMORY.md
  * L1.5 坑与纪律：**踩过的坑与用户纠错**，半自动追加（捕获链写入，现象去重），独立于日志归档
- *   → {workspace}/.codex-harness/memory/LESSONS.md
+ *   → {workspace}/.ppcode-harness/memory/LESSONS.md
  * L2 每日日志：append-only，只回灌最近 N 天
- *   → {workspace}/.codex-harness/memory/logs/YYYY-MM-DD.md
+ *   → {workspace}/.ppcode-harness/memory/logs/YYYY-MM-DD.md
  * L3 碎片检索池：沿用既有 memory.json（MemoryStore），本模块不接管
  *
  * 写入门禁（这套能不能用的生死线）：
@@ -29,13 +29,13 @@ import { effectiveMemoryBackend } from "./memory-backend";
  *   所以坑要单独成层：注入时**放在最前**（纪律优先于背景），不参与日志归档，蒸馏时要求原样保留。
  */
 
-const MEMORY_DIR = ".codex-harness";
+const MEMORY_DIR = ".ppcode-harness";
 const MEMORY_SUB = "memory";
 const ARCHIVE_DIR = "archive";
 
 /**
  * ── 记忆目录布局（v2，09-22 用户：「记忆应该单独一个目录，文件夹保存不会乱」）─────────────
- * 全落在 `<workspace>/.codex-harness/memory/` **一个目录**里，按层 / 分类分子目录：
+ * 全落在 `<workspace>/.ppcode-harness/memory/` **一个目录**里，按层 / 分类分子目录：
  *   `project/MEMORY.md`（L1 项目宪法）· `project/BACKGROUND.md`（L3 项目背景）
  *   `lessons/<分类>.md`（L2 纪律与坑，**一个分类一个文件**）· `logs/YYYY-MM-DD.md`（L4）
  *   `rollups/YYYY-MM.md`（L5 月度卷宗）· `archive/*.md`（L6 冷存档，原文可回溯）

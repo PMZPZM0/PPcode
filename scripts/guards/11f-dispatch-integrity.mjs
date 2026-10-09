@@ -18,7 +18,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 let checks = 0, fails = 0;
 const ok = (c, m) => { checks++; console.log("  " + (c ? "✓" : "✗") + " 【dpcat】" + m); if (!c) fails++; };
 
-const REAL = join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "Codex Harness Desktop");
+const REAL = join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "PPcode");
 const req = createRequire(import.meta.url);
 const UD = mkdtempSync(join(tmpdir(), "dpcat-"));
 for (const f of ["expert-teams.json", "sub-agents.json"]) {

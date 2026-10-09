@@ -349,7 +349,7 @@ export function buildMarkdownExport(codexHome: string, threadIds?: string[]): Ma
     const head = [
       "# Codex 会话记录",
       "",
-      `> 由 Codex Harness Desktop 导出 · ${stamp} · 共 ${threads.length} 个会话 · ${totalMessages} 条消息`,
+      `> 由 PPcode 导出 · ${stamp} · 共 ${threads.length} 个会话 · ${totalMessages} 条消息`,
       "> 每条消息以 `## User`（用户）与 `## Assistant`（Codex/助手）分隔，时间从早到晚；可作为完整上下文直接带入其他 AI。",
       "",
       "## 目录",

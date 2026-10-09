@@ -33,7 +33,7 @@ const { chunkText, addDocument, searchDocs, listDocs } = mod;
 
 // ── 造一个临时项目（⛔ 不碰用户真实知识库目录） ──
 const ws = mkdtempSync(join(tmpdir(), "kb-guard-"));
-mkdirSync(join(ws, ".codex-harness", "knowledge"), { recursive: true });
+mkdirSync(join(ws, ".ppcode-harness", "knowledge"), { recursive: true });
 
 try {
   // ── 判据 1：块间有重叠 ──
@@ -95,7 +95,7 @@ try {
   // 做法：用一个**恒定返回同一向量**的假 embedding 逼它走语义档。
   if (typeof mod.searchDocsSemantic === "function") {
     const ws2 = mkdtempSync(join(tmpdir(), "kb-guard2-"));
-    mkdirSync(join(ws2, ".codex-harness", "knowledge"), { recursive: true });
+    mkdirSync(join(ws2, ".ppcode-harness", "knowledge"), { recursive: true });
     try {
       const body = Array.from({ length: 120 }, (_, i) => `填充段落${i}ABCDE。`).join("\n\n")
         + "\n\n末尾独有关键词ZZQQ位于文档最末。";
@@ -107,7 +107,7 @@ try {
       const chunks2 = chunkText(body);
       const lastIdx = chunks2.findIndex((c) => c.includes("ZZQQ"));
       const docId = listDocs(ws2)[0].id;
-      const docDir = join(ws2, ".codex-harness", "knowledge", "docs", docId);
+      const docDir = join(ws2, ".ppcode-harness", "knowledge", "docs", docId);
       mkdirSync(docDir, { recursive: true });
       writeFileSync(
         join(docDir, "embeddings.json"),

@@ -25,7 +25,7 @@ export const PAIR_COOLDOWN = 10 * 60_000;
 export const PAIR_REQUEST_TTL = 2 * 60_000;
 
 export const GUIDE_MESSAGE =
-  "首次使用需要配对：请在电脑端的 Codex Harness「手机远控」面板查看 6 位配对码，把它直接发给我（5 分钟内有效）。配对通过后即可正常使用。";
+  "首次使用需要配对：请在电脑端的 PPcode「手机远控」面板查看 6 位配对码，把它直接发给我（5 分钟内有效）。配对通过后即可正常使用。";
 
 export class BotPairingService {
   /** 待审批 rid → 请求 */

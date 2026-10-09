@@ -110,7 +110,7 @@ export const appFeature = defineFeature<null>({
       const checks: { label: string; ok: boolean; detail: string }[] = [];
       checks.push({
         label: "应用", ok: true,
-        detail: `Codex Harness Desktop ${host.app.getVersion()} · Electron ${process.versions.electron} · Node ${process.versions.node} · ${process.platform}/${process.arch}`,
+        detail: `PPcode ${host.app.getVersion()} · Electron ${process.versions.electron} · Node ${process.versions.node} · ${process.platform}/${process.arch}`,
       });
       let binary = "";
       try { binary = codexBinaryPath(); } catch { binary = ""; }
@@ -125,7 +125,7 @@ export const appFeature = defineFeature<null>({
       checks.push({
         label: "引擎配置", ok: Boolean(configStat),
         /* ⛔ 展示路径不能用 `\\` 拼（10-06 mac 审计抓到的真缺口）：
-           mac 上会显示成 `/Users/x/.codex-harness\config.toml`（正斜杠目录 + 反斜杠文件名）。
+           mac 上会显示成 `/Users/x/.ppcode-harness\config.toml`（正斜杠目录 + 反斜杠文件名）。
            这个字符串是**用户可见**的（设置 → 诊断 面板那一行列的就是它）。 */
         detail: configStat ? `config.toml · ${sizeLabel(configStat.size)} · 更新于 ${new Date(configStat.mtimeMs).toLocaleString("zh-CN")}` : `${path.join(codexHome, "config.toml")} 不存在`,
       });

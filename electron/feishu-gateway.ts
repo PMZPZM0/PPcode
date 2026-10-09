@@ -8,7 +8,7 @@ import fs from "node:fs";
 import lark from "@larksuiteoapi/node-sdk";
 
 const STATE_FILE = path.join(
-  process.env.CODEX_HARNESS_USER_DATA || path.join(os.homedir(), "AppData", "Roaming", "Codex Harness Desktop"),
+  process.env.CODEX_HARNESS_USER_DATA || path.join(os.homedir(), "AppData", "Roaming", "PPcode"),
   "feishu-account.json",
 );
 

@@ -13,7 +13,7 @@
  *   ⛔ 引擎**原生发现** `<cwd>/.codex/skills`，所以**不要在 AGENTS.md 索引里重复枚举项目技能**
  *      —— 同一技能列出两遍正是本仓库踩过的坑（ponytail-plugin.ts：插件 skills 又拷一份到全局
  *      ⇒ 每个技能在列表里出现两次，看起来像假的）。
- *   ⛔ `.codex-harness/skills` 引擎**不认**（同次探针实测 ✗）。`.codex-harness/` 是应用自有的
+ *   ⛔ `.ppcode-harness/skills` 引擎**不认**（同次探针实测 ✗）。`.ppcode-harness/` 是应用自有的
  *      项目数据目录（记忆层在用），技能必须落 `.codex/skills` —— 与既有的 `<cwd>/.codex/commands`
  *      同族约定（commands.ts 就是这么分「全局 $CODEX_HOME / 项目 <cwd>/.codex」的）。
  *   ⛔ 项目信任策略只挡 config / hooks / exec 策略，**技能照样加载**（探针 stderr 原话：

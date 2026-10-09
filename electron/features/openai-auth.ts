@@ -41,7 +41,7 @@ async function readOpenaiAuth(): Promise<{ loggedIn: boolean; email: string; acc
 // ⛔ 不能写成模块顶层 `const … = path.join(app.getPath("userData"), …)`（09-22 code review 抓出）：
 //    本模块在 main.ts 的 **import 期**就被求值，而 `app.setPath("userData", …)` 是 main.ts 的
 //    **模块体语句**（编译产物里 require 在前、setPath 在后）⇒ 顶层求值拿到的是**默认** userData
-//    `%APPDATA%\<package.json name>`，而应用真正使用的是 setPath 之后的 `%APPDATA%\Codex Harness Desktop`
+//    `%APPDATA%\<package.json name>`，而应用真正使用的是 setPath 之后的 `%APPDATA%\PPcode`
 //    （实测两个目录都在磁盘上）⇒ 路径会静默指到另一个目录（账号 vault / 代理配置的落点漂移）。
 //    与 electron/personalization.ts 的既有约定一致：**惰性求值**，读写时才取路径。
 function openaiVaultFile(): string {

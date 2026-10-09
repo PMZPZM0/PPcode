@@ -2223,7 +2223,7 @@ w.postMessage({id:1,op:"list",root});
 
   /* ══ 【173】共享技能池（09-27 用户需求：按项目选择生效的全局技能）══════════
      模型：全局停用集（codex-home/skill-global-disabled.json）∪ 项目禁用集
-     （<项目>/.codex-harness/skill-pool.json）→ syncSkillPool(cwd) 投影到磁盘改名。
+     （<项目>/.ppcode-harness/skill-pool.json）→ syncSkillPool(cwd) 投影到磁盘改名。
      ⛔ 引擎「扫到就注入」无 per-project 开关 ⇒ 池的唯一生效途径 = thread/start 前
      重排磁盘状态；接线挂在 ensureProjectAgentsMd（【171】的同一收口，12 处继承）。
      ⛔ 投影必须幂等且保底迁移（磁盘 .disabled 而配置无记录 ⇒ 记入全局停用集，

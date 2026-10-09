@@ -1,6 +1,6 @@
 ---
 name: memory-board-audit
-description: 记忆板块（.codex-harness/memory 八层金字塔）自检与故障定位 SOP：怎么区分「新工作区还没产生内容」与「链路真坏了」、捕获链有没有真的落到真实工作区、L2 里有没有自动生成的垃圾纪律行、L7 碎片池的 workspace 归属是否错乱。当用户说「看下你的记忆板块 / 自检一下记忆 / 记忆怎么是空的 / 记忆没生效」时用。
+description: 记忆板块（.ppcode-harness/memory 八层金字塔）自检与故障定位 SOP：怎么区分「新工作区还没产生内容」与「链路真坏了」、捕获链有没有真的落到真实工作区、L2 里有没有自动生成的垃圾纪律行、L7 碎片池的 workspace 归属是否错乱。当用户说「看下你的记忆板块 / 自检一下记忆 / 记忆怎么是空的 / 记忆没生效」时用。
 ---
 
 # 记忆板块自检（八层金字塔）
@@ -10,7 +10,7 @@ description: 记忆板块（.codex-harness/memory 八层金字塔）自检与故
 - 改过 `memory-layers.ts` / `memory-lessons.ts` / `memory-store.ts` 之后要验收。
 
 ## 步骤
-1. **结构**：`Get-ChildItem -Recurse -Force <ws>\.codex-harness\memory` —— 应有 `project/ lessons/ logs/ archive/` + `.layout-v2-done`。`rollups/` 是**懒创建**（写月卷时才出现），缺它不算问题。
+1. **结构**：`Get-ChildItem -Recurse -Force <ws>\.ppcode-harness\memory` —— 应有 `project/ lessons/ logs/ archive/` + `.layout-v2-done`。`rollups/` 是**懒创建**（写月卷时才出现），缺它不算问题。
 2. **八层逐层读**（读到空字符串是正常值，不是错误）：
    - L0 `<userData>\memory\USER.md`（userData = `<app>\memory.json` 所在目录，如 `D:\codexFBces`）
    - L1 `project\MEMORY.md` · L3 `project\BACKGROUND.md` · L2 `lessons\<分类>.md` · L4 `logs\YYYY-MM-DD.md` · L6 `archive\`

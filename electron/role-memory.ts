@@ -10,7 +10,7 @@
  * ① **落在工作区，不落 userData**：`MemoryStore` 的碎片池 `memory.json` 在
  *    `app.getPath("userData")`（electron/main.ts:238）⇒ **全局一个**。角色是「某个项目里派出去的
  *    这个人」，把它的记忆写进全局池会让 A 项目派出的知微与 B 项目派出的知微共用一份记忆 ——
- *    那正是用户要避免的"串扰"。故走 `<workspace>/.codex-harness/memory/roles/<归属键>/MEMORY.md`
+ *    那正是用户要避免的"串扰"。故走 `<workspace>/.ppcode-harness/memory/roles/<归属键>/MEMORY.md`
  *    （与 L1/L1.5 同根��同生命周期，跟项目一起走、一起被 git 管）。
  * ② **不往 MemoryRecord 加字段**：那条池子被 `search()` 全局加权检索（跨工作区只降权到 0.5、
  *    **不过滤**，见 memory-store.ts:175）⇒ 加字段也拦不住"知微的私有记忆被别人的会话召回"。
@@ -33,7 +33,7 @@ import { MEMORY_BUDGET, isScratchWorkspace } from "./memory-layers";
 
 /* 目录常量与 memory-layers.ts 同源（⛔ 不 import 它的私有常量，故在此重声明同值；
    守卫【role】钉住两处一致 —— 漂了就会写到别处、读时找不到）。 */
-const MEMORY_DIR = ".codex-harness";
+const MEMORY_DIR = ".ppcode-harness";
 const MEMORY_SUB = "memory";
 const ROLES_DIR = "roles";
 const ROLE_FILE = "MEMORY.md";
@@ -193,7 +193,7 @@ function rolesRoot(workspace: string | undefined): string | null {
  * 用途：**主进程**应答委派会话的工具调用时，只知道 threadId，需要反查「它是哪个角色」
  * 才知道该把记忆写到谁名下（渲染层那条路拿不到被委派会话的事件，见 features/boot.ts 的过滤）。
  * ⛔ 落**工作区外的 userData**：它是运行时索引（会话可归档、角色可改名），
- *   真正的记忆内容在 `<workspace>/.codex-harness/memory/roles/`（随项目走）。
+ *   真正的记忆内容在 `<workspace>/.ppcode-harness/memory/roles/`（随项目走）。
  * ⛔ 幂等：同一 threadId 重复登记直接覆盖（一个会话只可能是一个角色）。
  */
 const ROLE_INDEX_FILE = "role-memory-index.json";

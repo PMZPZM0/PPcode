@@ -363,7 +363,7 @@ export const HELP_CONTENT: Record<HelpKey, HelpContent> = {
       },
     ],
     tips: [
-      "文档落在项目的 .codex-harness/knowledge/ 目录，随项目走、换电脑随项目复制",
+      "文档落在项目的 .ppcode-harness/knowledge/ 目录，随项目走、换电脑随项目复制",
       "删除文档不影响项目其他文件",
     ],
   },

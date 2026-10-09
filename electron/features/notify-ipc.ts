@@ -29,7 +29,7 @@ export const notifyFeature = defineFeature<null>({
 
     ipcHost.handle("notify:show", (_event, title: string, body: string) => {
       if (!Notification.isSupported()) return false;
-      const n = new Notification({ title: String(title ?? "Codex Harness"), body: String(body ?? ""), silent: false });
+      const n = new Notification({ title: String(title ?? "PPcode"), body: String(body ?? ""), silent: false });
       n.on("click", () => { mainWindow?.show(); mainWindow?.focus(); });
       n.show();
       return true;

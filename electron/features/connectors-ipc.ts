@@ -58,10 +58,10 @@ function startCallbackServer(port: number): Promise<{ server: http.Server; waitC
         pending.delete(state);
         if (error) {
           res.writeHead(400);
-          res.end(`<h3>授权失败：${error}</h3><p>可以关闭此窗口并回到 Codex Harness。</p>`);
+          res.end(`<h3>授权失败：${error}</h3><p>可以关闭此窗口并回到 PPcode。</p>`);
         } else {
           res.writeHead(200);
-          res.end("<h3>✅ 授权成功</h3><p>令牌已保存，可以关闭此窗口并回到 Codex Harness。</p>");
+          res.end("<h3>✅ 授权成功</h3><p>令牌已保存，可以关闭此窗口并回到 PPcode。</p>");
         }
         waiter.resolve({ code, state, error });
       } else {

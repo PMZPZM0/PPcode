@@ -19,7 +19,7 @@ import path from "node:path";
 import { syncSkillPool } from "./skill-pool";
 
 /** 追加段的标记（幂等判据：含它就不再追加）。 */
-const HARNESS_APPEND_MARK = "Codex Harness 自动追加";
+const HARNESS_APPEND_MARK = "PPcode 自动追加";
 
 /** 本次运行内已创建/追加过的目录（专家团 fan-out 会用同一 cwd 并发起多个 thread/start，
     读→判重→追加不是原子，用这个集合挡掉同一轮内的重复写；跨运行靠文件内标记幂等）。 */
@@ -27,7 +27,7 @@ const ensuredDirs = new Set<string>();
 
 const AGENTS_TEMPLATE = (date: string) => `# AGENTS.md
 
-<!-- 由 Codex Harness Desktop 自动生成（${date}）。本文件给在本项目里工作的 AI agent 读；可自由修改，建议保留下面的引导。 -->
+<!-- 由 PPcode 自动生成（${date}）。本文件给在本项目里工作的 AI agent 读；可自由修改，建议保留下面的引导。 -->
 
 ## 项目说明
 
@@ -41,7 +41,7 @@ const AGENTS_TEMPLATE = (date: string) => `# AGENTS.md
 
 const DESIGN_APPEND = (date: string) => `
 
-<!-- 以下由 Codex Harness Desktop 自动追加（${date}），不需要可整段删除 -->
+<!-- 以下由 PPcode 自动追加（${date}），不需要可整段删除 -->
 ## 视觉规范（${HARNESS_APPEND_MARK}）
 
 - 项目根目录存在 \`DESIGN.md\`（视觉规范）：**做任何 UI / 样式改动之前，先完整读它**，并遵守其中的色板、字体、间距与组件约定；改动了它记录的变量时同步更新它。

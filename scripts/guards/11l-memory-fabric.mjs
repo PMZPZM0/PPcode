@@ -244,7 +244,7 @@ ok(/import \{ MEMORY_BUDGET, isScratchWorkspace \} from "\.\/memory-layers"/.tes
   "⛔ 复用 memory-layers 的原语与 scratch 判据（⛔ 不另造一套路径判断）");
 ok(!/MEMORY_BUDGET\.total/.test(fab) && /FABRIC_BUDGET/.test(fab),
   "⛔ fabric 段**独立预算**（它是额外一段，不占 L 层的共享额度）");
-ok(/MEMORY_DIR = "\.codex-harness"/.test(fab) && /MEMORY_DIR = "\.codex-harness"/.test(legacy),
+ok(/MEMORY_DIR = "\.ppcode-harness"/.test(fab) && /MEMORY_DIR = "\.ppcode-harness"/.test(legacy),
   "⛔ 目录常量与 role-memory 同值（漂了就写到别处、读时找不到）");
 /* kind 映射在两处（delegate-memory 的 agentOf 与 memory-fabric-tool 的 agentOfRoleRef）——
    刻意不共用一个（会成环），所以必须钉住一致。

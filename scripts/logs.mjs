@@ -10,7 +10,7 @@
  *
  * 与已有两层的关系（⛔ 别混淆，三层分工见 logs/README.md）：
  *   · `<ws>/.workbuddy/memory/`  —— 宿主约定的**每日原始记录**（append-only，本脚本不碰）
- *   · `<ws>/.codex-harness/memory/logs/` —— 应用自己的 L4 层（注入用，本脚本不碰）
+ *   · `<ws>/.ppcode-harness/memory/logs/` —— 应用自己的 L4 层（注入用，本脚本不碰）
  *   · `<repo>/logs/`            —— **本脚本管的规范归档层**（进 git、有索引、可校验）
  *
  * ⛔ 铁律：

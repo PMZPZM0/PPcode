@@ -11,7 +11,7 @@ const FADE_MS = 280;
 export type BootStage = "starting" | "engine" | "threads" | "ready";
 
 const STAGE_TEXT: Record<BootStage, string> = {
-  starting: "正在启动 Codex Harness…",
+  starting: "正在启动 PPcode…",
   engine: "正在连接引擎…",
   threads: "正在加载会话…",
   ready: "即将就绪…",

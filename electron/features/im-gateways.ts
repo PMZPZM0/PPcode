@@ -192,7 +192,7 @@ type BotChannelBinding = { threadId: string; title: string; updatedAt: number };
 // ⛔ 这两个路径不能写成模块顶层 const（09-22 code review 抓出）：本模块在 main.ts 的 **import 期**求值，
 //    而 `app.setPath("userData", …)` 是 main.ts 的**模块体语句**（编译产物里 require 在前、setPath 在后）
 //    ⇒ 顶层求值拿到默认 userData `%APPDATA%\<package.json name>`，而应用真正用的是 setPath 之后的
-//    `%APPDATA%\Codex Harness Desktop` ⇒ 机器人绑定 / bots.json 会写进另一个目录。
+//    `%APPDATA%\PPcode` ⇒ 机器人绑定 / bots.json 会写进另一个目录。
 //    惰性求值（与 electron/personalization.ts 的既有约定一致）。
 function botBindingsFile(): string {
   return path.join(app.getPath("userData"), "bot-bindings.json");

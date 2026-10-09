@@ -7,7 +7,7 @@
  *
  * 用法：
  *   node scripts/install-voice-models.cjs
- *   # 指定别的根目录（默认 = <APPDATA 或 HOME>/Codex Harness Desktop/voice-models）：
+ *   # 指定别的根目录（默认 = <APPDATA 或 HOME>/PPcode/voice-models）：
  *   CODEX_HARNESS_VOICE_MODELS=/path/to/root node scripts/install-voice-models.cjs
  *
  * 退出码：0 = 全部成功；1 = 任一失败。
@@ -23,7 +23,7 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 
 const MODELS = path.join(
   process.env.CODEX_HARNESS_VOICE_MODELS ||
-    (process.platform === "win32" ? path.join(process.env.APPDATA || os.homedir(), "Codex Harness Desktop") : path.join(os.homedir(), "Library", "Application Support", "Codex Harness Desktop")),
+    (process.platform === "win32" ? path.join(process.env.APPDATA || os.homedir(), "PPcode") : path.join(os.homedir(), "Library", "Application Support", "PPcode")),
   "voice-models"
 );
 

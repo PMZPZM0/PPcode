@@ -1,46 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- PPcode 图标母版（10-09）：复刻 PPtoken 官方 logo —— 渐变圆角方块 + 六节点环形连线 + 居中粗体 PP。
+       几何与配色都是从官方 logo 逐像素量出来的（圆角 11.6% / 环 r=41.4% / 节点等分 60° / P 高 34.7%）。
+       ⛔ 这是**唯一母版**：build/icon.ico（桌面快捷方式 / 任务栏 / 窗口）与 build/tray.png（系统托盘）
+          都从这一份渲染（守卫【123】钉死「托盘与应用图标同源」）。改构图只改这里。 -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#4C8DF6"/>
-      <stop offset="0.55" stop-color="#2F6BDD"/>
-      <stop offset="1" stop-color="#17439B"/>
+    <linearGradient id="base" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="275" y2="618">
+      <stop offset="0.10" stop-color="#F64580"/>
+      <stop offset="0.30" stop-color="#C12FC4"/>
+      <stop offset="0.50" stop-color="#7336DE"/>
+      <stop offset="0.70" stop-color="#3436D3"/>
+      <stop offset="0.90" stop-color="#20A5B4"/>
     </linearGradient>
-    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/>
-      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="cheat" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0B2A66" stop-opacity="0"/>
-      <stop offset="1" stop-color="#0B2A66" stop-opacity="0.32"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#FFD66B" stop-opacity="0.5"/>
-      <stop offset="1" stop-color="#FFD66B" stop-opacity="0"/>
+    <radialGradient id="pinkglow" cx="0.02" cy="0.02" r="0.52">
+      <stop offset="0" stop-color="#FF4E78" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FF4E78" stop-opacity="0"/>
     </radialGradient>
+    <radialGradient id="tealglow" cx="1" cy="1" r="0.40">
+      <stop offset="0" stop-color="#22C08C" stop-opacity="0.78"/>
+      <stop offset="1" stop-color="#22C08C" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile"><rect x="0" y="0" width="512" height="512" rx="59.18"/></clipPath>
   </defs>
 
-  <!-- 底 -->
-  <rect x="0" y="0" width="512" height="512" rx="116" fill="url(#bg)"/>
-  <rect x="0" y="0" width="512" height="256" rx="116" fill="url(#shine)"/>
-  <rect x="0" y="256" width="512" height="256" fill="url(#cheat)"/>
+  <g clip-path="url(#tile)">
+    <rect x="0" y="0" width="512" height="512" fill="url(#base)"/>
+    <rect x="0" y="0" width="512" height="512" fill="url(#pinkglow)"/>
+    <rect x="0" y="0" width="512" height="512" fill="url(#tealglow)"/>
+  </g>
 
-  <!-- 火花光晕 -->
-  <circle cx="362" cy="150" r="84" fill="url(#glow)"/>
+  <g clip-path="url(#tile)">
+    <circle cx="256.51" cy="249.34" r="211.97" fill="none" stroke="#FFFFFF" stroke-opacity="0.42" stroke-width="3.2"/>
+    <g stroke="#FFFFFF" stroke-opacity="0.34" stroke-width="2.6"><line x1="256.51" y1="37.38" x2="440.08" y2="143.36"/><line x1="440.08" y1="143.36" x2="440.08" y2="355.33"/><line x1="440.08" y1="355.33" x2="256.51" y2="461.31"/><line x1="256.51" y1="461.31" x2="72.94" y2="355.33"/><line x1="72.94" y1="355.33" x2="72.94" y2="143.36"/><line x1="72.94" y1="143.36" x2="256.51" y2="37.38"/></g>
+    <circle cx="256.51" cy="37.38" r="15.63" fill="#FFFFFF"/><circle cx="440.08" cy="143.36" r="15.63" fill="#FFFFFF"/><circle cx="440.08" cy="355.33" r="15.63" fill="#FFFFFF"/><circle cx="256.51" cy="461.31" r="15.63" fill="#FFFFFF"/><circle cx="72.94" cy="355.33" r="15.63" fill="#FFFFFF"/><circle cx="72.94" cy="143.36" r="15.63" fill="#FFFFFF"/>
+  </g>
 
-  <!-- 主图形：终端提示符 > -->
-  <path d="M148 196 L300 256 L148 316"
-        fill="none" stroke="#FFFFFF" stroke-width="58"
-        stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- 内层阴影线：给 > 一点立体（略细、微透明的白） -->
-  <path d="M178 216 L288 256 L178 296"
-        fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="16"
-        stroke-linecap="round" stroke-linejoin="round"/>
-
-  <!-- 光标 _（终端输入感） -->
-  <path d="M330 330 L414 330" fill="none" stroke="#FFFFFF" stroke-opacity="0.55"
-        stroke-width="24" stroke-linecap="round"/>
-
-  <!-- 四角星（AI 火花） -->
-  <path d="M362 96 L370 134 L408 142 L370 150 L362 188 L354 150 L316 142 L354 134 Z"
-        fill="#FFD66B"/>
+  <g fill="#FFFFFF" clip-path="url(#tile)">
+    <rect x="125.01" y="164.24" width="49.21" height="177.54"/><path fill-rule="evenodd" d="M 174.21 165.84 A 63.83 50.54 0 1 1 174.21 263.70 Z M 190.17 201.48 A 15.96 13.30 0 1 1 190.17 228.07 A 15.96 13.30 0 1 1 190.17 201.48 Z"/>
+    <rect x="267.30" y="164.24" width="49.21" height="177.54"/><path fill-rule="evenodd" d="M 316.51 165.84 A 63.83 50.54 0 1 1 316.51 263.70 Z M 332.47 201.48 A 15.96 13.30 0 1 1 332.47 228.07 A 15.96 13.30 0 1 1 332.47 201.48 Z"/>
+  </g>
 </svg>

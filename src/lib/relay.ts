@@ -1,7 +1,14 @@
 /** 中转站账户（sub2api 兼容网关）公共逻辑：登录后的密钥解析与供应商生成参数。
  *  协议实证见 Wei-Shaw/sub2api：套餐绑定分组（group_id），key 绑分组走套餐额度。
  *  注意：部分站点（如 pptoken）强制要求 key 必须绑分组，无分组 key 网关直接 403——
- *  遇到时由 App.relayActivate 自动改绑第一个订阅分组重试。 */
+ *  遇到时由 App.relayActivate 自动改绑第一个订阅分组重试。
+ *
+ *  ⛔ 候选链（10-09 用户令「自动新建密钥，分组选已生效的套餐，没有就用余额」）：
+ *    「用哪个分组建密钥 / 先试哪个候选」的裁决**全部**在 `lib/relay-targets.mjs`（纯函数、
+ *    可真跑），本文件只负责把它接到网络与宿主回调上。⛔ 别在这里再写一份分组挑选逻辑 ——
+ *    两处判定必然漂移，而这条链的失败形态是「用户登录后卡在供应商生成失败」。 */
+
+import { buildRelayCandidates, pickReusableKey, keyNameForCandidate, type RelayCandidate } from "./relay-targets.mjs";
 
 export type RelayActive = {
   provider: string;
@@ -29,7 +36,9 @@ export function writeRelayActive(active: RelayActive | null) {
 }
 
 /** 解析目标计费方式对应的密钥：优先复用同分组/无分组的生效 key，没有则新建。
- *  返回网关地址、明文密钥与生成供应商所需的全部参数（供保存链路使用）。 */
+ *  返回网关地址、明文密钥与生成供应商所需的全部参数（供保存链路使用）。
+ *  ⛔ 复用/命名规则在 relay-targets（单一真相源）：套餐候选只认同分组的 active key，
+ *    余额候选只认无分组 —— 不然「余额候选复用了某套餐的 key」会让额度记到套餐上。 */
 export async function resolveRelayTarget(mode: "balance" | "plan", group?: RelayGroup): Promise<{
   overview: any;
   gateway: string;
@@ -39,23 +48,28 @@ export async function resolveRelayTarget(mode: "balance" | "plan", group?: Relay
   active: RelayActive;
 }> {
   const overview = await window.codex.relayOverview();
-  const activeKeys = (overview.keys ?? []).filter((k: any) => k.status === "active");
-  const match = activeKeys.find((k: any) => mode === "plan" ? k.group_id === group!.group_id : k.group_id == null);
-  const key = match ?? await window.codex.relayCreateKey({ name: mode === "plan" ? `Harness-${group!.group_name}` : "Harness-余额", groupId: mode === "plan" ? group!.group_id : null });
+  const candidate: RelayCandidate = {
+    mode,
+    groupId: mode === "plan" ? Number(group!.group_id) : null,
+    groupName: mode === "plan" ? String(group!.group_name ?? "") : "",
+    label: mode === "plan" ? String(group!.group_name ?? "") : "余额",
+  };
+  const key = pickReusableKey(overview.keys, candidate)
+    ?? await window.codex.relayCreateKey({ name: keyNameForCandidate(candidate), groupId: candidate.groupId });
   if (!key?.key) throw new Error("中转站未返回密钥明文");
-  await window.codex.relaySelect({ mode, groupId: mode === "plan" ? group!.group_id : null, keyId: key.id, keyName: key.name });
+  await window.codex.relaySelect({ mode, groupId: candidate.groupId, keyId: key.id, keyName: key.name });
   const baseUrl: string = overview.baseUrl;
   let hostLabel = "中转站";
   try { hostLabel = new URL(baseUrl).host.replace(/^api\./i, "").split(".")[0] || hostLabel; } catch { /* 保底 */ }
   const provider = `relay-${hostLabel.toLowerCase()}`;
-  const displayName = `${hostLabel.toUpperCase()} · ${mode === "plan" ? group!.group_name : "余额"}${overview?.email ? " · " + overview.email : ""}`;
+  const displayName = `${hostLabel.toUpperCase()} · ${mode === "plan" ? (group!.group_name ?? "套餐") : "余额"}${overview?.email ? " · " + overview.email : ""}`;
   return {
     overview,
     gateway: `${baseUrl}/v1`,
     apiKey: key.key,
     provider,
     displayName,
-    active: { provider, baseUrl, apiKey: key.key, mode, groupId: mode === "plan" ? group!.group_id : null, label: displayName, email: overview?.email },
+    active: { provider, baseUrl, apiKey: key.key, mode, groupId: candidate.groupId, label: displayName, email: overview?.email },
   };
 }
 
@@ -86,16 +100,59 @@ export async function resolveRelayKeyTarget(keyRow: { id: any; name: any; key: s
   };
 }
 
-/** 登录后自动选择计费方式：有生效套餐优先用第一个套餐，否则走余额。 */
-export async function resolveRelayAutoTarget(): Promise<{ mode: "balance" | "plan"; group?: RelayGroup; resolved: Awaited<ReturnType<typeof resolveRelayTarget>> }> {
+/** 候选链（已生效套餐 → 余额）：挑出「按顺序该试哪些目标」。**只管挑**，不发请求、不建密钥
+ *  —— 真正落地（复用/新建 key、选计费、探测模型）在 resolveRelayTarget(候选)。 */
+export async function resolveRelayCandidates(): Promise<{
+  overview: any;
+  candidates: { mode: "balance" | "plan"; group?: RelayGroup; label: string }[];
+}> {
   const overview = await window.codex.relayOverview();
-  const subs: any[] = overview.subscriptions ?? [];
-  if (subs.length) {
-    const first = subs[0];
-    const group = { group_id: Number(first.group_id), group_name: String(first.group_name ?? "套餐") };
-    return { mode: "plan", group, resolved: await resolveRelayTarget("plan", group) };
+  const raw = buildRelayCandidates(overview.subscriptions ?? []) as RelayCandidate[];
+  const candidates = raw.map((c) => ({
+    mode: c.mode,
+    group: c.mode === "plan" ? { group_id: Number(c.groupId), group_name: c.groupName } : undefined,
+    label: c.label,
+  }));
+  return { overview, candidates };
+}
+
+/** 登录后自动选择计费方式的**单个**目标（兼容既有调用方：中转站面板 / 引导弹窗的「重试」）。
+ *  ⛔ 只取候选链首位。要「依次尝试直到成功」请走 performRelayLogin —— 它才带兜底。 */
+export async function resolveRelayAutoTarget(): Promise<{ mode: "balance" | "plan"; group?: RelayGroup; resolved: Awaited<ReturnType<typeof resolveRelayTarget>> }> {
+  const { candidates } = await resolveRelayCandidates();
+  const first = candidates[0] ?? { mode: "balance" as const, group: undefined, label: "余额" };
+  return { mode: first.mode, group: first.group, resolved: await resolveRelayTarget(first.mode, first.group) };
+}
+
+/** 把包装过的报错还原成人话（`Error invoking remote method 'x': …` 前缀一律剥掉）。 */
+function relayReason(error: unknown, fallback = "未知错误"): string {
+  const raw = String((error as any)?.message ?? error ?? "").trim();
+  const cleaned = raw.replace(/^Error invoking remote method '[^']+':\s*/i, "").trim();
+  return cleaned || fallback;
+}
+
+/** 网络层失败（连不上 / 超时 / DNS）与「这个分组不行」是两码事：
+ *  前者换下一个候选一样连不上，只会白建一串密钥 —— 命中就直接收尾报错。
+ *  ⛔ 关键词对齐主进程 `describeNetworkError` / `classifyProbeError` 的中文措辞。 */
+function isNetworkFailure(reason: string): boolean {
+  return /网络|超时|域名解析|连接被拒|连接失败|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed/i.test(reason);
+}
+
+/** 某候选失败后做一次**只读**探测，把网关的原话带出来。
+ *  ⛔ 为什么必须做：`onLogin` 只回 true/false，真实原因（403 原话 / `/models` 空列表 /
+ *    模型名不被认）全被吃掉 ⇒ 用户只看到「没探测到可用模型」，既不知道为什么、也不知道
+ *    下一步做什么（10-09 用户报障时的实际体验）。
+ *  ⛔ 必须只读：`probeCustomModel` 不落盘、不改配置（只读一份已有配置用于 key 复用判断）。 */
+async function diagnoseRelayGateway(baseUrl: string, apiKey: string): Promise<string> {
+  try {
+    const probe: any = await window.codex.probeCustomModel({ provider: "relay-diagnose", baseUrl, apiKey, wireApi: "responses" });
+    const models: string[] = probe?.models ?? [];
+    return models.length
+      ? `探测到 ${models.length} 个模型但未生效（多为瞬时网络问题，可重试）`
+      : "网关返回的模型列表为空（该密钥所属分组当前没有可用模型）";
+  } catch (error) {
+    return relayReason(error, "探测失败");
   }
-  return { mode: "balance", resolved: await resolveRelayTarget("balance") };
 }
 
 /**
@@ -104,8 +161,8 @@ export async function resolveRelayAutoTarget(): Promise<{ mode: "balance" | "pla
  * ⛔ 为什么收尾直接复用 `performRelayLogin`：
  *   · 主进程的 `relay:register` 成功时**已经**用同套凭据登录并落多账号库了；这里再走一次登录是
  *     幂等的（多一次请求，换零重复代码）；
- *   · 真正值钱的是登录之后的收尾（按套餐/余额选计费 + 「无分组 key 被网关 403 时改绑第一个
- *     订阅分组重试」那段兜底）。复制第二份 = 下一次改兜底必然只改一处 ⇒ 这条路径的用户卡死。
+ *   · 真正值钱的是登录之后的收尾（**候选链**：已生效套餐 → 余额，依次真试 + 失败原因上浮）。
+ *     复制第二份 = 下一次改兜底必然只改一处 ⇒ 这条路径的用户卡死。
  *
  * 邀请归因：`affCode` 由调用方经 `resolveAffiliateCode()` 归一化后传入（URL `?aff=` → 本地存储
  * → 内置默认码），本函数**不再自己兜默认值**，避免两处各有一套优先级。
@@ -145,8 +202,8 @@ export async function performRelayRegister(input: {
  * 中转站账户登录的**完整链路**：登录 → 自动选计费方式（有套餐用套餐，否则余额）→ 生成供应商 → 生效。
  *
  * ⛔ 抽出来是因为它有**两个入口**（登录页 + 模型配置引导弹窗）。分两处各写一份必然漂移 ——
- *   尤其"无分组 key 被网关 403 时改绑第一个订阅分组重试"这段兜底，漏掉任何一处，那边的用户
- *   就会卡在"供应商生成失败"而不知道为什么（09-19 引导弹窗补中转站入口时抽的）。
+ *   尤其「候选链依次真试 + 失败原因上浮」这段，漏掉任何一处，那边的用户就会卡在
+ *   「供应商生成失败」而不知道是哪个分组、什么原因（09-19 引导弹窗补中转站入口时抽的）。
  *
  * @param onLogin 宿主自己的「保存供应商 + 探测模型 + 生效」链路（App 的 handleLogin）。
  * @returns ok=false 时 message 是可直接展示给用户的原因（不用用户去猜）。
@@ -164,39 +221,56 @@ export async function performRelayLogin(input: {
     return { ok: false, message: `中转站登录失败：${error?.message ?? error}` };
   }
   try {
-    let target = await resolveRelayAutoTarget();
-    let ok = await input.onLogin({
-      provider: target.resolved.provider,
-      name: target.resolved.displayName,
-      baseUrl: target.resolved.gateway,
-      apiKey: target.resolved.apiKey,
-      model: "",
-      username: input.username,
-    });
-    // 部分站点强制 key 必须绑分组（无分组 key 网关 403）：改绑第一个订阅分组重试
-    if (!ok && target.mode === "balance") {
-      const ov = await window.codex.relayOverview().catch(() => null);
-      const subs: any[] = ov?.subscriptions ?? [];
-      if (subs.length) {
-        const s0 = subs[0];
-        const group = { group_id: Number(s0.group_id), group_name: String(s0.group_name ?? "套餐") };
-        target = { mode: "plan", group, resolved: await resolveRelayTarget("plan", group) };
+    /* 候选链：已生效套餐（还有额度的、快到期的优先）→ 余额。
+       ⛔ 必须**依次真试**。10-09 用户报障的根因就是「只试了一个候选」：`subscriptions[0]`
+         那一个分组建出来的 key 只要在当前网关不可用（额度用满 / 该分组不允许请求的模型 /
+         已过期），整条链直接失败，既不退下一个套餐也不退余额，用户还只看到一句
+         「没探测到可用模型」——不知道是认证被拒、分组没模型，还是网络问题。 */
+    const { candidates } = await resolveRelayCandidates();
+    const failures: { label: string; reason: string }[] = [];
+    /** 记一次失败；返回 true = 网络层挂了 ⇒ 换候选也一样连不上，直接收尾（别白建密钥）。 */
+    const note = (label: string, reason: string) => {
+      failures.push({ label, reason });
+      return isNetworkFailure(reason);
+    };
+    let lastActive: RelayActive | undefined;
+    for (const cand of candidates) {
+      let resolved: Awaited<ReturnType<typeof resolveRelayTarget>>;
+      try {
+        resolved = await resolveRelayTarget(cand.mode, cand.group);
+      } catch (error) {
+        if (note(cand.label, relayReason(error))) break;
+        continue;
+      }
+      lastActive = resolved.active;
+      let ok = false;
+      try {
         ok = await input.onLogin({
-          provider: target.resolved.provider,
-          name: target.resolved.displayName,
-          baseUrl: target.resolved.gateway,
-          apiKey: target.resolved.apiKey,
+          provider: resolved.provider,
+          name: resolved.displayName,
+          baseUrl: resolved.gateway,
+          apiKey: resolved.apiKey,
           model: "",
           username: input.username,
         });
+      } catch (error) {
+        if (note(cand.label, relayReason(error))) break;
+        continue;
       }
+      if (ok) {
+        // 只有供应商真正生成并生效后才落「已生效」标记，避免失败残留锁死按钮/徽标
+        writeRelayActive(resolved.active);
+        return { ok: true, active: resolved.active };
+      }
+      if (note(cand.label, await diagnoseRelayGateway(resolved.gateway, resolved.apiKey))) break;
     }
-    if (!ok) {
-      return { ok: false, message: "供应商生成失败：该网关没探测到可用模型 —— 可稍后在「设置 → 账户 → 中转站」重试，或换用「粘贴 API Key」。", active: target.resolved.active };
-    }
-    // 只有供应商真正生成并生效后才落「已生效」标记，避免失败残留锁死按钮/徽标
-    writeRelayActive(target.resolved.active);
-    return { ok: true, active: target.resolved.active };
+    const head = failures[0]?.reason ?? "未知原因";
+    const tried = failures.length > 1 ? `（已依次尝试：${failures.map((f) => f.label).join("、")}）` : "";
+    return {
+      ok: false,
+      message: `供应商生成失败${tried}：${head}。可在「设置 → 账户 → 中转站」重试，或换用「粘贴 API Key」。`,
+      active: lastActive,
+    };
   } catch (error: any) {
     return { ok: false, message: `中转站登录后配置失败：${error?.message ?? error}` };
   }

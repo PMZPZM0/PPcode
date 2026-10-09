@@ -5,6 +5,7 @@
  *    （同一渲染周期、同一顺序）。组件侧用**同名解构**接回来，所以 JSX 一字不改。
  */
 import { resolveRelayTarget, writeRelayActive, readRelayActive, RelayActive } from "../../../lib/relay";
+import { buildRelayCandidates } from "../../../lib/relay-targets.mjs";
 import { resolveAffiliateCode } from "../../../lib/relay-affiliate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { shortGroupName } from "../RelayCenterPage/01-balance-badge";
@@ -62,16 +63,19 @@ export function useRelayCenterPageState({ busy, activeProvider, onActivate, onNo
     const row = accounts.find((x: any) => x.id === id);
     return Boolean(row && row.active && !row.disabled);
   };
-  // 登录/切换账号后自动配置模型：已选中 key 优先 → 第一个套餐 → 余额（参数同步内置规格表在 onActivate 链路内）
+  // 登录/切换账号后自动配置模型：**候选链首位**（已生效套餐 → 余额）。
+  // ⛔ 顺序规则来自 `lib/relay-targets`（单一真相源）。这里原先自己写了一份 `subs[0]`
+  //    「取第一个订阅」，与登录页那份必然漂移（10-09 收口）——两处判定同源，才不会出现
+  //    「登录页选了 A 分组、面板却激活 B 分组」这种查不出原因的错位。
+  //    面板上仍可随时手动改：套餐卡「使用此套餐」、密钥列表「使用」、没有套餐时走余额。
   const autoConfigure = async () => {
     const ov = await window.codex.relayOverview().catch(() => null);
     setOverview(ov);
-    // 简单规则：有生效订阅 → 用第一个订阅套餐；没有 → 走余额计费。
-    // 匹配不到可复用的 key 时激活链路会自动新建（Harness-套餐名/Harness-余额），站点强制绑分组时自动改绑重试。
-    const subs: any[] = ov?.subscriptions ?? [];
     try {
-      if (subs.length) {
-        await onActivate("plan", { group_id: Number(subs[0].group_id), group_name: String(subs[0].group_name ?? "套餐") });
+      const candidates = buildRelayCandidates(ov?.subscriptions ?? []);
+      const first = candidates[0] ?? { mode: "balance" as const, groupId: null, groupName: "", label: "余额" };
+      if (first.mode === "plan" && first.groupId) {
+        await onActivate("plan", { group_id: first.groupId, group_name: first.groupName || "套餐" });
       } else {
         await onActivate("balance");
       }

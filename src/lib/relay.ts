@@ -9,6 +9,7 @@
  *    两处判定必然漂移，而这条链的失败形态是「用户登录后卡在供应商生成失败」。 */
 
 import { buildRelayCandidates, pickReusableKey, keyNameForCandidate, type RelayCandidate } from "./relay-targets.mjs";
+import { credentialRejectedHint, normalizeCredential } from "./relay-input.mjs";
 
 export type RelayActive = {
   provider: string;
@@ -147,6 +148,11 @@ function relayReason(error: unknown, fallback = "未知错误"): string {
   return cleaned || fallback;
 }
 
+/** 网关主机名（诊断用：报错里必须说清"打到了哪个站点"，否则用户无法判断是账号问题还是打错了站）。 */
+function hostOf(baseUrl: string): string {
+  try { return new URL(String(baseUrl ?? "")).host; } catch { return String(baseUrl ?? "").trim() || "中转站"; }
+}
+
 /** 网络层失败（连不上 / 超时 / DNS）与「这个分组不行」是两码事：
  *  前者换下一个候选一样连不上，只会白建一串密钥 —— 命中就直接收尾报错。
  *  ⛔ 关键词对齐主进程 `describeNetworkError` / `classifyProbeError` 的中文措辞。 */
@@ -194,11 +200,12 @@ export async function performRelayRegister(input: {
 }): Promise<{ ok: boolean; message?: string; active?: RelayActive }> {
   try {
     await window.codex.relayRegister({
-      baseUrl: input.baseUrl.trim(),
-      email: input.email.trim(),
-      password: input.password,
+      // ⛔ 提交前净化（同登录）：验证码里的全角数字（６２３４５６）是新手最常踩的坑
+      baseUrl: normalizeCredential(input.baseUrl),
+      email: normalizeCredential(input.email),
+      password: normalizeCredential(input.password),
       affCode: input.affCode,
-      verifyCode: input.verifyCode,
+      verifyCode: input.verifyCode ? normalizeCredential(input.verifyCode) : undefined,
     });
   } catch (error: any) {
     const raw = String(error?.message ?? error).replace(/^Error invoking remote method '[^']+':\s*/i, "");
@@ -206,9 +213,9 @@ export async function performRelayRegister(input: {
   }
   // 注册成功即已登录（主进程做了），这里继续走同一条「选计费 → 生成供应商 → 生效」的收尾
   return performRelayLogin({
-    baseUrl: input.baseUrl,
-    email: input.email,
-    password: input.password,
+    baseUrl: normalizeCredential(input.baseUrl),
+    email: normalizeCredential(input.email),
+    password: normalizeCredential(input.password),
     username: input.username,
     onLogin: input.onLogin,
   });
@@ -229,12 +236,28 @@ export async function performRelayLogin(input: {
   email: string;
   password: string;
   username?: string;
+  /** 跳过「重新登录」这一步，直接用本机已保存的中转站会话继续收尾。
+   *  用途：本机已有有效 token（24h）时，用户不必为了一次配置再赌一遍密码 ——
+   *  ⛔ 只在**同一网关 + 同一邮箱**且会话未过期时才允许（由调用方判），否则会串账号。 */
+  skipLogin?: boolean;
   onLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string }) => Promise<boolean>;
 }): Promise<{ ok: boolean; message?: string; active?: RelayActive }> {
-  try {
-    await window.codex.relayLogin({ baseUrl: input.baseUrl.trim(), email: input.email.trim(), password: input.password });
-  } catch (error: any) {
-    return { ok: false, message: `中转站登录失败：${error?.message ?? error}` };
+  if (!input.skipLogin) {
+    /* ⛔ 提交前净化一次（全角 `＠`、尾随空格、零宽字符 ⇒ 站点按字节比对必判 invalid，
+       而页面上看不出来）。UI 也会净化并提示，这里再做一次是**兜底**：凡是调用方漏做的
+       入口（面板、引导弹窗）同样受保护。 */
+    const email = normalizeCredential(input.email);
+    const password = normalizeCredential(input.password);
+    try {
+      await window.codex.relayLogin({ baseUrl: normalizeCredential(input.baseUrl), email, password });
+    } catch (error: any) {
+      const reason = relayReason(error, "账号或密码不正确");
+      // 「邮箱或密码不对」是站点最不可自证的一句话：带上网关主机名 + 可操作提示（10-09 实测）
+      const message = /invalid email or password|INVALID_CREDENTIALS|账号或密码/i.test(reason)
+        ? credentialRejectedHint(reason, hostOf(input.baseUrl))
+        : `中转站登录失败（${hostOf(input.baseUrl)}）：${reason}`;
+      return { ok: false, message };
+    }
   }
   try {
     /* 候选链：已生效套餐（还有额度的、快到期的优先）→ 余额。

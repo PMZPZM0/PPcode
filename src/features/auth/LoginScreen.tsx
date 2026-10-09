@@ -15,12 +15,13 @@
  * 公开面见同目录 index.ts。
  */
 
-import { Wallet, WifiOff, Mail, Lock, UserRound, Eye, EyeOff, Loader2, Sparkles } from "lucide-react";
+import { Wallet, WifiOff, Mail, Lock, UserRound, Eye, EyeOff, Loader2, Sparkles, KeyRound } from "lucide-react";
 import { createPortal } from "react-dom";
 import { performRelayLogin } from "../../lib/relay";
+import { describeCredentialFix, normalizeCredential } from "../../lib/relay-input.mjs";
 import { captureAffiliateFromUrl } from "../../lib/relay-affiliate";
 import { RegisterPanel } from "./RegisterPanel";
-import { useRef, useState, useLayoutEffect, useEffect, KeyboardEvent } from "react";
+import { useRef, useState, useLayoutEffect, useEffect, useCallback, KeyboardEvent } from "react";
 
 export function FieldHelp({ text }: { text: string }) {
   const anchorRef = useRef<HTMLElement | null>(null);
@@ -113,26 +114,55 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
   const [username, setUsername] = useState(() => localStorage.getItem("username") || "");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  /** 提交时净化了什么（全角→半角 / 去空白……）；没改就为空。 */
+  const [fixNote, setFixNote] = useState("");
+  /** 本机已保存的中转站会话（同网关 + 同邮箱且有效时，允许不重输密码直接继续）。 */
+  const [savedSession, setSavedSession] = useState<{ baseUrl: string; email: string } | null>(null);
   /* 进页面先吃 URL 上的 ?aff=（外链带进来的归因）落本地 30 天 —— 注册时静默带上。
      ⛔ 只是**捕获**、不显示：本页与注册页都不出现任何归因字样（10-09 用户令）。 */
   useEffect(() => { captureAffiliateFromUrl(window.location.search); }, []);
+  /* 摸一下本机有没有已保存的会话（失败后也会再摸一次 —— 用户不用为一次配置反复赌密码） */
+  const refreshSavedSession = useCallback(() => {
+    void window.codex.relayLoadAccount().then((acc) => {
+      if (acc?.loggedIn && acc.email && acc.baseUrl) setSavedSession({ baseUrl: acc.baseUrl, email: acc.email });
+      else setSavedSession(null);
+    }).catch(() => undefined);
+  }, []);
+  useEffect(() => { refreshSavedSession(); }, [refreshSavedSession]);
 
   /* 中转站账户登录：登录 → 自动选计费（有套餐用套餐，否则余额）→ 生成供应商进主界面 */
-  const relayLogin = async () => {
-    setBusy(true); setStatus("");
+  const relayLogin = async (opts: { skipLogin?: boolean } = {}) => {
+    setBusy(true); setStatus(""); setFixNote("");
     const base = (gateway.trim() || DEFAULT_GATEWAY).replace(/\/$/, "");
+    /* ⛔ 提交前净化：中文输入法的全角 `＠`、粘贴带进来的尾随空格/换行，肉眼一样、字节不同，
+         站点一律回 invalid email or password（10-09 实测：同一套凭据 curl 200、应用里 invalid）。 */
+    const cleanEmail = normalizeCredential(email);
+    const cleanPw = normalizeCredential(password);
+    const fix = describeCredentialFix(email) || describeCredentialFix(password);
+    if (cleanEmail !== email) setEmail(cleanEmail);
+    if (cleanPw !== password) setPassword(cleanPw);
+    if (fix) setFixNote(fix);
     try { window.localStorage.setItem(GATEWAY_KEY, base); } catch { /* 忽略 */ }
     if (username.trim()) { try { localStorage.setItem("username", username.trim()); } catch { /* 忽略 */ } }
     const result = await performRelayLogin({
       baseUrl: base,
-      email: email.trim(),
-      password,
+      email: cleanEmail,
+      password: cleanPw,
       username: username.trim() || undefined,
+      skipLogin: opts.skipLogin,
       onLogin,
     });
-    if (!result.ok) setStatus(result.message ?? "登录失败");
+    if (!result.ok) {
+      setStatus(result.message ?? "登录失败");
+      refreshSavedSession();
+    }
     setBusy(false);
   };
+
+  /** 本机已保存的会话是否正好对应「当前填的网关 + 邮箱」⇒ 才允许跳过登录直接继续。 */
+  const savedSessionMatches = Boolean(savedSession
+    && savedSession.baseUrl.replace(/\/$/, "") === (gateway.trim() || DEFAULT_GATEWAY).replace(/\/$/, "")
+    && savedSession.email === normalizeCredential(email));
 
   /* ⛔ 邀请归因**不进界面**（10-09 用户令：「不要透出来，默认用我的邀请码注册就行」）：
      码只在注册请求体里静默带上，界面一个字都不显示。 */
@@ -212,10 +242,21 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
             </details>
 
             {status && <div className="authx-error">{status}</div>}
+            {fixNote && <div className="authx-ok">{fixNote}</div>}
 
             <button type="button" className="authx-primary" disabled={!canSubmit} onClick={() => void relayLogin()}>
               {busy ? <><Loader2 size={15} className="authx-spin" />正在登录并配置…</> : <><Sparkles size={15} />登录并开始使用</>}
             </button>
+
+            {/* 本机已保存过同一网关+邮箱的有效会话 ⇒ 不必为一次配置反复赌密码（10-09 用户被
+                「invalid email or password」卡住时，机器里明明躺着一个 24h 的有效 token）。 */}
+            {savedSessionMatches && (
+              <button type="button" className="authx-ghost" disabled={busy}
+                title="用本机上一次成功登录留下的会话继续（不发送密码）"
+                onClick={() => void relayLogin({ skipLogin: true })}>
+                <KeyRound size={14} />用本机已保存的登录状态继续（不重输密码）
+              </button>
+            )}
 
             <p className="authx-note">
               没有账号？切到上方「注册」——只需邮箱验证码，注册完自动登录并接好模型供应商。

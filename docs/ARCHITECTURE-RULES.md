@@ -36,7 +36,7 @@
 | **AI 画布工作流板块**（09-29 立，见 §2.1） | 渲染层 `src/features/drama-canvas/` 14 文件 / 3737 行；IPC 域 `drama-canvas` **2** + `video` **7** + `builtin`（生图）；CSS `src/styles/21-drama-canvas.css` **1519 行**；内置技能 `image-generation` / `video-generation`；MCP 工具 `image_generate` / `video_generate` / `video_status` / `video_concat` | **五层全占的独立功能板块**：界面 + 状态 + 存储 + IPC + 引擎工具/技能 |
 | **前端开发板块**（10-05 立；两轮改名：界面草图 → 手机前端UI → 前端开发；10-06 起画布 = 上游钉死提交 + 本仓补丁层，见 AGENTS.md 同名小节） | 渲染层 `src/features/ui-sketch/` 6 文件 / 501 行 + CSS `src/styles/26-ui-sketch.css` 160 行；**零 IPC**（不进 manifest / registry）；宿主侧新协议 `sketch://`（`electron/sketch-protocol.ts` + `boot.ts`）；随包第三方产物 `public/sketch/`（4.2MB，MIT，= 上游 039ec31 + 8 组件补丁；构建器 `scripts/sketch-fork/`）；内置技能 `frontend-canvas`（组件手册） | **嵌第三方静态站的板块样板**：不并源码进仓（克隆到 .workbuddy/tmp + 定点补丁），接缝全在我们这一侧（协议 / CSP / 只读桥 / 挂载 / 预览触发）；守卫【283】162 条 + 验收项 `ui-sketch` 11 条（10-06 重写：三形态探针）。⚠️ 曾接过一版"组件库送进草图"，用户实测后判没用 ⇒ 已整块删除，【283】留负向断言防复活 |
 | 记忆金字塔 | **L0–L7 八层，90% 蒸馏线** | 层表/阈值单一真相源 = `electron/memory-layers.ts`（守卫【104】） |
-| 记忆目录布局 | `<workspace>/.codex-harness/memory/` 下 `project/` `lessons/` `logs/` `rollups/` `archive/` | v2 分类分文件夹；v1 散文件由 `migrateLayout()` 搬（守卫【106】） |
+| 记忆目录布局 | `<workspace>/.ppcode-harness/memory/` 下 `project/` `lessons/` `logs/` `rollups/` `archive/` | v2 分类分文件夹；v1 散文件由 `migrateLayout()` 搬（守卫【106】） |
 | 记忆分类 | `lessons/` 内一个分类一个文件（**用户纠错单独一类**，永不淘汰） | 分类名与判定 = `electron/memory-lessons.ts`（守卫【105】） |
 | 记忆整洁与清理 | 三个动作：`prune-pool` / `tidy-lessons` / `purge-archive`（白名单 + 二次确认） | 规则表与判定 = `electron/memory-hygiene.ts`（守卫【107】） |
 | 技能落点 | 全局 `$CODEX_HOME/skills` + 项目级 `<cwd>/.codex/skills` | 引擎原生发现（`scope:"user"` / `scope:"repo"`），见 §11.2 |
@@ -255,7 +255,7 @@
 |---|---|---|
 | `src/features/registry.ts` + `defineFeature` + 插槽 `Slot.tsx` | **未落地**（ARCHITECTURE.md 的目标） | 设置页/顶栏/侧栏仍是硬编码分支（设置页已抽成 26 个 lazy 分节，属半程） |
 | preload/vite-env **自动生成** | ✅ **已落地（09-23）**：`ipc-channels.manifest.json` 单一真相源 + `npm run gen:ipc`，两个生成物与 manifest 逐字节一致由守卫【2】钉住 | 残留：**manifest → 账本是单向校验** —— 加了 handler 忘进 manifest ⇒ 渲染层静默调不到（反向需"是否暴露"标记位，未做） |
-| `electron/features` ↔ `main.ts` **双向依赖**（22 文件取 103 符号） | ⛔ **搬迁方案已实测证否（09-22）** | 现状靠"只在 handler 体内取用"纪律 +【91】兜着。**别再试「把定义搬到 ctx 模块」**：103 符号里 23 个是顶层 `app.getPath("userData")` 路径常量（+ 依赖它们的单例），搬到任何非 main.ts 模块都会被【91】拦（import 早于 `app.setPath` ⇒ 路径静默漂移到 `%APPDATA%\codex-harness-desktop`）；而"先惰性化再搬"的代价实测 = **387 处调用点**（`codexHome` 一个 170 处 / 跨 36 文件）⇒ 成本远超收益。完整踩坑记录见 `.codex-harness/memory/lessons/pitfalls.md` |
+| `electron/features` ↔ `main.ts` **双向依赖**（22 文件取 103 符号） | ⛔ **搬迁方案已实测证否（09-22）** | 现状靠"只在 handler 体内取用"纪律 +【91】兜着。**别再试「把定义搬到 ctx 模块」**：103 符号里 23 个是顶层 `app.getPath("userData")` 路径常量（+ 依赖它们的单例），搬到任何非 main.ts 模块都会被【91】拦（import 早于 `app.setPath` ⇒ 路径静默漂移到 `%APPDATA%\codex-harness-desktop`）；而"先惰性化再搬"的代价实测 = **387 处调用点**（`codexHome` 一个 170 处 / 跨 36 文件）⇒ 成本远超收益。完整踩坑记录见 `.ppcode-harness/memory/lessons/pitfalls.md` |
 | `lib/bus.mjs` 跨域事件总线 / `lib/ipc.ts` 服务访问层 | 未落地 | 域间偶发直连与 `window.codex.*` 直调 |
 | 主进程 `ctx`（deps 契约） | 🟡 **P0/P1/P2 已落地（10-03）**：`electron/context.ts`（Context / Service 式 `provide`+`get` / `inject` / `Fiber` 生命期）+ `electron/ipc-host.ts`（把 `ipcMain` 封成可注入的 `"ipc"` 服务）；**域组合层** = `electron/composition.json` → `npm run gen:domains` → `electron/composition.gen.ts`（生成物只导出 `mountEnabledDomains()`，**域不自挂**；⛔ **10-07 起挂载时机 = 壳在 `app.setPath("userData")` 之后 `process.nextTick` 调用** —— 模块作用域自动挂载会用默认目录的设置做停用域判定并把空对象写进 app-settings 进程缓存 = 用户设置全静默失效，且壳被域间接 require 时 `ENABLED` 表未赋值直接崩；守卫【253】②/【270】钉）。**已迁 69 个域**（10-03 阶段 0：10 处多前缀板块的 56 个前缀全拆成独立板块并插件化；`main.ts` 纯副作用 import 14 → **0** 行，10-07 实测）。⛔ 域仍可从 `electron` 取 `app` / `dialog` 等宿主能力（**只把"注册通道"收进容器**；能力白名单是 P3）；⛔⛔ **域绝不许 import 组合层**（反向 = 成环 ⇒ `plugin` 为 undefined ⇒ 启动即崩，10-03 实测事故）；⛔ **一个板块恒等于一个域前缀**（板块 = `electron/features/` 下的一个顶层文件**或一个顶层目录**；样板 = `features/voice-ipc/`）。10-03 批次 8 已拆掉「一个文件两个前缀」那条**例外**（`skillhub-markets-ipc.ts` → `expert-market-ipc.ts` + `soul-market-ipc.ts`；`screenshot-favorites-ipc.ts` → `screenshot-ipc.ts` + `favorites-ipc.ts`），**10 处历史欠账已全部拆完**（10-03，**56 个前缀**）—— 守卫【253】⑥ 棘轮名单**清零为 0 行**（仍会捕获任何新长出的多前缀板块）。拆分时把跨域共用的辅助函数下沉到基座层（`connector-store` / `openai-vault` / `custom-model-store` / `skill-store`）—— 拆成独立板块后它们不能留在任一域的内部文件里。守卫【252】11 条**跑真产物** `dist-electron/context.js` 验依赖门禁 / 作用域 / 释放语义；【253】9 条验生成物逐字节一致 + 每行 `id` == 域文件 `defineFeature` 的 `id` | 仍缺：**插槽**、**运行时安装 / 卸载**、**白名单能力与权限**。另外两条实测量出的边界：① `【90】` 的"域文件通道数 ≥ 账本 count"是**下界**，抓不到**同前缀改名**（改名只被 preload 死链检测到）——想抓得改成"集合相等"；② 容器改写后，所有按 `ipcMain.handle` 字面量收集 handler 的守卫（`01-build-ipc-css` 死链、`【90】`、`【187】`）必须同轮加上 `ipcHost.handle` 形态，否则假红 |
 
@@ -308,7 +308,7 @@
 
 ### 11.1 记忆金字塔（L0–L7，每层满 90% 往下蒸一层）
 
-**全部落在一个目录** `<workspace>/.codex-harness/memory/`，**按层 / 分类分子文件夹**（v2，09-22 起：文件夹保存不会乱）：
+**全部落在一个目录** `<workspace>/.ppcode-harness/memory/`，**按层 / 分类分子文件夹**（v2，09-22 起：文件夹保存不会乱）：
 
 | 层 | 落点（相对 `memory/`） | 是什么 | 预算 | 谁写 | 满了沉到 |
 |---|---|---|---:|---|---|
@@ -347,7 +347,7 @@
 | **项目级（默认）** | `<cwd>/.codex/skills/<名>/SKILL.md` | `skills/list` → `scope:"repo"`，随项目走（09-22 探针实证） |
 
 ⛔ 项目级**必须**落 `<cwd>/.codex/skills`（与既有 `<cwd>/.codex/commands` 同族约定）：
-   · `.codex-harness/skills` 引擎**不认**（实测 `skills/list` 里不出现）；
+   · `.ppcode-harness/skills` 引擎**不认**（实测 `skills/list` 里不出现）；
    · 引擎原生发现 ⇒ **不要在 AGENTS.md 索引里重复枚举项目技能**（同一技能列两遍 = 看起来像假的）；
    · 项目信任策略只挡 config / hooks / exec 策略，**技能照样加载**。
 

@@ -338,11 +338,11 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
 
   return (
     !popoutThreadId && <aside className={`sidebar ${mobileNav ? "mobile-open" : ""} ${sidebarFlyout ? "flyout-open" : ""}`} onMouseEnter={() => sidebarCollapsed && setSidebarFlyout(true)} onMouseLeave={() => sidebarCollapsed && setSidebarFlyout(false)}>        <div className="brand-row">
-              <button className={`brand-mark sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : "is-expanded"}`} aria-label={narrow ? "Codex Harness" : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} title={narrow ? "Codex Harness" : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} onClick={() => { if (narrow) return; const next = !sidebarCollapsed; setSidebarCollapsed(next); localStorage.setItem("sidebar-collapsed", String(next)); }}>
+              <button className={`brand-mark sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : "is-expanded"}`} aria-label={narrow ? "PPcode" : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} title={narrow ? "PPcode" : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} onClick={() => { if (narrow) return; const next = !sidebarCollapsed; setSidebarCollapsed(next); localStorage.setItem("sidebar-collapsed", String(next)); }}>
                 <img className="ch-logo ch-logo-img" src={`${import.meta.env.BASE_URL}icon.png`} alt="" aria-hidden="true" />
                 <span className="sidebar-toggle-arrow"><ArrowLeft size={13} strokeWidth={2.4} /></span>
               </button>
-              {!sidebarCollapsed && <div><strong>Codex Harness</strong><span>Desktop</span></div>}
+              {!sidebarCollapsed && <div><strong>PPcode</strong><span>Desktop</span></div>}
             </div>
             <div className="sidebar-tabs" role="tablist" aria-label="导航">
               <button className="sidebar-tab ic-blue" onClick={() => { startNewThread(); }}><MessageSquarePlus size={15} /><span>新建任务</span><kbd>{hk("Ctrl+N")}</kbd></button>

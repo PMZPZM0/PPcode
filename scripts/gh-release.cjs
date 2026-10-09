@@ -14,7 +14,7 @@ const CHANGELOG = [
 ].join("\n");
 
 const BODY = [
-  "## Codex Harness Desktop v" + VERSION,
+  "## PPcode v" + VERSION,
   "",
   "### 更新内容",
   CHANGELOG.split("\n").map((l) => "- " + l).join("\n"),
@@ -22,10 +22,10 @@ const BODY = [
   "### macOS 安装说明（未签名）",
   "下载对应芯片的 zip 解压后把 App 拖进「应用程序」。首次打开若被 Gatekeeper 拦住：",
   "1. **右键**点 App → 选「打开」（不要双击）",
-  "2. 或在终端执行：`xattr -cr \"/Applications/Codex Harness Desktop.app\"`",
+  "2. 或在终端执行：`xattr -cr \"/Applications/PPcode.app\"`",
   "",
   "### 下载",
-  "- Windows：`Codex Harness Desktop Setup " + VERSION + ".exe`",
+  "- Windows：`PPcode Setup " + VERSION + ".exe`",
   "- macOS Apple 芯片（M 系列）：`...-arm64-mac.zip`",
   "- macOS Intel：`...-x64-mac.zip`",
   "",
@@ -41,7 +41,7 @@ function main() {
     const res = api("/releases", { method: "POST", body: JSON.stringify({ tag_name: "v" + VERSION, name: "v" + VERSION, body: BODY, draft: false, prerelease: false, target_commitish: "main" }) });
     const r = JSON.parse(res);
     console.log("创建成功 id=" + r.id + " tag=" + r.tag_name);
-    require("fs").writeFileSync("D:/Codex Harness Desktop/.e2e-artifacts/release-0.0.17.json", JSON.stringify({ id: r.id, upload_url: r.upload_url, html_url: r.html_url }, null, 2), "utf8");
+    require("fs").writeFileSync("D:/PPcode/.e2e-artifacts/release-0.0.17.json", JSON.stringify({ id: r.id, upload_url: r.upload_url, html_url: r.html_url }, null, 2), "utf8");
     console.log("html_url: " + r.html_url);
     return;
   }

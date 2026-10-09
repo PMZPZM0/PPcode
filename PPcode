@@ -1,0 +1,30 @@
+PPcode
+=====
+
+PPcode 是一个桌面端 AI 编程助手（Electron + React + Vite），由 Codex Harness Desktop
+复制并改名而来；登录链路走 PPtoken 中转站账户（sub2api 网关），无需自备 API Key 即可开聊。
+
+运行
+----
+    npm install          # 依赖（副本已带 node_modules，可跳过）
+    npm run dev          # 开发模式：起 vite + electron
+    npm run build        # 构建渲染层与主进程产物（dist/ 与 dist-electron/）
+    npm run check        # 全量门禁：构建 + 预检守卫 + 类型/依赖检查（Windows 上先 unset NODE_OPTIONS）
+
+登录
+----
+打开应用默认进入「中转站账户」登录：填 PPtoken 网关地址（已预填 https://api.pptoken.cc）
++ 邮箱 + 密码即可；登录后自动同步余额/套餐并生成好供应商。
+备选入口：PPcode 推荐（粘贴 Key）、OpenAI 官方订阅（设备码）、自定义 API。
+
+数据目录
+--------
+- 应用数据（账号库 / 设置 / 会话 / 日志）：%APPDATA%\PPcode
+- 工作区数据（记忆 / 技能 / 项目日志）：<项目>\.ppcode-harness\
+
+说明
+----
+- 本项目是独立副本，与原项目共用一份源码血缘；改动只落在本目录内。
+- 目录内另存有 .codex（Codex 引擎的项目级技能/命令发现路径），沿用引擎约定名、未重命名。
+- 自动更新源仍指向原仓库（electron/updates.ts 的 GITHUB_REPO），接入自己的发布源前建议先改掉，
+  否则「检查更新」会把本应用更新成原版本。

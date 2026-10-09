@@ -166,7 +166,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: SKETCH_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
-app.setName("Codex Harness Desktop");
+app.setName("PPcode");
 
 app.setPath("userData", resolveStartupUserData());
 
@@ -1008,7 +1008,7 @@ const filePreviewAllowed = (target: URL) => {
 
 
 /** 欢迎页「无项目」会话的临时工作目录：每次调用在基础目录下新建一个独立子目录。
- *  09-22 收紧：**全平台一律 userData**（%APPDATA%\Codex Harness Desktop\scratch）。
+ *  09-22 收紧：**全平台一律 userData**（%APPDATA%\PPcode\scratch）。
  *  旧实现优先 exe 同级目录（当年便携安装的可写要求），但实测后果严重：开发模式落在
  *  dist/scratch —— 构建即清，会话记忆全丢；打包后在 Program Files 又只读。
  *  scratch 现在承载会话 cwd ⇒ 记忆/技能发现都跟着它走，必须持久。 */

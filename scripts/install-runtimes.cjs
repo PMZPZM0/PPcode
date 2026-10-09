@@ -1007,7 +1007,7 @@ async function main() {
   // ⛔⛔ 09-20 用户实测（Miniconda 装完弹「安装失败」）：验证是**收尾快照**，不是安装的一部分——
   //   任何一条 verify 抛错都会被 main() 的 catch 连坐成「整个安装失败」，而文件其实已经装好。
   //   根因之一是 conda 的已知限制：**安装路径含空格时 conda.exe 启动器起不来**
-  //   （工具目录默认在应用名下，如 D:\Codex Harness Desktop\...，必含空格）。
+  //   （工具目录默认在应用名下，如 D:\PPcode\...，必含空格）。
   //   ⇒ 所有 verify 一律非致命：失败只打 [verify X] unavailable + 原因，不影响安装结果。
   const safeVerify = (label, command, opts = {}) => {
     try { console.log(`[verify ${label}]`, runCommand(command, { encoding: "utf8", ...opts }).split(/\r?\n/)[0].trim()); }

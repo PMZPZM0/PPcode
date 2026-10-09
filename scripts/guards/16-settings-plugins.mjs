@@ -282,8 +282,8 @@ export async function run() {
     (/work-logs:scan/.test(wlSrc226) && /work-logs:read/.test(wlSrc226) && /work-logs:delete/.test(wlSrc226) ? ok : fail)(
       "【226】work-logs 三通道齐（scan 扫各项目 memory / read 看正文 / delete 删文件）"
     );
-    (wlSrc226.includes(".codex-harness") && /MEMORY\.md/.test(wlSrc226) && /logs/.test(wlSrc226) ? ok : fail)(
-      "【226】数据源是**项目里的工作日志**（<项目>/.codex-harness/memory/**）—— 不是引擎会话原档"
+    (wlSrc226.includes(".ppcode-harness") && /MEMORY\.md/.test(wlSrc226) && /logs/.test(wlSrc226) ? ok : fail)(
+      "【226】数据源是**项目里的工作日志**（<项目>/.ppcode-harness/memory/**）—— 不是引擎会话原档"
     );
     ((regSrc226.match(/<WorkLogsSection/g) || []).length === 1 && !/WorkLogsSection/.test(readFileSync(join(ROOT, "src", "features", "storage-settings", "StorageSettings.tsx"), "utf8")) ? ok : fail)(
       "【226】WorkLogsSection 只挂在设置页注册表一次（同【225】的重复挂载坑）"

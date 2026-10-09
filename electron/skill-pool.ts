@@ -3,7 +3,7 @@
  *
  * 模型（两个配置真相源 + 一个磁盘投影）：
  *  - 全局停用集 `codex-home/skill-global-disabled.json`：跨项目停用（迁移自原 .disabled 改名）。
- *  - 项目禁用集 `<项目>/.codex-harness/skill-pool.json`：本项目额外停用的技能（随项目走）。
+ *  - 项目禁用集 `<项目>/.ppcode-harness/skill-pool.json`：本项目额外停用的技能（随项目走）。
  *  - 实际生效 = 全局启用 ∩ 不在项目禁用集；`syncSkillPool(cwd)` 把这个计算结果**投影**到
  *    `codex-home/skills/` 的改名状态（SKILL.md ⇄ SKILL.md.disabled，引擎「扫到就注入」的唯一入口）。
  *
@@ -25,7 +25,7 @@ import path from "node:path";
 import { globalSkillsDir, MEMORY_MCP_BACKEND_SKILL, SKILL_FILE, SKILL_FILE_DISABLED, SKILL_FILE_POOL_DISABLED } from "./skill-pack";
 import { codexHome as codexHomeRef } from "./runtime-refs";
 
-export const SKILL_POOL_FILE = path.join(".codex-harness", "skill-pool.json");
+export const SKILL_POOL_FILE = path.join(".ppcode-harness", "skill-pool.json");
 
 type PoolFile = { version: 1; disabled: string[] };
 type GlobalFile = { version: 1; disabled: string[] };
@@ -49,7 +49,7 @@ export function skillPoolFile(cwd: string): string {
 
 /** 读项目禁用集（文件缺失/损坏 = 空集合）。
  *  ⛔ 空 cwd = 没有当前项目 ⇒ **直接返回空集**，不去读相对路径 ——
- *     `path.join("", ".codex-harness", "skill-pool.json")` 是相对路径，会落到进程 cwd，
+ *     `path.join("", ".ppcode-harness", "skill-pool.json")` 是相对路径，会落到进程 cwd，
  *     那是"读了一个碰巧在那儿的文件"的不确定行为（控制台的总开关就可能在没打开工作区时被点）。 */
 export function readSkillPool(cwd: string): Set<string> {
   if (!String(cwd ?? "").trim()) return new Set();

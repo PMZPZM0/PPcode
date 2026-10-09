@@ -292,7 +292,7 @@ try {
   const allGood = m.zipvoiceReady(tmp);
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "zv-empty-"));
   const none = m.zipvoiceReady(scratch);
-  const real = path.join(process.env.APPDATA || "", "Codex Harness Desktop", "voice-models");
+  const real = path.join(process.env.APPDATA || "", "PPcode", "voice-models");
   const realReady = fs.existsSync(path.join(real, m.ZIPVOICE_DIR)) ? m.zipvoiceReady(real) : null;
   fs.rmSync(tmp, { recursive: true, force: true }); fs.rmSync(scratch, { recursive: true, force: true });
   out = { halfVocoder, truncatedDecoder, allGood, none, realReady };

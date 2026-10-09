@@ -59,7 +59,7 @@ const PROBE = `
 const Module = require("node:module");
 const path = require("node:path");
 const ROOT = ${JSON.stringify(ROOT)};
-const USERDATA = path.join(process.env.APPDATA || "", "Codex Harness Desktop");
+const USERDATA = path.join(process.env.APPDATA || "", "PPcode");
 const electronStub = {
   app: { isPackaged: false, getAppPath: () => ROOT, getPath: () => USERDATA, getVersion: () => "0.0.0",
          isReady: () => true, on: () => {}, once: () => {}, removeListener: () => {} },

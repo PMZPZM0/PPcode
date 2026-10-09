@@ -1,6 +1,6 @@
 # 知识库索引规范
 
-> 适用范围：`<workspace>/.codex-harness/knowledge/`（随项目走，不进 git）。
+> 适用范围：`<workspace>/.ppcode-harness/knowledge/`（随项目走，不进 git）。
 > 代码真相源：`electron/knowledge-base.ts`（存储/分块/检索）、
 > `electron/features/kb-embed-backend.ts`（向量后端）、`electron/features/knowledge-base-ipc.ts`（IPC 通道）。
 > ⛔ **本文与代码不一致时以代码为准，并回来改本文**（本项目铁律：注释/文档声称的能力最危险）。
@@ -18,7 +18,7 @@
 ## 1. 存储布局
 
 ```
-<workspace>/.codex-harness/knowledge/
+<workspace>/.ppcode-harness/knowledge/
   docs/<docId>.md      文档正文（原文，不加工）
   docs/<docId>.json    元信息 { id, title, source, chunks, addedAt }
   .cache/embeddings/   向量缓存（可随时重建，不进 git）
@@ -26,7 +26,7 @@
 
 | 约束 | 值 | 出处 |
 |---|---|---|
-| 目录 | `<workspace>/.codex-harness/knowledge/` | `KB_DIR` |
+| 目录 | `<workspace>/.ppcode-harness/knowledge/` | `KB_DIR` |
 | 文档数上限 | 500（超出需先治理，不静默丢弃） | `MAX_DOCS` |
 | 单文件上限 | 20 MB | `MAX_FILE_BYTES` |
 | 块大小 | ~700 字符 | `CHUNK_SIZE` |

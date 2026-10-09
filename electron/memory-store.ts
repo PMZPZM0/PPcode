@@ -226,7 +226,7 @@ export class MemoryStore {
   }
 
   /**
-   * 淘汰留痕：写 `{workspace}/.codex-harness/memory/pruned.jsonl`（追加，一行一条）。
+   * 淘汰留痕：写 `{workspace}/.ppcode-harness/memory/pruned.jsonl`（追加，一行一条）。
    * ⛔ 不写进 L2 日志：L2 满 30 天会被蒸馏进 L1 —— 把「14 天没人用」的噪音换条路固化成永久记忆，
    *    与淘汰目的相反（09-22 评审指出）。该文件不参与注入、不参与蒸馏，只供追溯。
    * ⛔ 没有 workspace 的条目没有归档位置，只能丢弃 —— 这里诚实记录，不再声称「永不丢」。
@@ -239,7 +239,7 @@ export class MemoryStore {
     }
     const at = Date.now();
     for (const [workspace, list] of byWorkspace) {
-      const file = path.join(workspace, ".codex-harness", "memory", "pruned.jsonl");
+      const file = path.join(workspace, ".ppcode-harness", "memory", "pruned.jsonl");
       const lines = list
         .map((entry) => JSON.stringify({ id: entry.id, category: entry.category, content: entry.content.slice(0, 200), updatedAt: entry.updatedAt, reason: entry.category === "临时上下文" ? "ttl" : "capacity", at }))
         .join("\n");

@@ -74,7 +74,7 @@ const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
 function demoInput() {
   return {
     type: "architecture",
-    title: "Codex Harness Desktop · 架构全景",
+    title: "PPcode · 架构全景",
     nodes: [
       { id: "main", kind: "entry", label: "main.ts 主进程入口", evidence: ["electron/main.ts"] },
       { id: "codex", kind: "module", label: "codex-server 引擎宿主", evidence: ["electron/codex-server.ts"] },

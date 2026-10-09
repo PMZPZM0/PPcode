@@ -70,7 +70,7 @@ export function CommandExecutionCard({ item, waitingForApproval, turnActive }: {
   const target = command ? commandTarget(command) : "";
   const purpose = command ? commandPurpose(command) : "";
   /* 表头映射串 = 用途 · 目标（有哪个用哪个）：
-     「已查看 结构 · …/.codex-harness」「已定位 pin-shrink-follow」「已运行 npm run build」
+     「已查看 结构 · …/.ppcode-harness」「已定位 pin-shrink-follow」「已运行 npm run build」
      命中技能时换成技能中文名（目标按上面的规则取舍）。 */
   const hint = skill ? skillTargetLabel(target) || skill.label : [purpose, target].filter(Boolean).join(" · ");
   const verb = waitingForApproval && running ? "等待批准"

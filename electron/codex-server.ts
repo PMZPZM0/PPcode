@@ -365,7 +365,7 @@ export class CodexServer extends EventEmitter {
       // ⛔ 版本号取自 `package.json`（发版时唯一要改的地方）：这里曾长期硬编码字面量
       //   ⇒ 0.0.16 只改了 package.json，clientInfo 还停在 0.0.15；10-09 发版清单里它仍要手工对齐。
       //   `app.getVersion()` 在运行时求值（不是模块体），不违反【91】惰性求值纪律。
-      clientInfo: { name: "codex_harness_desktop", title: "Codex Harness Desktop", version: app.getVersion() },
+      clientInfo: { name: "codex_harness_desktop", title: "PPcode", version: app.getVersion() },
       capabilities: { experimentalApi: true },
     });
     this.notify("initialized", {});

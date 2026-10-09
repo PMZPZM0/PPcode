@@ -54,7 +54,7 @@ const send = readFileSync(join(ROOT, "src", "features", "app-state", "parts", "p
 
 /* ── ② 存储位置：随工作区，不进全局池 ───────────────────────────────────── */
 ok(/path\.join\(workspace, MEMORY_DIR, MEMORY_SUB, ROLES_DIR/.test(roleMemory),
-  "⛔ 角色记忆写在 <workspace>/.codex-harness/memory/roles/ 下（随项目走）");
+  "⛔ 角色记忆写在 <workspace>/.ppcode-harness/memory/roles/ 下（随项目走）");
 ok(!/userDataDir.*MEMORY_FILE|getPath\("userData"\).*MEMORY/.test(roleMemory.slice(0, roleMemory.indexOf("const ROLE_INDEX_FILE"))),
   "⛔ 记忆内容不落 userData（全局池 search 只降权不过滤 ⇒ 会跨项目串扰）");
 ok(/ROLE_INDEX_FILE = "role-memory-index\.json"/.test(roleMemory),

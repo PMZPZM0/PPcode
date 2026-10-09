@@ -1,5 +1,5 @@
 /**
- * Codex Harness 自更新（client side）—— GitHub 单源版
+ * PPcode 自更新（client side）—— GitHub 单源版
  *
  * 设计原则：更新源固定，用户零配置。
  *   - ⛔ 09-15 用户定稿：更新源**只剩 GitHub Releases**，自建发布站不再分发安装包
@@ -17,8 +17,8 @@ import https from "node:https";
 import { shell } from "electron";
 import { URL } from "node:url";
 
-/** GitHub 开源仓库（唯一更新源，走 Releases API） */
-export const GITHUB_REPO = "PMZPZM0/codex-harness-desktop";
+/** GitHub 仓库（唯一更新源，走 Releases API）——PPcode 专用私有仓库 */
+export const GITHUB_REPO = "PMZPZM0/PPcode";
 export const GITHUB_RELEASES_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
 /** 订阅通道（固定 stable） */

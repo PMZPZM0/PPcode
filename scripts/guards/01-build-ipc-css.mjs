@@ -476,7 +476,7 @@ if (!existsSync(stylesEntry)) {
   {
 console.log(C.bold("\n【284】mac 窗口 chrome 让位（红绿灯那一排）"));
 
-/* 10-07 用户实测：「把 Codex Harness 和 logo 放到**系统按键那一排下面**，下面自适应往下挪
+/* 10-07 用户实测：「把 PPcode 和 logo 放到**系统按键那一排下面**，下面自适应往下挪
    一点点」。原做法是 `[data-os="darwin"] .sidebar .brand-row { padding-left: 68px }` —— 把品牌行
    推到红绿灯**右边**、与它们**并排**。用户要的是**上下分层**。
    ⛔ 本条只认「下移」这个形状 + 「下移量」这个取值，不锚具体数字来源的写法 —— 取值本身由

@@ -195,7 +195,7 @@ export const EXTENSIBILITY_ENTRIES = [
     effect: "引擎下一次读取技能清单时生效（新会话即可）；内置技能改动需要重启应用。",
     guards: "【103】技能包装配、【113】【114】元技能与安装前审计",
     pitfalls: [
-      "⛔ 不要放 <工作区>/.codex-harness/skills —— 引擎不认那个目录",
+      "⛔ 不要放 <工作区>/.ppcode-harness/skills —— 引擎不认那个目录",
       "技能被「使用」的常见形态是模型读 SKILL.md（一条命令），界面据此显示「使用技能 …」",
     ],
   },
@@ -228,12 +228,12 @@ export const EXTENSIBILITY_ENTRIES = [
     name: "个性化与指令注入（双轨）",
     purpose: "把用户偏好注入到模型上下文：应用侧与助手侧是两套，互不同步。",
     where: [
-      "%APPDATA%/Codex Harness Desktop/personalization.json → codex-home/AGENTS.md",
+      "%APPDATA%/PPcode/personalization.json → codex-home/AGENTS.md",
       "~/.workbuddy/app/app-config.json 的 personalization.customPrompt（助手侧）",
     ],
     steps: [
       "应用侧：设置 → 个性化 里改（落盘 personalization.json，再经 applyPersonalizationToAgentsMd 写进 AGENTS.md）",
-      "项目约定：写进 <工作区>/AGENTS.md 或 .codex-harness/memory/project/MEMORY.md",
+      "项目约定：写进 <工作区>/AGENTS.md 或 .ppcode-harness/memory/project/MEMORY.md",
     ],
     effect: "引擎每个请求动态读取 AGENTS.md ⇒ 下一轮对话即生效。",
     guards: "【104】【106】记忆层与预算、项目记忆注入口径",
@@ -247,7 +247,7 @@ export const EXTENSIBILITY_ENTRIES = [
     where: [
       "electron/memory-layers.ts（层表与预算）",
       "electron/memory-lessons.ts（classifyMemory 分类优先级）",
-      "<工作区>/.codex-harness/memory/**（实际落盘目录）",
+      "<工作区>/.ppcode-harness/memory/**（实际落盘目录）",
     ],
     steps: [
       "加一层：改 memory-layers.ts 的层表（含预算与注入顺序）",

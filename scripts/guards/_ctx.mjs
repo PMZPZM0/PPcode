@@ -191,7 +191,7 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "dist-electron", "rel
 function walk(dir, exts, out = []) {
   if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
-    if (SKIP_DIRS.has(name) || name.startsWith(".") && name !== ".codex-harness") continue;
+    if (SKIP_DIRS.has(name) || name.startsWith(".") && name !== ".ppcode-harness") continue;
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) walk(p, exts, out);

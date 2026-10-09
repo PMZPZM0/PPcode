@@ -1,16 +1,16 @@
 const { execFileSync } = require("child_process");
 const fs = require("fs");
 const { tok } = require("./gh-api.cjs");
-const REPO = "PMZPZM0/codex-harness-desktop";
+const REPO = "PMZPZM0/PPcode";
 const RELEASE_ID = "388758489";
-const LOG = "D:/Codex Harness Desktop/.e2e-artifacts/gh-upload.log";
+const LOG = "D:/PPcode/.e2e-artifacts/gh-upload.log";
 try { fs.unlinkSync(LOG); } catch {}
 const log = (m) => fs.appendFileSync(LOG, `[${new Date().toLocaleTimeString()}] ${m}\n`, "utf8");
 
 const ITEMS = [
-  { file: "release-0.0.17/Codex Harness Desktop Setup 0.0.17.exe", name: "Codex.Harness.Desktop-0.0.17-win-x64.exe", label: "Windows", type: "application/octet-stream" },
-  { file: "release-mac-0.0.17/final/Codex Harness Desktop-0.0.17-arm64-mac.zip", name: "Codex.Harness.Desktop-0.0.17-arm64-mac.zip", label: "mac arm64", type: "application/zip" },
-  { file: "release-mac-0.0.17/final/Codex Harness Desktop-0.0.17-x64-mac.zip", name: "Codex.Harness.Desktop-0.0.17-x64-mac.zip", label: "mac x64", type: "application/zip" },
+  { file: "release-0.0.17/PPcode Setup 0.0.17.exe", name: "Codex.Harness.Desktop-0.0.17-win-x64.exe", label: "Windows", type: "application/octet-stream" },
+  { file: "release-mac-0.0.17/final/PPcode-0.0.17-arm64-mac.zip", name: "Codex.Harness.Desktop-0.0.17-arm64-mac.zip", label: "mac arm64", type: "application/zip" },
+  { file: "release-mac-0.0.17/final/PPcode-0.0.17-x64-mac.zip", name: "Codex.Harness.Desktop-0.0.17-x64-mac.zip", label: "mac x64", type: "application/zip" },
 ];
 
 function upload(item, useProxy) {
@@ -53,6 +53,6 @@ function upload(item, useProxy) {
     }
     if (!done) log(`!! ${item.label} 三次都没传上去`);
   }
-  fs.writeFileSync("D:/Codex Harness Desktop/.e2e-artifacts/gh-assets.json", JSON.stringify(out, null, 2), "utf8");
+  fs.writeFileSync("D:/PPcode/.e2e-artifacts/gh-assets.json", JSON.stringify(out, null, 2), "utf8");
   log("=== 全部结束 ===");
 })();

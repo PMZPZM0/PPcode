@@ -94,7 +94,7 @@ export function buildAppTrayMenu(deps: AppTrayDeps): MenuItemConstructorOptions[
       },
     },
     { type: "separator" },
-    { label: "退出 Codex Harness Desktop", click: () => deps.quit() },
+    { label: "退出 PPcode", click: () => deps.quit() },
   ];
 }
 
@@ -110,7 +110,7 @@ export function createAppTray(deps: AppTrayDeps): Tray {
     image.setTemplateImage(true);
   }
   tray = new Tray(image);
-  tray.setToolTip(`Codex Harness Desktop ${app.getVersion()}`);
+  tray.setToolTip(`PPcode ${app.getVersion()}`);
 
   if (process.platform === "darwin") {
     // macOS 约定：点菜单栏图标 = 展开它的菜单（不做"点一下藏窗口"，那在 mac 上很反直觉）

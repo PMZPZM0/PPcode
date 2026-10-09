@@ -89,7 +89,9 @@ export function FieldHelp({ text }: { text: string }) {
 }
 
 export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string }) => Promise<boolean> }) {
-  const [mode, setMode] = useState<"custom" | "pptoken" | "relay" | "openai">("pptoken");
+  /* ⛔ 默认落在「中转站账户」（PPcode 走 PPtoken 网关的账号登录）：打开登录页即可用邮箱+密码开聊，
+     不必先去别处申请 API Key。其余三个入口（Key / OpenAI 官方 / 自定义）保留为备选。 */
+  const [mode, setMode] = useState<"custom" | "pptoken" | "relay" | "openai">("relay");
   const [username, setUsername] = useState(() => localStorage.getItem("username") || "");
   const [apiBase, setApiBase] = useState("https://api.pptoken.cc/v1");
   const [apiKey, setApiKey] = useState("");
@@ -194,13 +196,13 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
   return (
     <div className="login-screen">
       <div className="login-card">
-        <div className="login-brand"><div className="brand-mark login-logo"><b className="">CH</b></div><div><strong>Codex Harness</strong><span>Desktop</span></div></div>
-        <h1>欢迎使用 Codex Harness</h1>
+        <div className="login-brand"><div className="brand-mark login-logo"><b className="">PP</b></div><div><strong>PPcode</strong><span>Desktop</span></div></div>
+        <h1>欢迎使用 PPcode</h1>
         <p className="login-sub">配置 API 即可开始；暂不登录可直接体验主界面</p>
 
         <div className="login-options">
           <button type="button" className={`login-option ${mode === "pptoken" ? "active" : ""}`} onClick={() => { setMode("pptoken"); setEndpointOpen(false); queueMicrotask(() => apiKeyRef.current?.focus()); }}>
-            <Rocket size={16} /><span className="login-option-title">PPtoken 推荐</span><small>中转线路 · 粘贴 Key 即用</small>
+            <Rocket size={16} /><span className="login-option-title">PPcode 推荐</span><small>中转线路 · 粘贴 Key 即用</small>
           </button>
           <button type="button" className={`login-option ${mode === "openai" ? "active" : ""}`} onClick={() => { setMode("openai"); setEndpointOpen(false); }}>
             <CircleGauge size={16} /><span className="login-option-title">OpenAI 官方订阅</span><small>ChatGPT 账号设备码登录</small>
@@ -287,7 +289,7 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
         )}
         <button className="ghost login-skip" onClick={onSkip}><WifiOff size={14} />暂时不登录，直接进入</button>
         <a className="login-sponsor-link" href="https://api.pptoken.cc/register?aff=X82JSNVC3W3S" onClick={(event) => { event.preventDefault(); void window.codex.openExternal("https://api.pptoken.cc/register?aff=X82JSNVC3W3S"); }}>
-          <Rocket size={12} />没有 API Key？注册 PPtoken 领取体验额度<ExternalLink size={11} />
+          <Rocket size={12} />没有 API Key？注册 PPcode 领取体验额度<ExternalLink size={11} />
         </a>
         <div className="login-foot">探测成功后会自动导入模型并完成配置</div>
       </div>

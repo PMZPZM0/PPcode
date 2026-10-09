@@ -156,7 +156,7 @@ export /** 当前是否 macOS：优先 preload 暴露的 process.platform（打�
  *  转换规则在 src/lib/hotkey.mjs 里（纯函数 —— 本机是 Windows 跑不到 mac 分支，只有把它做成
  *  纯函数，预检才能对「mac 上显示成什么」给出确定性断言）。 */
 /** 拼**展示用**的路径（渲染层没有 node:path，写死 `\` 会在 mac 上显示成
- *  `/Users/x/Library/Application Support/Codex Harness Desktop\codex-home\skills` 这种四不像）。 */
+ *  `/Users/x/Library/Application Support/PPcode\codex-home\skills` 这种四不像）。 */
 function displayPath(base: string, ...parts: string[]): string {
   const sep = isMacPlatform() ? "/" : "\\";
   return [String(base ?? "").replace(/[\\/]+$/, ""), ...parts].join(sep);

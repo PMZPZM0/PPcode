@@ -15,7 +15,7 @@ description: 把干成的活沉淀成可复用的技能（经验包）：什么�
 
 记忆与技能**分工不同，缺一不可**：
 
-- **记忆**（\`<workspace>/.codex-harness/memory/\`）记「**是什么**」：事实、约束、纪律、踩过的坑（\`lessons/<分类>.md\`，**用户纠错单独一类**）。
+- **记忆**（\`<workspace>/.ppcode-harness/memory/\`）记「**是什么**」：事实、约束、纪律、踩过的坑（\`lessons/<分类>.md\`，**用户纠错单独一类**）。
   ⛔ 落点**随后端**：内置后端写上面的 \`lessons/\`；**MCP 记忆后端**改调 \`memory-write\`（见 \`memory-mcp-backend\`），别写文件。
 - **技能**（\`<cwd>/.codex/skills/\`）记「**怎么做**」：一条可复用的操作流程，含确切命令与判据。
 
@@ -37,7 +37,7 @@ description: 把干成的活沉淀成可复用的技能（经验包）：什么�
 | **项目专属（默认）** | \`<cwd>/.codex/skills/<名>/SKILL.md\` | \`skills/list\` 里 \`scope:"repo"\`，**随项目走、原生发现**（已实证） |
 | 跨项目通用 | \`$CODEX_HOME/skills/<名>/SKILL.md\` | \`skills/list\` 里跨项目可见 |
 
-- ⛔ **不要**写 \`<workspace>/.codex-harness/skills/\`：引擎**不认**这个目录（实测 \`skills/list\` 里不出现）。\`.codex-harness/\` 是应用自己的项目数据目录（记忆层在用）。
+- ⛔ **不要**写 \`<workspace>/.ppcode-harness/skills/\`：引擎**不认**这个目录（实测 \`skills/list\` 里不出现）。\`.ppcode-harness/\` 是应用自己的项目数据目录（记忆层在用）。
 - ⛔ 项目信任策略只挡 config / hooks / exec 策略，**技能照样加载** —— 项目级技能不需要用户先点「信任此项目」。
 
 ## 格式（硬要求）

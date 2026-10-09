@@ -22,7 +22,7 @@ const electronPath = require("electron");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** 应用名必须与 electron/main.ts 里 app.setPath("userData", …) 的那串一致 */
-const APP_DIR_NAME = "Codex Harness Desktop";
+const APP_DIR_NAME = "PPcode";
 
 /** 用户真实的 userData 目录（可用 CODEX_HARNESS_REAL_USER_DATA 覆盖） */
 export function realUserDataDir() {

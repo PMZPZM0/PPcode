@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, FileText, FolderOpen, RotateCw, Trash2 } fro
 /**
  * 工作日志管理（09-30 用户：「记忆，有记忆管理，会话有归档管理，现在就是工作日志这个没有地方管理懂吗」）。
  *
- * 管的是**项目里的工作日志与项目记忆**：`<项目>/.codex-harness/memory/**`
+ * 管的是**项目里的工作日志与项目记忆**：`<项目>/.ppcode-harness/memory/**`
  *   · logs/YYYY-MM-DD.md   每日工作日志（需求 → 结论，记忆捕获链写入）
  *   · MEMORY.md / LESSONS.md / lessons/  长期记忆与坑
  *   · archive/ project/    归档与项目资料
@@ -101,7 +101,7 @@ export function WorkLogsSection({ onNotice, openAppConfirm }: {
     <section className="settings-section stack is-settings-flow work-logs-card">
       <div className="settings-subhead"><FileText size={13} />工作日志（项目工作记录）</div>
       <p className="muted">
-        Codex 在每个项目里写下的工作日志与项目记忆（<code>&lt;项目&gt;/.codex-harness/memory/</code>）：每日日志、长期记忆、坑与纪律。
+        Codex 在每个项目里写下的工作日志与项目记忆（<code>&lt;项目&gt;/.ppcode-harness/memory/</code>）：每日日志、长期记忆、坑与纪律。
         点一条看正文，勾选后可批量删除。
         <strong>⛔ 这是项目里的工作记录，不是对话记录</strong>——会话的归档 / 删除在「归档管理」页，记忆档案在「记忆管理」页。
       </p>
@@ -121,7 +121,7 @@ export function WorkLogsSection({ onNotice, openAppConfirm }: {
 
       {!data ? <p className="muted">正在扫描…</p> : null}
       {data && !withLogs.length ? (
-        <p className="muted">还没有任何项目写过工作日志。（Codex 在项目里干活并留下结论时，会自动写进该项目 .codex-harness/memory/logs/）</p>
+        <p className="muted">还没有任何项目写过工作日志。（Codex 在项目里干活并留下结论时，会自动写进该项目 .ppcode-harness/memory/logs/）</p>
       ) : null}
 
       <div className="codex-logs-tree">

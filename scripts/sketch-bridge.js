@@ -1,5 +1,5 @@
 /*
- * nuphus 草图桥 —— 运行在**草图文档**（sketch://app）里，把当前画布内容报给 Codex Harness 主窗口，
+ * nuphus 草图桥 —— 运行在**草图文档**（sketch://app）里，把当前画布内容报给 PPcode 主窗口，
  * 并把宿主/模型送来的文档写回画布。
  *
  * ⛔ 这段代码不在我们渲染层执行：`scripts/build-sketch-bundle.mjs` 把它**原样内联**进

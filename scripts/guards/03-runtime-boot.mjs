@@ -983,12 +983,12 @@ const appSrc4 = readAppUi();
       "【123】没有 setContextMenu 缓存菜单 —— 状态行会过期说假话"
     );
     // 菜单条目面（用户要「功能齐全」）：显隐 / 状态 / 关闭到托盘开关 / 打开数据目录 / 看日志 / 退出
-    const entries = ["显示主窗口", "隐藏主窗口", "运行中：", "空闲", "关闭窗口时最小化到托盘", "打开数据目录", "查看引擎日志", "退出 Codex Harness Desktop"];
+    const entries = ["显示主窗口", "隐藏主窗口", "运行中：", "空闲", "关闭窗口时最小化到托盘", "打开数据目录", "查看引擎日志", "退出 PPcode"];
     const missingEntry = entries.filter((e) => !traySrc.includes(e));
     (missingEntry.length === 0 ? ok : fail)(
       `【123】菜单条目齐（缺 ${missingEntry.join(" / ") || "无"}）`
     );
-    (/setToolTip\(`Codex Harness Desktop \$\{app\.getVersion\(\)\}`\)/.test(traySrc) ? ok : fail)(
+    (/setToolTip\(`PPcode \$\{app\.getVersion\(\)\}`\)/.test(traySrc) ? ok : fail)(
       "【123】托盘 tooltip 带版本号（悬停即可确认在跑哪一版）"
     );
 

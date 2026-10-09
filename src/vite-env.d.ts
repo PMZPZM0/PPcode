@@ -878,11 +878,11 @@ interface Window {
     readModel(path: string): Promise<{ data: Uint8Array; size: number }>;
     /* 删分镜表的工作区文件（只删 .drama-canvas/storyboards/<name>.json 这一个文件；不存在时幂等返回 removed:false） */
     dramaCanvasStoryboardFileRemove(input: { workspace: string; name: string }): Promise<{ removed: boolean }>;
-    /* 扫各项目的**工作日志与项目记忆**（<项目>/.codex-harness/memory/**：长期记忆 / 坑与纪律 / logs 日报 / archive / project）。项目清单来自 rollout 扫出的 cwd 集合。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事 */
+    /* 扫各项目的**工作日志与项目记忆**（<项目>/.ppcode-harness/memory/**：长期记忆 / 坑与纪律 / logs 日报 / archive / project）。项目清单来自 rollout 扫出的 cwd 集合。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事 */
     workLogsScan(): Promise<{ projects: Array<{ cwd: string; name: string; memoryDir: string; exists: boolean; bytes: number; files: Array<{ path: string; rel: string; kind: string; bytes: number; mtime: number }> }> }>;
-    /* 读一份工作日志/记忆文件的正文（UI 内查看）。路径必须落在某个项目的 .codex-harness/memory 之下；>512KB 拒绝（提示去文件管理器打开） */
+    /* 读一份工作日志/记忆文件的正文（UI 内查看）。路径必须落在某个项目的 .ppcode-harness/memory 之下；>512KB 拒绝（提示去文件管理器打开） */
     workLogsRead(input: { path: string }): Promise<{ path: string; text: string; bytes: number; mtime: number }>;
-    /* 删工作日志文件（销毁性，不会重建）：只删 .codex-harness/memory 之下的普通文件；目录、越界路径一律拒绝 */
+    /* 删工作日志文件（销毁性，不会重建）：只删 .ppcode-harness/memory 之下的普通文件；目录、越界路径一律拒绝 */
     workLogsDelete(input: { paths: string[] }): Promise<{ deleted: number; bytes: number; failed: string[] }>;
     /* 按顺序合并视频片段成一条成片（整片导出）：先 -c copy，失败回落统一重编码；输出 <workspace>/.drama-canvas/export/ */
     videoConcat(input: { workspace: string; name: string; files: string[]; width?: number; height?: number; fps?: number }): Promise<{ path: string; bytes: number; mode: "copy" | "reencode"; parts: number }>;
@@ -950,7 +950,7 @@ interface Window {
     declaredPluginsToggle(input: { id: string; enabled: boolean }): Promise<{ ok: boolean; error?: string; id?: string; enabled?: boolean; requiresRestart?: boolean }>;
     /* 10-04 打开用户插件目录（不存在则创建） */
     declaredPluginsOpenDirs(): Promise<{ ok: boolean; error?: string; userDir?: string; builtinDir?: string }>;
-    /* 10-01 新增：项目级本地知识库（<项目>/.codex-harness/knowledge/） */
+    /* 10-01 新增：项目级本地知识库（<项目>/.ppcode-harness/knowledge/） */
     listKnowledgeDocs(input?: { workspace?: string }): Promise<KbDocMeta[]>;
     addKnowledgeText(input: { workspace?: string; title?: string; text?: string; source?: string }): Promise<KbDocMeta>;
     addKnowledgeFiles(input: { workspace?: string; paths?: string[] }): Promise<{ imported: { title: string; id: string }[]; failures: string[] }>;

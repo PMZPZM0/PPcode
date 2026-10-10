@@ -1061,7 +1061,8 @@ w.postMessage({id:1,op:"list",root});
   //    都不会把它转正 ⇒ 草稿对匿名 API 不可见、/releases/latest 回落上一版、应用内更新器永远收不到
   //    这一版（当时 CI 全绿、资产也 clobber 覆盖了，看着像发布成功，实则用户拿不到）。
   //    锚定「拿 isDraft 去判 + 命中就 --draft=false」这一对动作，而不是只看有没有 --draft 字样。
-  (/gh release view "v\$\{VERSION\}" --json isDraft[\s\S]{0,120}?gh release edit "v\$\{VERSION\}" --draft=false/.test(release) ? ok : fail)(
+  (/gh release view "v\$\{VERSION\}" --repo "\$\{PUBLISH_REPO\}" --json isDraft[\s\S]{0,300}?gh release edit "v\$\{VERSION\}" --draft=false --repo "\$\{PUBLISH_REPO\}"/.test(release) ? ok : fail)(
+    // 10-10 仓库拆分：发布目标改为跨仓（PUBLISH_REPO），转正兜底同样带 --repo —— 锚定"判 isDraft + 命中转正"这对动作不变
     "【29】release.yml 有草稿态转正兜底（删 tag 重建会让同名 release 退回草稿 ⇒ 用户永远收不到更新）"
   );
   (release.includes('gh release edit "v${VERSION}" --notes-file "${NOTES}"') ? ok : fail)(

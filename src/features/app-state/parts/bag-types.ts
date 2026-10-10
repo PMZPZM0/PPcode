@@ -414,8 +414,8 @@ export interface Bag {
   setSubAgentRunning: React.Dispatch<React.SetStateAction<string | null>>;
   rpaRunning: string | null;
   setRpaRunning: React.Dispatch<React.SetStateAction<string | null>>;
-  agentAsk: { threadId: string; question: string; options: string[]; recommended: string | null; allowFree: boolean; multiple?: boolean; resolve: (answer: string) => void; } | null;
-  setAgentAsk: React.Dispatch<React.SetStateAction<{ threadId: string; question: string; options: string[]; recommended: string | null; allowFree: boolean; multiple?: boolean; resolve: (answer: string) => void; } | null>>;
+  agentAsk: { threadId: string; question: string; options: string[]; recommended: string | null; allowFree: boolean; multiple?: boolean|undefined; resolve: (answer: string) => void; } | null;
+  setAgentAsk: React.Dispatch<React.SetStateAction<{ threadId: string; question: string; options: string[]; recommended: string | null; allowFree: boolean; multiple?: boolean|undefined; resolve: (answer: string) => void; } | null>>;
   rpaRecipes: any[];
   setRpaRecipes: React.Dispatch<React.SetStateAction<any[]>>;
   taskList: any[];
@@ -707,8 +707,8 @@ export interface Bag {
   setRuntimeSpeed: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   runtimeActiveId: string;
   setRuntimeActiveId: React.Dispatch<React.SetStateAction<string>>;
-  runtimeModal: { id: string; name: string; mode: "install" | "uninstall"; done: boolean; failed: boolean; } | null;
-  setRuntimeModal: React.Dispatch<React.SetStateAction<{ id: string; name: string; mode: "install" | "uninstall"; done: boolean; failed: boolean; } | null>>;
+  runtimeModal: { id: string; name: string; mode: "install" | "uninstall"; done: boolean; failed: boolean; error: string; } | null;
+  setRuntimeModal: React.Dispatch<React.SetStateAction<{ id: string; name: string; mode: "install" | "uninstall"; done: boolean; failed: boolean; error: string; } | null>>;
   refreshDevRuntimes: () => void;
   capabilityRows: { id: string; label: string; purpose: string; activeId: string | null; activeLabel: string; activeWhy: string; alternatives: { id: string; label: string; available: boolean; }[]; note: string; }[];
   setCapabilityRows: React.Dispatch<React.SetStateAction<{ id: string; label: string; purpose: string; activeId: string | null; activeLabel: string; activeWhy: string; alternatives: { id: string; label: string; available: boolean; }[]; note: string; }[]>>;

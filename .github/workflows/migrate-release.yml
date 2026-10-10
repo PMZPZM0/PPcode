@@ -31,6 +31,9 @@ jobs:
       - name: 在本仓重建 Release（v0.1.0）
         env:
           GH_TOKEN: ${{ github.token }}
+          # ⛔ 本 job 不 checkout（不需要源码）⇒ runner 上没有 .git，gh 推断不了仓库
+          #    ⇒ 必须显式给 GH_REPO（第一版漏了它，run 38035808094 报 "not a git repository"）
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           if gh release view "v0.1.0" >/dev/null 2>&1; then

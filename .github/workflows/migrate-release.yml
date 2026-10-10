@@ -1,0 +1,48 @@
+name: Migrate legacy releases
+
+# ⛔ 一次性迁移工作流：把私有源码仓（ppcode-src）里已有的 Release 资产搬到本仓。
+#   为什么要在这里跑而不是本机下载再上传：v0.1.0 三端资产约 2.2GB，走 Actions 的
+#   runner 带宽（服务器间）不占本机网络。跑完并验证后，删除本文件与 MIGRATE_TOKEN。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: migrate-release
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: 读取旧 Release 元数据 + 下载资产（从私有源码仓）
+        env:
+          GH_TOKEN: ${{ secrets.MIGRATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/PMZPZM0/ppcode-src/releases/tags/v0.1.0" > rel.json
+          node -e "const r=require('./rel.json');require('fs').writeFileSync('notes.md', r.body||'（无说明）')"
+          gh release download v0.1.0 --repo PMZPZM0/ppcode-src --dir assets --clobber
+          echo "=== 下载完成 ===" && du -sh assets && ls -l assets
+
+      - name: 在本仓重建 Release（v0.1.0）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "v0.1.0" >/dev/null 2>&1; then
+            echo "release 已存在 → 更新资产与说明（可重跑）"
+            gh release edit "v0.1.0" --notes-file notes.md
+            gh release upload "v0.1.0" assets/* --clobber
+          else
+            gh release create "v0.1.0" --title "v0.1.0" --notes-file notes.md assets/*
+          fi
+          # ⛔ 转正兜底：删 tag 重建会让同名 release 退回草稿态，草稿对匿名 API 不可见
+          if [ "$(gh release view "v0.1.0" --json isDraft --jq '.isDraft')" = "true" ]; then
+            gh release edit "v0.1.0" --draft=false
+          fi
+          echo "=== 线上核对 ==="
+          gh release view "v0.1.0" --json tagName,url,assets --jq '.url, (.assets[] | "  \(.name)  \(.size) B")'

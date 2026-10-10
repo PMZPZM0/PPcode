@@ -1,10 +1,12 @@
 name: Release
 
-# ⛔ 为什么发布要跑在 Actions 里而不是本机：
-#   本机的 GitHub 远端是 SSH（deploy key `~/.ssh/codex_gh_release`），SSH **只能推代码/标签**，
-#   既不能创建 Release 也不能上传资产；本机也没有 gh CLI 与任何 API token。
-#   所以「用 SSH 发版」的唯一可行形态就是：`git push origin v0.0.18` → 本工作流用仓库自带的
-#   GITHUB_TOKEN 构建三端包并发布。发版动作 = 推一个 tag，其余全在这里完成。
+# ⛔ 10-10 仓库拆分后的形态：
+#   本仓（ppcode-src，私有）= 源码 + 构建；公开发布仓 PMZPZM0/PPcode = 功能介绍 + 安装包
+#   （应用内「检查更新」匿名拉它的 /releases/latest，所以它必须公开 —— 但公开就不能放源码）。
+#   发版动作不变 = `git push origin v0.0.x` → 本工作流在本仓构建三端包，
+#   publish 用 secrets.PPCODE_RELEASE_TOKEN **跨仓**发布到公开发布仓。
+#   （历史：本机远端是 SSH deploy key，只能推代码/标签，建 Release/传资产必须靠 Actions ——
+#     所以发布永远跑在 Actions 里，不在本机。）
 on:
   push:
     tags:
@@ -76,10 +78,15 @@ jobs:
           echo "=== 待发布资产 ==="
           (cd dist-assets && sha256sum ./* | tee ../assets-sha256.txt && ls -l)
 
-      - name: 创建或更新 Release 并上传资产
+      - name: 创建或更新 Release 并上传资产（跨仓 → 公开发布仓 PMZPZM0/PPcode）
         shell: bash
+        # ⛔ 10-10 仓库拆分：本仓（ppcode-src）是**私有源码仓**，公开发布仓 PMZPZM0/PPcode 只放
+        #    功能介绍与安装包（应用内「检查更新」匿名拉它的 /releases/latest）。
+        #    ⇒ 构建仍在本仓跑，发布用 PAT（secrets.PPCODE_RELEASE_TOKEN，需对公开发布仓
+        #    contents:write）**跨仓**写 Release。⛔ 本仓自带 GITHUB_TOKEN 写不了别的仓。
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PPCODE_RELEASE_TOKEN }}
+          PUBLISH_REPO: PMZPZM0/PPcode
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
@@ -88,22 +95,22 @@ jobs:
             echo "::error::缺少更新说明 ${NOTES}（每次发版都要写，它是应用内「发现新版本」弹窗展示的内容）"
             exit 1
           fi
-          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+          if gh release view "v${VERSION}" --repo "${PUBLISH_REPO}" >/dev/null 2>&1; then
             echo "release v${VERSION} 已存在 → 更新资产与说明（可重跑）"
             # ⛔ 已存在时 gh release upload 只换**资产**，说明正文不会跟着变 ⇒ 必须显式重写，
             #    否则覆盖重发后发布页永远停在首次创建时那版旧正文（10-02 实测踩过）。
-            gh release edit "v${VERSION}" --notes-file "${NOTES}"
+            gh release edit "v${VERSION}" --notes-file "${NOTES}" --repo "${PUBLISH_REPO}"
           else
-            gh release create "v${VERSION}" --title "v${VERSION}" --notes-file "${NOTES}"
+            gh release create "v${VERSION}" --title "v${VERSION}" --notes-file "${NOTES}" --repo "${PUBLISH_REPO}"
           fi
-          gh release upload "v${VERSION}" dist-assets/* --clobber
+          gh release upload "v${VERSION}" dist-assets/* --clobber --repo "${PUBLISH_REPO}"
           # ⛔⛔ 转正兜底：**删 tag 重建会让同名 release 退回草稿态**（GitHub 的行为），
           #    而 gh release upload / edit(notes) 都不会把它转正。草稿对匿名 API 不可见 ⇒
           #    /releases/latest 回落到上一版、应用内「发现新版本」永远收不到这一版（10-02 全量实测）。
-          if [ "$(gh release view "v${VERSION}" --json isDraft --jq '.isDraft')" = "true" ]; then
+          if [ "$(gh release view "v${VERSION}" --repo "${PUBLISH_REPO}" --json isDraft --jq '.isDraft')" = "true" ]; then
             echo "release v${VERSION} 处于草稿态 → 转为正式发布"
-            gh release edit "v${VERSION}" --draft=false
+            gh release edit "v${VERSION}" --draft=false --repo "${PUBLISH_REPO}"
           fi
           echo "=== 线上资产核对（size 应与上面 sha256sum 那步的 ls 一致；digest 是 GitHub 侧实算） ==="
-          gh release view "v${VERSION}" --json tagName,url,assets \
+          gh release view "v${VERSION}" --repo "${PUBLISH_REPO}" --json tagName,url,assets \
             --jq '.url, (.assets[] | "  \(.name)  \(.size) B  \(.digest // "(digest 待生成)")")'

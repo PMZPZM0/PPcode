@@ -89,6 +89,27 @@ try {
   const before = searchDocs(ws, "第5段", 8);
   ok(before.length > 0, `常见查询仍能召回（${before.length} 条）`);
 
+  // ── 判据 4b（2026-10-10 新增）：**中文无空格查询必须能召回** ──────────────
+  // ⛔⛔ 这是实测抓到的真 bug 的回归防线：全文档档原来用 `query.toLowerCase().split(/\s+/)`
+  //   分词 ⇒ 中文没有空格，"记忆库容量" 切出来是一个整串 token，`indexOf` 只能命中
+  //   **完全连续**的同一串；而文档里写的是「记忆库**的**容量」⇒ 实测召回 **0 条**
+  //   （查询里手动加个空格才有 1 条）。⇒ 夹具故意让**查询用词 ≠ 文档用词**且**不含空格**，
+  //   这正是用户最自然的提问方式。0 条 = 那个 bug 回来了。
+  {
+    const zhWs = mkdtempSync(join(tmpdir(), "kb-guard-zh-"));
+    mkdirSync(join(zhWs, ".codex-harness", "knowledge"), { recursive: true });
+    try {
+      addDocument(zhWs, { title: "中文召回样本", text: "记忆库的容量上限是三万字。超过之后尾部内容会被截断。", source: "guard" });
+      const zhHits = searchDocs(zhWs, "记忆库容量", 5);
+      ok(zhHits.length > 0, `中文无空格查询能召回（"记忆库容量" → ${zhHits.length} 条）`);
+      // ⛔ 反向：放宽分词最容易引入的副作用是"什么都能召回" —— 库里没有的词必须 0 条。
+      const missHits = searchDocs(zhWs, "量子纠缠西瓜糖", 5);
+      ok(missHits.length === 0, `库里没有的词不召回（防分词放宽 ⇒ 噪声召回，实际 ${missHits.length} 条）`);
+    } finally {
+      rmSync(zhWs, { recursive: true, force: true });
+    }
+  }
+
   // ── 判据 5（2026-10-04 补）：**语义档**的 snippet 也必须围绕命中词 ──
   //⛔ 之前只测了 searchDocs（全文档档），而真正的 bug 在 searchDocsSemantic里
   //   （`chunk.slice(0,260)` 取块首）。两条档的 snippet 定位必须各自被测到。
@@ -238,6 +259,35 @@ try {
       !/laya/i.test(codeOnly(readFileSync(join(ROOT, "electron", "features", "knowledge-base-ipc.ts"), "utf8"))),
       "UI 手动路径（kb:add-text / kb:add-files）不接 Laya 门禁（用户手动导入是明确意图）",
     );
+  }
+
+  /* ── 判据 9（2026-10-10 用户令「被委派会话也要能用知识库」）────────────────
+     ⛔ 为什么必须钉：被委派会话的工具面走的是**另一条路**（delegation / teams 在建会话时各自传
+     dynamicTools），与主会话的 `harness_tools` 网关**完全不同源** ⇒ 只改主会话那条，
+     子智能体 / 专家 / 团成员照样一条都读不到（模型会回「我读不到知识库」）。
+     ⛔ 同时钉住「只给只读」：写操作不许给被委派会话 —— 那是越权面。 */
+  {
+    const delegation = readFileSync(join(ROOT, "electron", "features", "delegation.ts"), "utf8");
+    const teams = readFileSync(join(ROOT, "electron", "features", "teams-ipc.ts"), "utf8");
+    const boot9 = readFileSync(join(ROOT, "electron", "features", "boot.ts"), "utf8");
+    const dktSrc = readFileSync(join(ROOT, "electron", "delegate-knowledge-tool.ts"), "utf8");
+    ok(/dynamicTools: \[\.\.\.teamTools, buildDelegateKnowledgeTool\(\)/.test(delegation),
+      "被委派会话（子智能体 / 专家）拿到知识库只读工具");
+    const teamHits = teams.match(/buildDelegateKnowledgeTool\(\)/g) ?? [];
+    ok(teamHits.length >= 2,
+      `专家团两条建会话路径（团主 / 成员）都挂了只读知识库工具（实际 ${teamHits.length} 处）`);
+    ok(teams.includes('buildRoleMemoryTool({ kind: "team-member"') && teamHits.length >= 2,
+      "成员会话同时拿到「记忆写入 + 知识库检索」");
+    ok(/void handleDelegateKnowledgeToolCall\(\{ userDataDir/.test(boot9),
+      "⛔ 主进程应答知识库工具调用（被委派会话的事件会被 filterForRenderer 裁掉，不在这里应答 = 挂到超时）");
+    ok(/!== DELEGATE_KNOWLEDGE_TOOL\) return false/.test(dktSrc),
+      "⛔ 只认自己那一个工具名（返回 false 交回原流程，不吞别人的调用）");
+    ok(/params\?\.threadId/.test(dktSrc) && !/args\.threadId/.test(codeOnly(dktSrc)),
+      "⛔ 身份只取引擎下发的 threadId（⛔ 不用 args 里模型自报的值）");
+    ok(/searchDocs\(/.test(dktSrc),
+      "执行端复用 knowledge-base 的 searchDocs（⛔ 不另写一份检索 —— 两份必然漂）");
+    ok(!/harness_tools/.test(codeOnly(dktSrc)),
+      "⛔ 不给被委派会话 harness_tools 网关（里面装着写操作 = 越权面）");
   }
 } finally {
   rmSync(ws, { recursive: true, force: true });

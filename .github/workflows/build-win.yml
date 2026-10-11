@@ -59,9 +59,28 @@ jobs:
           test -d release/win-unpacked/resources/tools
           node scripts/verify-packaged-tools.cjs release/win-unpacked/resources/tools
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: win-x64
-          path: release/*.exe
-          if-no-files-found: error
+      - name: 上传 Windows 安装包到公开发布仓 Release（⛔ 不走 artifact：配额打满会直接失败）
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PPCODE_RELEASE_TOKEN }}
+          PUBLISH_REPO: PMZPZM0/PPcode
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          NOTES="docs/releases/v${VERSION}.md"
+          [ -f "${NOTES}" ] || { echo "::error::缺少更新说明 ${NOTES}"; exit 1; }
+          ASSET=$(find release -maxdepth 1 -type f -name "*.exe" | head -1)
+          [ -n "${ASSET}" ] || { echo "::error::没找到 exe 产物"; exit 1; }
+          NAME="PPcode-${VERSION}-win-x64.exe"
+          sha256sum "${ASSET}" | tee "sha256-${NAME}.txt"
+          for i in $(seq 1 12); do
+            gh release view "v${VERSION}" --repo "${PUBLISH_REPO}" >/dev/null 2>&1 && break
+            echo "等待 Release v${VERSION} 被创建…（${i}/12）"; sleep 20
+          done
+          if gh release view "v${VERSION}" --repo "${PUBLISH_REPO}" >/dev/null 2>&1; then
+            gh release edit "v${VERSION}" --repo "${PUBLISH_REPO}" --notes-file "${NOTES}"
+          else
+            gh release create "v${VERSION}" --repo "${PUBLISH_REPO}" --title "v${VERSION}" --notes-file "${NOTES}"
+          fi
+          cp "${ASSET}" "${NAME}"
+          gh release upload "v${VERSION}" "${NAME}" "sha256-${NAME}.txt" --clobber --repo "${PUBLISH_REPO}"

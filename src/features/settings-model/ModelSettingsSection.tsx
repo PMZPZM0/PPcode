@@ -5,7 +5,6 @@
  * props = 该块用到的 App 状态与回调（tsc 驱动补齐，未做语义改动）。
  */
 import { AppSelect } from "../../components/AppSelect";
-import { DEFAULT_AFF_CODE } from "../../lib/relay-affiliate";
 import { Check, ExternalLink, Eye, EyeOff, ListChecks, PenLine, Plus, RefreshCw, Rocket, Store, Trash2, X, Zap } from "lucide-react";
 import { PageInfo } from "../../components/SettingsHead";
 import { AVATAR_GRADIENTS, avatarToneOf } from "../../lib/entity-avatar";
@@ -68,7 +67,7 @@ export function ModelSettingsSection(props: ModelSettingsSectionProps) {
                                   <strong>{p.name}</strong>
                                   {p.provider === "pptoken" && <b className="provider-sponsor-badge">官方推荐</b>}
                                   {p.provider === "pptoken" && (
-                                    <button className="provider-visit-btn" title="打开 PPtoken 官网（注册领额度）" onClick={(event) => { event.stopPropagation(); void window.codex.openExternal(`https://api.pptoken.cc/register?aff=${DEFAULT_AFF_CODE}`); }}>
+                                    <button className="provider-visit-btn" title="打开 PPtoken 官网（注册领额度）" onClick={(event) => { event.stopPropagation(); void window.codex.openExternal("https://api.pptoken.cc/register?aff=X82JSNVC3W3S"); }}>
                                       <ExternalLink size={11} />
                                     </button>
                                   )}
@@ -107,12 +106,14 @@ export function ModelSettingsSection(props: ModelSettingsSectionProps) {
                       {/* 免费模型网关推荐卡（free-gateway 域，10-12）：第三方开源侧车，⛔ 免责声明是契约（守卫 12c）——
                           自包含组件（本地 state + SettingsDialog），不占 bag；注册走既有 custom-model:save。 */}
                       <FreeGatewayRecommendCard
+                        setNotice={setNotice}
                         registered={providersList.some((p: any) => p.provider === "free-gateway")}
                         onSelect={() => {
                           const fg = providersList.find((p: any) => p.provider === "free-gateway");
                           if (fg) { setEditingProvider("free-gateway"); setCustomDraft({ provider: "free-gateway", name: fg.name, model: fg.model, baseUrl: fg.baseUrl, contextWindow: String(fg.contextWindow ?? 128000), wireApi: "responses" as const, apiKey: "", models: fg.models ?? [], enabled: fg.enabled !== false }); }
                         }}
                         onRegistered={() => {
+                          // 注册成功：选中供应商（右侧出模型清单）+ 自动启用（其他供应商自动关闭）→ 用户点保存重启
                           setEditingProvider("free-gateway");
                           setCustomDraft({ provider: "free-gateway", name: "免费模型网关", model: "", baseUrl: "http://127.0.0.1:18900/v1", contextWindow: "128000", wireApi: "responses" as const, apiKey: "", models: [], enabled: true });
                           void window.codex.listCustomModels().then(({ providers }: any) => {
@@ -121,6 +122,7 @@ export function ModelSettingsSection(props: ModelSettingsSectionProps) {
                           });
                           if (setProviderEnabled) setProviderEnabled("free-gateway", true);
                         }}
+                        onUninstalled={() => removeProvider("free-gateway")}
                       />
                     </div>
                     <div className="provider-form">
@@ -145,7 +147,7 @@ export function ModelSettingsSection(props: ModelSettingsSectionProps) {
                         {editingProvider && <button className="icon-button" title="删除供应商" onClick={async () => { if (!(await openAppConfirm("删除供应商", `供应商「${customDraft.name}」将被删除，此操作无法撤销。`, "删除"))) return; void removeProvider({ provider: customDraft.provider, name: customDraft.name, model: customDraft.model, baseUrl: customDraft.baseUrl }); }}><Trash2 size={14} /></button>}
                       </div>
                       {customDraft.provider === "pptoken" && !providersList.some((p: any) => p.provider === "pptoken") && (
-                        <p className="provider-form-hint">只需下方填入 API Key 即可使用；<a href={`https://api.pptoken.cc/register?aff=${DEFAULT_AFF_CODE}`} onClick={(event) => { event.preventDefault(); void window.codex.openExternal(`https://api.pptoken.cc/register?aff=${DEFAULT_AFF_CODE}`); }}>注册 PPtoken 领取体验额度 ↗</a></p>
+                        <p className="provider-form-hint">只需下方填入 API Key 即可使用；<a href="https://api.pptoken.cc/register?aff=X82JSNVC3W3S" onClick={(event) => { event.preventDefault(); void window.codex.openExternal("https://api.pptoken.cc/register?aff=X82JSNVC3W3S"); }}>注册 PPtoken 领取体验额度 ↗</a></p>
                       )}
                       {/* 本地模型快捷预设（09-19 用户要求「做一下本地模型适配」）：
                           本地服务不必知道端口与路径，点一下把地址/名称/并发一次填好。

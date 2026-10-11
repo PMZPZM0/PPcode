@@ -1516,6 +1516,44 @@ const CHECKS = [
     },
   },
   {
+    id: "free-gateway",
+    name: "㉙ 免费模型网关：推荐卡在场+免责声明+真链路下载/启动/模型清单（10-12 轮）",
+    run: async (h) => {
+      /* 为什么真跑（10-12 用户立项）：侧车是第三方开源项目，下载/启动/取 Key/模型清单全是运行期行为；
+         下载约 12MB（幂等：已下载秒回），启动起真进程等 /health。注册供应商需要模型清单非空
+         （未登录渠道也可能有匿名免费模型），注册成功与否依赖上游，这里验到「清单通道真通」为止。 */
+      await h.waitFor(`!document.querySelector(".boot-splash")`, { label: "启动页已摘", timeoutMs: 60000 }).catch(() => undefined);
+      await h.eval(`(function(){ var b=[...document.querySelectorAll('.icon-button, [title*="设置"]')].find(function(x){ return (x.getAttribute('aria-label')||x.title||'').includes('设置'); }); b&&b.click(); return 1; })()`);
+      await wait(600);
+      await h.eval(`(function(){ var b=[...document.querySelectorAll('.settings-nav button')].find(function(x){ return (x.textContent||'').trim()==='模型'; }); b&&b.click(); return 1; })()`);
+      await wait(700);
+      const card = await h.eval(`(function(){ var c=document.querySelector('.free-gateway-entry'); return c ? { present: true, disclaimer: (c.textContent||'').includes('与本项目开发者无关') } : null; })()`);
+      h.check("① 推荐卡在场且带免责声明（与本项目开发者无关）", !!card && card.present === true && card.disclaimer === true, JSON.stringify(card));
+      if (!card) return;
+      const st0 = await h.eval(`window.codex.freeGatewayStatus().then(function(r){ return JSON.stringify(r); }, function(e){ return "ERR " + (e.message || e); })`);
+      h.check("② 状态通道真通（downloaded/running 字段在）", typeof st0 === "string" && st0.includes("downloaded"), String(st0).slice(0, 160));
+      const dl = await h.eval(`window.codex.freeGatewayDownload().then(function(r){ return JSON.stringify(r); }, function(e){ return "ERR " + (e.message || e); })`);
+      h.check("③ 下载本体成功（幂等；首次约 12MB 走 gh 镜像）", typeof dl === "string" && dl.includes("\"ok\":true"), String(dl).slice(0, 160));
+      if (!(typeof dl === "string" && dl.includes("\"ok\":true"))) return;
+      /* ⛔ 不在 CDP eval 里 await 启动（冷启动可超 20s，Runtime.evaluate 会超时）——触发后轮询状态。 */
+      const kick = await h.eval(`(function(){ try { window.codex.freeGatewayStart(); return "kicked"; } catch (e) { return "ERR " + (e.message || e); } })()`);
+      h.check("④ 启动已触发（幂等：已有健康实例则直接复用）", kick === "kicked", String(kick));
+      if (kick !== "kicked") return;
+      let running = false, stRunning = "";
+      for (let i = 0; i < 75; i++) {
+        await wait(1000);
+        stRunning = await h.eval(`window.codex.freeGatewayStatus().then(function(r){ return JSON.stringify({ running: r.running, port: r.port }); }).catch(function(){ return "{}"; })`).catch(() => "{}");
+        if (String(stRunning).includes("\"running\":true")) { running = true; break; }
+      }
+      h.check("⑤ 网关运行中（真进程 /health 就绪 + 端口在）", running, String(stRunning).slice(0, 160));
+      if (!running) return;
+      const models = await h.eval(`window.codex.freeGatewayModels().then(function(r){ return JSON.stringify(r); }, function(e){ return "ERR " + (e.message || e); })`);
+      h.check("⑥ 模型清单通道真通（返回数组；是否非空取决于上游渠道）", typeof models === "string" && models.includes("models"), String(models).slice(0, 200));
+      await h.eval(`window.codex.freeGatewayStop().catch(function(){ return 1; })`);
+      await h.screenshot("free-gateway");
+    },
+  },
+  {
     id: "devtools-install-ux",
     name: "㉘ 开发工具安装体验：常驻提示词复制图标 + 失败完整报错弹窗（10-11 轮）",
     run: async (h) => {
@@ -1863,7 +1901,7 @@ async function enterMain(h) {
 //   历史项不删（它们仍然是回归证据），但**永远不会在默认路径上被执行** ——
 //   这样"每次只测最新改动"是机制保证的，不再依赖我记不记得。
 // ─────────────────────────────────────────────────────────────────────────────
-const LATEST_ROUND = "10-11";   // 10-11 轮：开发工具安装体验（常驻提示词复制图标 + 失败完整报错弹窗）；10-07 两项转回归证据 */
+const LATEST_ROUND = "10-12";   // 10-11 轮：开发工具安装体验（常驻提示词复制图标 + 失败完整报错弹窗）；10-07 两项转回归证据 */
 // 上一轮（10-06）的五个验收项仍是回归证据：--only <id> 单跑，或 --all 全量。
 /** 每一项属于哪一轮。新增验收项**必须**登记在这里，否则默认轮次里跑不到（会打印警告）。 */
 const ROUND_OF = {
@@ -1875,6 +1913,7 @@ const ROUND_OF = {
   "newbie-guide": "10-07",   // 10-07 轮：新手引导（侧栏常驻入口 + 迷你设置弹窗；左选项/右内容/映射跳转/版本日志）
   "compact-line": "10-07",   // 10-07 夜十一轮：压缩线（新会话 + 短回合 + 手动压缩 → 宿主侦测真链路 → 线出现 + 落盘）
   "devtools-install-ux": "10-11",   // 10-11 轮：开发工具安装体验（常驻提示词复制图标 + 失败完整报错弹窗；层级顺序由守卫 11y 钉）
+  "free-gateway": "10-12",   // 10-12 轮：免费模型网关（第三方开源侧车 + 一键注册供应商；免责声明为契约）
   "message-feedback": "10-05",   // 10-05 轮：消息操作图标的两段反馈 + 用户消息复制贴右端（历史项，默认轮不再跑 —— 回归证据）
   "plugin-market-gitee": "10-03",
   "codex-official-market": "10-03",   // 本轮新项；Gitee 项同轮重跑（插件页加了源切换，两个源都得看一眼）

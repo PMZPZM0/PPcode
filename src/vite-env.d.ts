@@ -893,6 +893,16 @@ interface Window {
     /* 在系统资源管理器中定位文件（可信根校验同 fs:read）；画布生成产物「打开文件夹」 */
     revealInFolder(path: string): Promise<{ ok: boolean }>;
     readModel(path: string): Promise<{ data: Uint8Array; size: number }>;
+    /* 图像工坊读通道（image-lab 域，10-09）：渲染层浮层预览拉图片字节；路径闸 = resolveImagePath（可信根 + 图片扩展名 + 128MB），与修图通道共用同一道闸 */
+    readImage(path: string): Promise<{ data: Uint8Array; size: number }>;
+    /* 生图执行端（10-09 从 agents:dispatch-call 拆出）：**唯一需要生图插件凭证的**通道（读 builtin-plugins.json 的 image 段 → 打外部网关）。调用时弹「图像工坊」浮层，完成自动收起。⛔ 与 image-lab:edit 分属两条通道 —— 用户明确要求「生成和编辑的 IPC 彻底分开」 */
+    imageGenerate(input: { prompt: string; count?: number; model?: string; size?: string; negative?: string; workspace?: string; name?: string; threadId?: string }): Promise<{ ok: boolean; output: string; error?: string }>;
+    /* 修图执行端（10-09 从 agents:dispatch-call 拆出）：**零凭证**，纯本地 jimp（20 种 ops）。先亮源图 → 换产物 → 自动收起。⛔ 输出不覆盖原图（产出 <名字>-edit.<ext>），天然可回退 */
+    imageEdit(input: { path?: string; paths?: string[]; ops: unknown[]; output?: string; format?: string; quality?: number }): Promise<{ ok: boolean; output: string; error?: string }>;
+    /* 读图片元信息（尺寸/格式/透明通道/字节数）。只读，不弹浮层。零凭证 */
+    imageInfo(input: { path?: string; paths?: string[] }): Promise<{ ok: boolean; output: string; error?: string }>;
+    /* 在应用内弹「图像工坊」浮层给用户看一张图。只读展示、**不自动收起**（由用户自己关）。零凭证 */
+    imageView(input: { path: string; title?: string }): Promise<{ ok: boolean; output: string; error?: string }>;
     /* 删分镜表的工作区文件（只删 .drama-canvas/storyboards/<name>.json 这一个文件；不存在时幂等返回 removed:false） */
     dramaCanvasStoryboardFileRemove(input: { workspace: string; name: string }): Promise<{ removed: boolean }>;
     /* 扫各项目的**工作日志与项目记忆**（<项目>/.ppcode-harness/memory/**：长期记忆 / 坑与纪律 / logs 日报 / archive / project）。项目清单来自 rollout 扫出的 cwd 集合。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事 */
@@ -1062,6 +1072,10 @@ interface Window {
 
     /** 壁纸应用推送（wallpaper 域，10-06）：手写桥，引擎 wallpaper_set 触发 */
     onWallpaperApply(listener: (event: { mode: string; pattern: string; opacity: number; image: string }) => void): () => void;
+
+    /** 图像工坊浮层推送（image-lab 域，10-09）：手写桥（非 gen 段），单通道三态
+     *  open（弹出）/ update（换状态与图）/ close（收起）。引擎 image_generate / image_edit / image_view 触发。 */
+    onImageLabEvent(listener: (event: { phase: "open" | "update" | "close"; taskId: string; mode?: "generate" | "edit"; title?: string; status?: "running" | "done" | "error"; images?: string[]; note?: string }) => void): () => void;
 
     onTerminalData(listener: (id: string, data: string) => void): () => void;
 

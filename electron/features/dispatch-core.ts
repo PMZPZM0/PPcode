@@ -362,23 +362,6 @@ function dispatchMcpTools(): unknown[] {
        （userData/video-jobs.json），关掉画布 / 重启应用都不丢，模型随时能续查。
        ⛔ 与画布卡片共用同一套 core（video-gen.ts / builtin-images），不另写一份实现。 */
     {
-      name: "image_generate",
-      description: "用内置生图插件生成图片并落盘，返回本地文件路径（可直接用于回答里的引用、或作为视频首帧）。可一次生成多张（count）。用户说「画一张/生成图片/出图」时用这个，不要用脚本自己调 HTTP。",
-      inputSchema: {
-        type: "object",
-        properties: {
-          prompt: { type: "string", description: "画面描述（主体 + 环境 + 光线 + 风格 + 质量词，越具体越好）" },
-          count: { type: "number", description: "生成张数 1-4（默认 1）。多张会并发，适合同一提示词的多个变体" },
-          model: { type: "string", description: "覆盖默认模型（一般不用填，留空走「设置 → 插件」里配的模型）" },
-          workspace: { type: "string", description: "落盘到哪个工作目录的 .drama-canvas/assets/image（缺省 = 调用者会话的工作目录）" },
-          name: { type: "string", description: "文件名前缀（缺省 img）" },
-          size: { type: "string", description: "画幅尺寸，如 1024x1024 / 1024x1536（竖）/ 1536x1024（横）。⛔ 不给就走网关默认 —— 各家接受的值不同，报错就把这个参数去掉" },
-          negative: { type: "string", description: "负面提示词（不想要什么：文字、畸形手指、水印…）。⛔ 不是每个网关都支持，无效时改用正面描述" },
-        },
-        required: ["prompt"],
-      },
-    },
-    {
       name: "video_generate",
       description: "提交一个视频生成任务（异步），**立即**返回 jobId；随后用 video_status 查询进度。图生视频传 image（本地路径或公网 URL）。不要把本工具当同步接口反复等待 —— 提交完可以先做别的事，隔一会儿再查。",
       inputSchema: {

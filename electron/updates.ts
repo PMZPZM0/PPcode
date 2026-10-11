@@ -21,6 +21,7 @@ import https from "node:https";
 import { shell } from "electron";
 import { URL } from "node:url";
 import { DEFAULT_UPDATE_REPO, readUpdateSource, type UpdateSourceConfig } from "./update-source";
+import { mirrorCandidates } from "./gh-mirror";
 
 /** GitHub 仓库（**内置默认**更新源，走 Releases API）——PPcode 专用私有仓库。
  *  ⛔ 运行期真正生效的是 update-source.ts 里那份（用户在应用内可改）；这里只是
@@ -220,48 +221,67 @@ async function fetchGithubRelease(
 ): Promise<ReleaseCandidate | null> {
   const repo = source.repo || GITHUB_REPO;
   const token = source.token;
-  const res = await requestJson(
-    repo === GITHUB_REPO ? GITHUB_RELEASES_API : `https://api.github.com/repos/${repo}/releases/latest`,
-    12000,
-    githubHeaders(token),
-  );
-  if (res.status === 401) throw new Error("token_invalid");
-  if (res.status === 403) throw new Error("github_forbidden");
-  if (res.status === 404) {
-    const probe = await requestJson(`https://api.github.com/repos/${repo}`, 8000, githubHeaders(token));
-    if (probe.status === 401) throw new Error("token_invalid");
-    if (probe.status === 404) {
-      throw new Error(token ? "repo_not_found_or_no_access" : "private_repo_needs_token");
+  const directUrl = repo === GITHUB_REPO ? GITHUB_RELEASES_API : `https://api.github.com/repos/${repo}/releases/latest`;
+  // ⛔ 镜像只给匿名请求用（10-11 起，镜像表在 ./gh-mirror）：令牌发到第三方反代 = 凭据泄露，
+  //    私有仓镜像也读不到 ⇒ 带令牌恒直连。镜像档的 401/403/404 不代表 GitHub 的判断（ghfast 对
+  //    API 已 403 "Invalid input"），一律换下一档；**只有直连档**的语义状态码才走下面的分支。
+  const apiCandidates = token ? [directUrl] : mirrorCandidates(directUrl);
+  let lastError: unknown = new Error("no_candidate");
+  for (let ci = 0; ci < apiCandidates.length; ci++) {
+    const isLast = ci === apiCandidates.length - 1;
+    let res;
+    try {
+      res = await requestJson(apiCandidates[ci], 12000, githubHeaders(token));
+    } catch (error) {
+      lastError = error;
+      continue;
     }
-    return null;   // 仓库读得到 ⇒ 真的还没发布过任何版本
+    if (res.status < 200 || res.status >= 300) {
+      lastError = new Error(`HTTP ${res.status}`);
+      if (!isLast) continue;
+      if (res.status === 401) throw new Error("token_invalid");
+      if (res.status === 403) throw new Error("github_forbidden");
+      if (res.status === 404) {
+        // 404 语义只在直连档判定：匿名读私有仓的 releases/latest 与「一次都没发布过」同为 404
+        // ⇒ 必须再探一次仓库元信息才分得清「没权限」和「还没发布」。
+        const probe = await requestJson(`https://api.github.com/repos/${repo}`, 8000, githubHeaders(token));
+        if (probe.status === 401) throw new Error("token_invalid");
+        if (probe.status === 404) {
+          throw new Error(token ? "repo_not_found_or_no_access" : "private_repo_needs_token");
+        }
+        return null;   // 仓库读得到 ⇒ 真的还没发布过任何版本
+      }
+      throw lastError;
+    }
+    let release: any;
+    try {
+      release = JSON.parse(res.body) as any;
+    } catch {
+      lastError = new Error("invalid_json");
+      continue;
+    }
+    if (!release?.tag_name) return null;
+    // 按平台选资产：Windows → *.exe；mac → 按架构 *-mac-arm64.zip / *-mac-x64.zip（含 mac 即可）
+    const assets: { id?: number; name: string; browser_download_url: string; size?: number; digest?: string }[] =
+      Array.isArray(release.assets) ? release.assets : [];
+    const match = platform === "darwin"
+      ? assets.find((a) => a.name.includes("mac") && a.name.endsWith(".zip") && a.name.includes(arch))
+      : assets.find((a) => a.name.endsWith(".exe"));
+    return {
+      version: String(release.tag_name).replace(/^v/i, ""),
+      prerelease: Boolean(release.prerelease),
+      changelog: String(release.body ?? "").slice(0, 2000),
+      downloadUrl: match
+        ? (token && match.id
+          ? `https://api.github.com/repos/${repo}/releases/assets/${match.id}`
+          : match.browser_download_url)
+        : "",
+      filename: match?.name,
+      size: match?.size,
+      sha256: sha256Of(match?.digest),
+    };
   }
-  if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
-  let release: any;
-  try {
-    release = JSON.parse(res.body) as any;
-  } catch {
-    throw new Error("invalid_json");
-  }
-  if (!release?.tag_name) return null;
-  // 按平台选资产：Windows → *.exe；mac → 按架构 *-mac-arm64.zip / *-mac-x64.zip（含 mac 即可）
-  const assets: { id?: number; name: string; browser_download_url: string; size?: number; digest?: string }[] =
-    Array.isArray(release.assets) ? release.assets : [];
-  const match = platform === "darwin"
-    ? assets.find((a) => a.name.includes("mac") && a.name.endsWith(".zip") && a.name.includes(arch))
-    : assets.find((a) => a.name.endsWith(".exe"));
-  return {
-    version: String(release.tag_name).replace(/^v/i, ""),
-    prerelease: Boolean(release.prerelease),
-    changelog: String(release.body ?? "").slice(0, 2000),
-    downloadUrl: match
-      ? (token && match.id
-        ? `https://api.github.com/repos/${repo}/releases/assets/${match.id}`
-        : match.browser_download_url)
-      : "",
-    filename: match?.name,
-    size: match?.size,
-    sha256: sha256Of(match?.digest),
-  };
+  throw lastError;
 }
 
 /**
@@ -415,19 +435,35 @@ export async function downloadUpdate(
     });
   };
   await fs.mkdir(path.dirname(destPath), { recursive: true });
-  const result = await hop(releaseUrl, 0);
-
-  // ⛔ 完整性校验（09-13 审计 P0）：`sha256` 字段以前从下发到使用**全链路没人比对** ——
-  // 下载 → `shell.openPath()` 直接执行，等于"发布站被换掉就静默装上攻击者的包"。
-  // 现在：有期望哈希就必须匹配，不匹配**删文件并报错**；没有期望哈希则只接受 https（上面已强制）。
-  if (expectedSha256) {
-    const actual = await sha256OfFile(result.path);
-    if (actual.toLowerCase() !== expectedSha256.toLowerCase()) {
-      await fs.rm(result.path, { force: true }).catch(() => undefined);
-      throw new Error(`更新包校验失败（期望 ${expectedSha256.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…），已删除下载文件`);
+  // ⛔ 镜像只给匿名下载用（10-11）：带令牌的下载走资产 API（api.github.com），恒直连 ——
+  //    只读令牌绝不能发给第三方反代。匿名（公开仓 browser_download_url）按 gh-proxy → ghfast →
+  //    直连逐条试：网络错 / HTTP 错 / sha256 校验不过都**删掉半截文件换下一档**（校验不过最可能是
+  //    镜像动了包体，直连 GitHub 是基准真相，候选最后一条恒为直连）。
+  const candidates = token ? [releaseUrl] : mirrorCandidates(releaseUrl);
+  let lastError: unknown = new Error("no_candidate");
+  for (const candidate of candidates) {
+    await fs.rm(destPath, { force: true }).catch(() => undefined);
+    try {
+      const result = await hop(candidate, 0);
+      if (expectedSha256) {
+        const actual = await sha256OfFile(result.path);
+        if (actual.toLowerCase() !== expectedSha256.toLowerCase()) {
+          await fs.rm(result.path, { force: true }).catch(() => undefined);
+          lastError = new Error(`更新包校验失败（期望 ${expectedSha256.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…），已删除下载文件`);
+          continue;
+        }
+      }
+      return result;
+    } catch (error) {
+      lastError = error;
     }
   }
-  return result;
+  if (candidates.length > 1) {
+    const detail = lastError instanceof Error ? lastError.message : String(lastError);
+    await fs.rm(destPath, { force: true }).catch(() => undefined);
+    throw new Error(`全部下载通道（gh-proxy / ghfast / 直连）都失败了；最后一次：${detail}`);
+  }
+  throw lastError;
 }
 
 /** 流式计算文件 sha256（大安装包不整份读进内存）。 */

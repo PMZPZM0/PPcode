@@ -42,6 +42,7 @@
 @import "./styles/30-whats-new";
 @import "./styles/31-newbie-guide";
 @import "./styles/32-polling";
+@import "./styles/33-image-lab";
 
 /* 中转站账户 登录/注册（PPcode，10-09）：独立板块样式 */
 @import "./styles/33-relay-auth";

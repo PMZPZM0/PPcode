@@ -1,10 +1,14 @@
 name: Release
 
-# ⛔ 10-10 仓库拆分后的形态：
-#   本仓（ppcode-src，私有）= 源码 + 构建；公开发布仓 PMZPZM0/PPcode = 功能介绍 + 安装包
-#   （应用内「检查更新」匿名拉它的 /releases/latest，所以它必须公开 —— 但公开就不能放源码）。
-#   发版动作不变 = `git push origin v0.0.x` → 本工作流在本仓构建三端包，
-#   publish 用 secrets.PPCODE_RELEASE_TOKEN **跨仓**发布到公开发布仓。
+# ⛔ 10-12 **仓库合并**：源码已从原私有仓 `ppcode-src` 合入本仓（`PMZPZM0/PPcode`），
+#   一个仓同时是**源码 + 发布页**。原因：① 私有仓的 Actions 分钟**计费**，额度用尽时
+#   作业会**秒失败且拿不到 runner**（`runner=(未分配)` + `步骤数=0`），表现为
+#   「推了 tag 却什么都没发生」—— v0.1.3 就这样静默失败过；公开仓吃免费分钟。
+#   ② 用户端「检查更新」读的本来就是本仓的 `/releases/latest`，**更新路径一个字没动**
+#      ⇒ 老用户（已装 ≤0.1.2）的自动更新不受影响。
+#   ⇒ 现在发版 = `git push origin v*` → 本工作流在本仓构建三端包，
+#      build-win / build-mac **各自直传本仓 Release**（`GH_TOKEN` 用默认 `github.token`，
+#      **不再需要任何跨仓 PAT**）。
 #   （历史：本机远端是 SSH deploy key，只能推代码/标签，建 Release/传资产必须靠 Actions ——
 #     所以发布永远跑在 Actions 里，不在本机。）
 on:
@@ -13,7 +17,7 @@ on:
       - "v*"
   workflow_dispatch:
 
-# 建 Release / 传资产需要写权限（默认只读）；actions: read 供 publish 取构建 artifact
+# 自发布：建 Release / 传资产需要本仓 contents: write（默认只读）
 permissions:
   contents: write
   actions: read

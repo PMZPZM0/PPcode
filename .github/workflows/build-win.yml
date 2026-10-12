@@ -59,10 +59,13 @@ jobs:
           test -d release/win-unpacked/resources/tools
           node scripts/verify-packaged-tools.cjs release/win-unpacked/resources/tools
 
-      - name: 上传 Windows 安装包到公开发布仓 Release（⛔ 不走 artifact：配额打满会直接失败）
+      - name: 上传 Windows 安装包到本仓 Release（⛔ 不走 artifact：配额打满会直接失败）
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.PPCODE_RELEASE_TOKEN }}
+          # ⛔ 10-12 源码合进本仓（原 PPcode 发布仓）⇒ 自发布，用默认 GITHUB_TOKEN 即可
+          #   （release.yml 已声明 permissions: contents: write）。
+          #   **不再需要跨仓 PAT** —— secrets.PPCODE_RELEASE_TOKEN 可以从仓库设置里删掉。
+          GH_TOKEN: ${{ github.token }}
           PUBLISH_REPO: PMZPZM0/PPcode
         run: |
           set -euo pipefail

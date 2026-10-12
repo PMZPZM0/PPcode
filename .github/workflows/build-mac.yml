@@ -81,10 +81,11 @@ jobs:
           test -n "$app"
           node scripts/verify-packaged-tools.cjs "$app/Contents/Resources/tools"
 
-      - name: 上传 macOS 包到公开发布仓 Release（⛔ 不走 artifact：配额打满会直接失败）
+      - name: 上传 macOS 包到本仓 Release（⛔ 不走 artifact：配额打满会直接失败）
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.PPCODE_RELEASE_TOKEN }}
+          # ⛔ 10-12 自发布（源码已合进本仓）⇒ 默认 GITHUB_TOKEN 即可，不再需要跨仓 PAT
+          GH_TOKEN: ${{ github.token }}
           PUBLISH_REPO: PMZPZM0/PPcode
         run: |
           set -euo pipefail

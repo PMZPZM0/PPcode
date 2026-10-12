@@ -290,12 +290,15 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
   };
 
   /** 需要「配令牌 / 换源」的四类失败：主进程把错误码**原样透传**（见 updates.ts / update-source.ts），
-   *  渲染层靠它决定是给「可执行的下一步」还是普通报错。 */
+   *  渲染层靠它决定是给「可执行的下一步」还是普通报错。
+   *  ⛔ 10-12 内置发布仓已转公开 ⇒ `private_repo_needs_token` 在默认配置下**不该再出现**
+   *    （匿名可读）。它仍留在列表里：用户若把 repo 改成**自建私有仓**，该错误码会再次出现，
+   *    这时引导配令牌依然正确。 */
   const updateAuthIssue = ["private_repo_needs_token", "token_invalid", "repo_not_found_or_no_access", "github_forbidden"].includes(updateError);
   const updateAuthTitle = updateError === "token_invalid" ? "令牌无效或已过期"
     : updateError === "repo_not_found_or_no_access" ? "这个令牌读不到该仓库"
     : updateError === "github_forbidden" ? "GitHub 拒绝了这次请求（令牌权限不足？）"
-    : "私有仓库需要只读令牌";
+    : "这个仓库需要只读令牌（内置发布仓已公开，通常不用填）";
 
   /** 令牌输入行（授权引导与「更新源设置」共用同一条，避免两处漂移）。 */
   const updateTokenRow = (

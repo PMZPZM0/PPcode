@@ -23,7 +23,8 @@ import { URL } from "node:url";
 import { DEFAULT_UPDATE_REPO, readUpdateSource, type UpdateSourceConfig } from "./update-source";
 import { mirrorCandidates } from "./gh-mirror";
 
-/** GitHub 仓库（**内置默认**更新源，走 Releases API）——PPcode 专用私有仓库。
+/** GitHub 仓库（**内置默认**更新源，走 Releases API）——PPcode 的**公开**仓库
+ *  （10-12：源码已合并进本仓，一个仓既是源码也是发布页；此前是私有仓 + 跨仓发布）。
  *  ⛔ 运行期真正生效的是 update-source.ts 里那份（用户在应用内可改）；这里只是
  *     「从没配置过」时的兜底，同时也是 whats-new 弹窗里 release 链接的唯一来源。 */
 export const GITHUB_REPO = DEFAULT_UPDATE_REPO;

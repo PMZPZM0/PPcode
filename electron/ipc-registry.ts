@@ -169,7 +169,7 @@ export const IPC_DOMAINS: IpcDomainEntry[] = [
     note: "09-21 拆出：跨域符号经 main 导出的活绑定取用",
   },
   { prefix: "updates", count: 6, status: "in-features", file: "features/updates-ipc.ts",
-    channels: ["updates:check", "updates:download", "updates:reveal", "updates:install", "updates:source-get", "updates:source-save"],
+    channels: ["updates:check", "updates:download", "updates:reveal", "updates:install", "updates:download-silent", "updates:restart-install", "updates:source-get", "updates:source-save"],
     note: "09-22 拆出：updates 更新链通道 + 权威状态 lastUpdateInfo / lastVerifiedUpdatePath。10-09 +2 = source-get / source-save（发布仓改私有 ⇒ 更新源配置：只读令牌掩码 / 自定义清单地址；配置落 userData/update-source.json，令牌只回掩码）",
   },
   { prefix: "backup", count: 5, status: "in-features", file: "features/change-backup-ipc.ts",

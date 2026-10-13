@@ -391,24 +391,6 @@ contextBridge.exposeInMainWorld("codex", {
   relayOpenPurchase: () => __ipc("relay:open-purchase", 0, []),
   enhancePrompt: (text: string) => __ipc("prompt:enhance", 1, [{ text }]),
   listTerminals: () => __ipc("terminal:list", 0, []),
-  /* 读改动备份配置（enabled/目录/是否被回退/目录是否存在） */
-  backupConfigGet: () => __ipc("backup:config-get", 0, []),
-  /* 写改动备份配置；启用时才创建目录 */
-  backupConfigSet: (input: { enabled?: boolean; dir?: string }) => __ipc("backup:config-set", 1, [input]),
-  /* 读某会话的备份索引（回合级） */
-  backupList: (conversationId?: string) => __ipc("backup:list", 0, [conversationId]),
-  /* 备份产物概览（会话数/条数/字节数） */
-  backupSummary: () => __ipc("backup:summary", 0, []),
-  /* 清空备份（⚠ 不可恢复，渲染层须先确认） */
-  backupClear: () => __ipc("backup:clear", 0, []),
-  /* agent 工具：列出全部会话的备份概览（会话id/条数/最新最旧/总字节）+ 容量上限 */
-  backupListAll: () => __ipc("backup:list-all", 0, []),
-  /* agent 工具：读某条备份全文（索引 + 明细 hunks），用来回答「当时到底改了什么」 */
-  backupReadChange: (input: { conversationId?: string; requestId?: string }) => __ipc("backup:read-change", 1, [input]),
-  /* agent 工具：把某文件回滚到备份那一版；⛔ 明细只存 hunks 时回 needs_full_content（如实说，不假装成功）；目标须在工作区内 */
-  backupRestoreFile: (input: { conversationId?: string; requestId?: string; filePath?: string; workspace?: string }) => __ipc("backup:restore-file", 1, [input]),
-  /* agent 工具：手动触发容量裁剪（超上限把最旧的移进回收站，不硬删） */
-  backupPrune: (input: { maxBytes?: number }) => __ipc("backup:prune", 1, [input]),
   validatePlugin: (target: string) => __ipc("plugin:validate", 1, [{ path: target }]),
   chooseDirectoryAt: (startPath: string) => __ipc("dialog:directory-at", 1, [startPath]),
   /* 10-03 资源停用/启用（不删文件，可逆） */
@@ -711,6 +693,28 @@ contextBridge.exposeInMainWorld("codex", {
   freeGatewayModels: () => __ipc("free-gateway:models", 0, []),
   /* 免费模型网关：卸载（停侧车 + 删本体 + 删数据目录） */
   freeGatewayUninstall: () => __ipc("free-gateway:uninstall", 0, []),
+  /* 10-13 改动备份（与 WorkBuddy 同构） */
+  backupConfigGet: () => __ipc("backup:config-get", 0, []),
+  /* 10-13 改动备份（与 WorkBuddy 同构） */
+  backupConfigSet: (input: { enabled?: boolean; dir?: string }) => __ipc("backup:config-set", 1, [input]),
+  /* 10-13 改动备份（与 WorkBuddy 同构） */
+  backupList: (conversationId?: string) => __ipc("backup:list", 0, [conversationId]),
+  /* 10-13 改动备份（与 WorkBuddy 同构） */
+  backupSummary: () => __ipc("backup:summary", 0, []),
+  /* 10-13 改动备份（与 WorkBuddy 同构） */
+  backupClear: () => __ipc("backup:clear", 0, []),
+  /* 10-13 后台静默下载 / 重启安装 */
+  updateDownloadSilent: () => __ipc("updates:download-silent", 0, []),
+  /* 10-13 后台静默下载 / 重启安装 */
+  updateRestartInstall: () => __ipc("updates:restart-install", 0, []),
+  /* 10-13 agent 工具面 */
+  backupListAll: () => __ipc("backup:list-all", 0, []),
+  /* 10-13 agent 工具面 */
+  backupReadChange: (input: { conversationId?: string; requestId?: string }) => __ipc("backup:read-change", 1, [input]),
+  /* 10-13 agent 工具面 */
+  backupRestoreFile: (input: { conversationId?: string; requestId?: string; filePath?: string; workspace?: string }) => __ipc("backup:restore-file", 1, [input]),
+  /* 10-13 agent 工具面 */
+  backupPrune: (input: { maxBytes?: number }) => __ipc("backup:prune", 1, [input]),
   /* ═══ gen:end ═══ */
 
   /* 桌面宠物：主进程归约好的九态推送（浮窗订阅它驱动动画；首帧另用 petState() 补水）。
@@ -755,6 +759,10 @@ onConnectorOAuth: (listener: (event: unknown) => void) =>
   // 粘贴的长文本落盘成 .txt（超过阈值时输入框显示为文件 chip，见 composer-attachments.mjs）
   updateOnProgress: (callback: (percent: number) => void) => {
     __on("updates:download-progress", callback, (callback) => (_event: unknown, percent: number) => callback(percent));
+  },
+  // ⛔ 10-13：后台静默下载完成事件（渲染层可能压根没开设置页，只能靠事件弹窗）。
+  updateOnReady: (callback: (info: { version?: string; path?: string }) => void) => {
+    __on("updates:ready", callback, (callback) => (_event: unknown, payload: { version?: string; path?: string }) => callback(payload ?? {}));
   },
 onSshData: (listener: (payload: { data: string }) => void) =>
     __on("ssh:data", listener, (listener) => (_event: Electron.IpcRendererEvent, payload: { data: string }) => listener(payload)),

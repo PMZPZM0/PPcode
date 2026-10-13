@@ -35,6 +35,10 @@
 
 | 日期 | 功能名称 | 类型 | 影响范围 | 简要描述 | 提交 |
 |---|---|---|---|---|---|
+| 2026-10-13 | 统一组件更新体系（控制台「组件更新」） | 新增 | `electron/update-registry.ts`、`update-backends.ts`、`update-safety.ts`、`update-tar.ts`、`features/auto-update-ipc.ts`、`AutoUpdateCard.tsx` | 覆盖全部同类组件的统一更新入口（已装开发工具 / 内置工具 / 内置技能 / 市场技能 / 专家与人格包 / 插件 / ponytail / 钩子）：组件清单单一真相源 + 国内镜像序（npm→npmmirror、pip→清华、GitHub→gh-mirror）+ 更新前快照、失败回滚、内容一致即跳过；控制台一屏看版本、逐行更新、一键全更，不可单独更新的条目显式标注原因与替代路径；守卫 12l 38 条 + 实证 verify-update-safety 14/14 | ad2c179（自桌面版同步） |
+| 2026-10-13 | 四类自动更新 + 开关统一到控制台 | 新增 | `app-settings.ts`、`skills-ipc.ts`、`engine-ipc.ts`、`runtime-ipc.ts`、`AutoUpdateCard.tsx` | 桌面自动化、浏览器自动化、Mac 电脑操作、Codex 引擎四类各自独立开关（默认开、持久化、成功后通知），技能内容自动更新的开关一并迁入控制台；⛔ 关闭时不发起任何检查（连版本都不比）；后台调度只留一个 owner（市场技能行不双跑） | e6fec1e、8576c55、30b6366（自桌面版同步） |
+| 2026-10-13 | 技能自动更新（开关迁控制台） | 新增 | `electron/features/skills-ipc.ts`、`SkillsCenterSection.tsx`、`app-settings.ts` | 技能内容变化后台静默更新（判据与更新链路同手动一套，含安全检查）；技能页那张占位过大的「技能更新」提醒卡片整体移除（目录说明同轮改：技能页只留一句指向控制台的指路） | 5b803ff（自桌面版同步） |
+| 2026-10-13 | PPcode 同步 · 统一更新体系全套 | 流程 | PPcode 仓（`PMZPZM0/PPcode`） | 自桌面版 8cafc37..f07f73f（14 提交）逐文件预检后落地：30 个文件（含新域 auto-update-ipc 与三个守卫）；副本侧自跑 gen:ipc / gen:domains，manifest 手工合并 autoUpdate 域 5 通道与 appSettings 类型串，棘轮 vite-env.d.ts 826→851（副本实测净行）；判据 = build 绿 + 12j / 12k / 12l + verify-update-safety 14/14 | 0cf9a3a |
 | 2026-10-13 | 网页来源条挪进消息操作行 | 改动 | `MessageFooter.tsx`、`TurnWebSources.tsx`、`Status.tsx`、`04-cards-tools.css` | 用户令「跟下面这个在一行」：来源条从汇总卡内挪到回合末操作行（复制/分支/耗时/token/收藏）最右端，汇总卡回归纯文件卡；守卫 12g 19→20 条（3 处变异全抓）+ 验收 web-sources 4/4 复跑 | 2837023（自桌面版同步） |
 | 2026-10-13 | 功能更新清单 = 发布数据源 | 流程 | `AGENTS.md`、`docs/FEATURE-LEDGER.md`（对所有 Agent 生效） | 每次功能新增/改动同轮在本文末尾追加六列条目（漏记 = 工作未完成）；发布日志 / Release Notes / whats-new 要点一律从本台账搬，不重翻 commit | 557f06a |
 | 2026-10-12 | 汇总卡网页来源 · PPcode 同步 | 流程 | PPcode 仓（`PMZPZM0/PPcode`） | 网页来源条全套同步至 PPcode（守卫 12g / 验收项 web-sources / 副本棘轮 1911→1981 按实测），顺手解锁副本三笔存量红；原版 f6577f11（工具持久化+静默更新）留归属会话自同步 | c4d572a |

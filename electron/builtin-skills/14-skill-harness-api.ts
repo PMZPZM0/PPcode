@@ -11,7 +11,7 @@ description: PPcode 宿主的接口清单与可拓展能力。当用户提「做
 
 # 宿主接口清单与可拓展能力（自动生成，勿手改）
 
-数据源：electron/ipc-channels.manifest.json（88 个能力域 / 460 个通道），由 scripts/gen-capability-skill.mjs 生成。
+数据源：electron/ipc-channels.manifest.json（89 个能力域 / 469 个通道），由 scripts/gen-capability-skill.mjs 生成。
 
 ## 怎么用
 
@@ -196,7 +196,13 @@ OpenAI 账号鉴权（登录/凭据/额度）
 
 ### updates（6 通道）
 应用自更新（检查/下载/安装，GitHub Release 单源）
-通道：updates:check, updates:download, updates:reveal, updates:install, updates:source-get, updates:source-save
+通道：updates:check, updates:download, updates:reveal, updates:install, updates:download-silent, updates:restart-install, updates:source-get, updates:source-save
+
+### backup（9 通道）
+改动备份的**查询与恢复**（设置 → 数据管理 → 改动备份：开关、备份目录、产物概览、清空）。备份本身由宿主在**每个回合结束时自动完成**（落 changes-index/<会话id>.json + changes-detail/<会话id>/cd_*.json，结构与 WorkBuddy 同构，**容量上限 3G，超了把最旧的移进系统回收站**，不是硬删）。
+
+**用户说「之前那次改动找不回来 / 改错了想回退」时用这一套自己查自己办**：\`backupListAll\`（有哪些备份可捞）→ \`backupReadChange\`（那次到底改了哪些文件、增删多少、差异内容）→ \`backupRestoreFile\`（把某个文件回滚到那一版）。⛔ \`backupRestoreFile\` 需要备份里存有**整份正文**才回滚得动，而默认只存 hunks（省空间）⇒ 常会回 \`needs_full_content\`，此时**如实告诉用户**「备份里有这次改动的差异但没有整份正文」并据 hunk 定位手工改，不要反复重试。⛔ 没有「一键整条回滚」：那会连带覆盖用户之后的改动。\`backupPrune\` 可手动触发一次容量清理。⛔ 清空备份不可恢复，动之前先问过用户
+通道：backup:config-get, backup:config-set, backup:list, backup:summary, backup:clear, backup:list-all, backup:read-change, backup:restore-file, backup:prune
 
 ### plugin（1 通道）
 插件卸载入口

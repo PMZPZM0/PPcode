@@ -1641,41 +1641,41 @@ const CHECKS = [
       /* 为什么真跑：来源条的数据来自**回合 items 的真实工具调用**（commandExecution 命令里的 URL），
          注入造不出引擎事件 —— 与 file-summary 同口径，用真回合真 curl。断言打最后一条来源条
          （会话里可能有旧回合的条，querySelector 全局首个会打错回合 —— 10-06 悬停假红同款坑）。 */
-      await h.waitFor(\`!!document.querySelector('.composer-editor')\`, { label: "输入框就绪", timeoutMs: 30000 }).catch(() => undefined);
+      await h.waitFor(`!!document.querySelector('.composer-editor')`, { label: "输入框就绪", timeoutMs: 30000 }).catch(() => undefined);
       /* ① 新会话 + 发一条含 4 个 URL 的真回合（模型逐条 curl ⇒ 4 host ⇒ 3 圆标 + 「···」） */
-      await h.eval(\`(function(){ var b=[...document.querySelectorAll('.sidebar-tab')].find(function(x){ return (x.textContent||'').includes('新建任务'); }); if(b) b.click(); return 1; })()\`);
+      await h.eval(`(function(){ var b=[...document.querySelectorAll('.sidebar-tab')].find(function(x){ return (x.textContent||'').includes('新建任务'); }); if(b) b.click(); return 1; })()`);
       await wait(1200);
       const prompt = "请用 shell 依次真的运行这4条 curl 并各用一行汇报返回里的标题：curl -s https://example.com 、curl -s https://www.wikipedia.org 、curl -s https://github.com 、curl -s https://registry.npmmirror.com 。不要做别的事情。";
-      await h.eval(\`(function(){
+      await h.eval(`(function(){
         var dt = new DataTransfer();
-        dt.setData("text/plain", \${JSON.stringify(prompt)});
+        dt.setData("text/plain", ${JSON.stringify(prompt)});
         var el = document.querySelector('.composer-editor');
         el.focus();
         el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
-        return 1; })()\`);
+        return 1; })()`);
       await wait(500);
-      await h.eval(\`document.querySelector('.composer-editor').focus()\`);
+      await h.eval(`document.querySelector('.composer-editor').focus()`);
       await h.pressKey("Enter", { text: "\r" });
       let started = false;
       for (let i = 0; i < 20; i++) {
         await wait(750);
-        if (await h.eval(\`!!document.querySelector('.send-button.is-pause')\`).catch(() => false)) { started = true; break; }
+        if (await h.eval(`!!document.querySelector('.send-button.is-pause')`).catch(() => false)) { started = true; break; }
       }
-      h.check("① 真回合跑起来了（前置：模型未配置则本项作废）", started === true, \`started=\${started}\`);
+      h.check("① 真回合跑起来了（前置：模型未配置则本项作废）", started === true, `started=${started}`);
       if (!started) return;
       /* ② 等来源条满足「3 圆标 + 更多钮」（≤180s：4 条 curl 的真回合）；⛔ 锚最后一条（最新回合） */
       let ready = false;
       for (let i = 0; i < 180; i++) {
         await wait(1000);
-        ready = await h.eval(\`(function(){
+        ready = await h.eval(`(function(){
           var rows = document.querySelectorAll('.completed-web-row');
           var row = rows[rows.length - 1];
           if (!row) return false;
           return !!row.querySelector('.web-favicon-more');
-        })()\`).catch(() => false);
+        })()`).catch(() => false);
         if (ready) break;
       }
-      const rowInfo = await h.eval(\`(function(){
+      const rowInfo = await h.eval(`(function(){
         var rows = document.querySelectorAll('.completed-web-row');
         var row = rows[rows.length - 1];
         if (!row) return { row: false };
@@ -1683,27 +1683,27 @@ const CHECKS = [
           icons: [...row.querySelectorAll('.web-favicon:not(.web-favicon-more)')].length,
           more: !!row.querySelector('.web-favicon-more'),
           rightAligned: Math.abs(row.getBoundingClientRect().right - document.querySelector('.composer-editor').getBoundingClientRect().right) < 400 };
-      })()\`).catch(() => ({ row: false }));
+      })()`).catch(() => ({ row: false }));
       h.check("② 最新回合的来源条出现：3 圆标 + 「···」更多钮（用户定稿口径）",
         ready === true && rowInfo.row === true && rowInfo.icons === 3 && rowInfo.more === true, JSON.stringify(rowInfo));
       if (!rowInfo.more) { await h.screenshot("web-sources"); return; }
       /* ③ 点「···」→ 全量弹层（portal 到 body），条目覆盖全部 4 站；Esc 可关 */
-      await h.eval(\`(function(){ var rows=document.querySelectorAll('.completed-web-row'); rows[rows.length-1].querySelector('.web-favicon-more').click(); return 1; })()\`);
+      await h.eval(`(function(){ var rows=document.querySelectorAll('.completed-web-row'); rows[rows.length-1].querySelector('.web-favicon-more').click(); return 1; })()`);
       await wait(600);
-      const pop = await h.eval(\`(function(){
+      const pop = await h.eval(`(function(){
         var pops = document.body.querySelectorAll(':scope > .completed-web-pop');
         var p = pops[pops.length - 1];
         if (!p) return { pop: false };
         var items = [...p.querySelectorAll('.completed-web-item code')].map(function(c){ return c.textContent; });
         return { pop: true, items: items, visible: p.getBoundingClientRect().width > 100 };
-      })()\`).catch(() => ({ pop: false }));
+      })()`).catch(() => ({ pop: false }));
       h.check("③ 「···」弹出全量弹层：≥4 条网页条目（hosts 在列）",
         pop.pop === true && pop.visible === true && (pop.items ?? []).length >= 4
-          && pop.items.some((x) => /example\\.com|wikipedia|github|npmmirror/.test(x ?? "")), JSON.stringify(pop).slice(0, 260));
+          && pop.items.some((x) => /example\.com|wikipedia|github|npmmirror/.test(x ?? "")), JSON.stringify(pop).slice(0, 260));
       await h.pressKey("Escape");
       await wait(400);
-      const closed = await h.eval(\`document.body.querySelectorAll(':scope > .completed-web-pop').length === 0\`).catch(() => false);
-      h.check("④ Esc 关闭全量弹层", closed === true, \`closed=\${closed}\`);
+      const closed = await h.eval(`document.body.querySelectorAll(':scope > .completed-web-pop').length === 0`).catch(() => false);
+      h.check("④ Esc 关闭全量弹层", closed === true, `closed=${closed}`);
       await h.screenshot("web-sources");
     },
   },
@@ -2293,6 +2293,66 @@ const CHECKS = [
       await wait(400);
     },
   },
+  {
+    id: "refresh-receipt",
+    name: "⑳ 刷新回执：点刷新 ⇒「正在刷新…」⇒ 覆盖「完成 / 失败：原因」（不再是点了没反应）",
+    run: async (h) => {
+      // 为什么断言这一条（10-16 用户）：「检查一下应用现在有的一些，刷新，现在很多刷新都没有弹窗
+      // 反馈刷新状态」—— 清点下来全应用 30 处刷新里 27 处**成功静默**、其中 6 处连失败都静默。
+      // 本项真点一次设置页的刷新钮，把通知浮层的变化**序列**录下来：
+      // ⛔ 定时轮询会漏掉「正在…」那一帧（它可能只存在几十毫秒）⇒ 用 MutationObserver 录 DOM 变化。
+      await h.eval(`(function(){ document.querySelector(".sidebar-settings")?.click(); return 1; })()`);
+      await wait(1500);
+      const opened = await h.eval(`(function(){
+        var b=[...document.querySelectorAll('.settings-nav button')].find(function(x){ return (x.textContent||'').trim()==='MCP'; });
+        if (!b) return 0; b.click(); return 1; })()`);
+      h.check("① 前置：设置页打开并停在「MCP」页", opened === 1, `opened=${opened}`);
+      if (opened !== 1) return;
+      await wait(1200);
+      const hasBtn = await h.eval(`document.querySelector('button[title="刷新 MCP 状态"]') ? 1 : 0`);
+      h.check("② 前置：刷新按钮在位（title=刷新 MCP 状态）", hasBtn === 1, `hasBtn=${hasBtn}`);
+      if (hasBtn !== 1) return;
+      // 开始录制通知浮层文案（装 observer 在点击之前）
+      await h.eval(`(function(){
+        window.__receiptSeq = [];
+        var grab = function(){
+          var t = document.querySelector('.notice-text');
+          var s = t ? (t.textContent||'').trim() : '';
+          if (!s) return;
+          if (window.__receiptSeq[window.__receiptSeq.length-1] !== s) window.__receiptSeq.push(s);
+        };
+        grab();
+        window.__receiptObs = new MutationObserver(grab);
+        window.__receiptObs.observe(document.body, { childList: true, subtree: true, characterData: true });
+        return 1; })()`);
+      await h.eval(`(function(){ document.querySelector('button[title="刷新 MCP 状态"]').click(); return 1; })()`);
+      // 刷新走引擎 RPC（逐个连接器查状态）⇒ 终态可能好几秒才到；轮询等它，别用固定 sleep 猜。
+      const deadline = Date.now() + 25000;
+      let seqNow = [];
+      while (Date.now() < deadline) {
+        seqNow = await h.eval(`window.__receiptSeq || []`);
+        const arr = Array.isArray(seqNow) ? seqNow : [];
+        if (arr.some((x) => /^刷新 MCP 状态(完成|失败：)/.test(x))) break;
+        await wait(400);
+      }
+      const rec = await h.eval(`(function(){
+        try { window.__receiptObs && window.__receiptObs.disconnect(); } catch (e) {}
+        var t = document.querySelector('.notice-text');
+        return { seq: window.__receiptSeq || [], now: t ? (t.textContent||'').trim() : '' }; })()`);
+      const list = Array.isArray(rec?.seq) ? rec.seq : [];
+      const shown = list.join(" → ") || String(rec?.now || "(无)");
+      h.check("③ 点刷新弹出回执（成功不再静默 —— 这就是用户报的那个）",
+        list.some((x) => x.includes("刷新 MCP 状态")), shown.slice(0, 140));
+      h.check("④ 运行中可见：「正在刷新 MCP 状态…」",
+        list.includes("正在刷新 MCP 状态…"), shown.slice(0, 140));
+      h.check("⑤ 结束态覆盖为终态回执（「完成」或「失败：原因」，不留「正在」挂着）",
+        list.some((x) => /^刷新 MCP 状态(完成|失败：)/.test(x)) && !list[list.length - 1].startsWith("正在"),
+        shown.slice(0, 140));
+      await h.screenshot("刷新回执");
+      await h.pressKey("Escape");
+      await wait(300);
+    },
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2322,7 +2382,7 @@ async function enterMain(h) {
 //   历史项不删（它们仍然是回归证据），但**永远不会在默认路径上被执行** ——
 //   这样"每次只测最新改动"是机制保证的，不再依赖我记不记得。
 // ─────────────────────────────────────────────────────────────────────────────
-const LATEST_ROUND = "10-12";   // 10-11 轮：开发工具安装体验（常驻提示词复制图标 + 失败完整报错弹窗）；10-07 两项转回归证据 */
+const LATEST_ROUND = "10-16";   // 10-16 轮：刷新回执（30 处刷新入口补齐三态回执）；10-12 四项转回归证据 */
 // 上一轮（10-06）的五个验收项仍是回归证据：--only <id> 单跑，或 --all 全量。
 /** 每一项属于哪一轮。新增验收项**必须**登记在这里，否则默认轮次里跑不到（会打印警告）。 */
 const ROUND_OF = {
@@ -2339,6 +2399,7 @@ const ROUND_OF = {
   "status-lights": "10-12",   // 10-12 轮：输入框底栏动态状态灯（最多一盏 + 轮换 + 窗口自适应隐藏；结构由守卫 12d 钉）
 "md-block-copy": "10-12",   // 10-14 加：块级复制（表格 + 代码块）—— 常驻可见 + 两段反馈 + 剪贴板拿到 TSV/代码原文；结构由守卫 12o 钉
   "free-gateway": "10-12",   // 10-12 轮：免费模型网关（第三方开源侧车 + 一键注册供应商；免责声明为契约）
+  "refresh-receipt": "10-16",   // 10-16 轮：刷新回执（设置页刷新钮真点一次，MutationObserver 录「正在… → 完成/失败」序列；结构面由守卫 11u ⑤ 逐个登记）
   "message-feedback": "10-05",   // 10-05 轮：消息操作图标的两段反馈 + 用户消息复制贴右端（历史项，默认轮不再跑 —— 回归证据）
   "plugin-market-gitee": "10-03",
   "codex-official-market": "10-03",   // 本轮新项；Gitee 项同轮重跑（插件页加了源切换，两个源都得看一眼）

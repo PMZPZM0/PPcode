@@ -897,15 +897,15 @@ export async function run() {
     const mainProbe = readMainSource();
     const appProbe = readAppUi();
     const hookProbe = readFileSync(join(ROOT, "src", "hooks", "useModelProviders.ts"), "utf8");
-    (/requestedWire === "chat" \? \["chat"\] : \["responses", "chat"\]/.test(mainProbe))
-      ? ok("【39】探针 responses 被拒时自动回落 chat（显式 responses 也回落——单协议误报连接失败）")
-      : fail("【39】探针又只试单协议 —— 火山 Coding Plan 类网关会把能用的模型误报成连接失败");
+    (/probingViaBridge \? \["responses"\] : \["responses", "chat"\]/.test(mainProbe))
+      ? ok("【39】探针：非桥路径 responses 被拒仍回落 chat；**走桥路径只探 responses**（桥负责翻译，绕桥去测 chat 是在测一条引擎不走的路）")
+      : fail("【39】探针协议顺序丢了「走桥/直连」的区分 —— 火山 Coding Plan 类网关会误报，云模型也会误报");
     (/coding plan\/i\.test\(body\)/.test(mainProbe) && /白话：供应商表示这个模型不在其 Coding Plan/.test(mainProbe))
       ? ok("【39】coding-plan 404 带白话提示（告知换通用接入点/换模型，不再只有供应商原话）")
       : fail("【39】coding-plan 404 没有白话提示 —— 用户看到 404 无从下手");
-    (/wireMismatch: wireUsed !== requestedWire/.test(mainProbe) && /wireMismatch/.test(hookProbe))
-      ? ok("【39】实际连通协议与配置不同时如实标注（wireMismatch → 探针结果提示）")
-      : fail("【39】探针协议差异没有上报/展示 —— 连接成功与发送报错会对不上");
+    (/wireMismatch: !probingViaBridge && wireUsed !== requestedWire/.test(mainProbe) && /wireMismatch/.test(hookProbe))
+      ? ok("【39】直连路径如实标注协议差异；**走桥路径不报**（桥负责翻译，报了就是把用户吓死）")
+      : fail("【39】探针协议差异的上报规则丢了（直连要报、走桥不报）");
     (/void healImageModalityIfUnsupported\(params\.turn\.error\?\.message\)/.test(appProbe)
       && /async function healImageModalityIfUnsupported/.test(appProbe)
       && /inputTypes: \(m\.inputTypes \?\? \[\]\)\.filter\(\(t\) => t !== \"image\"\)/.test(appProbe))
@@ -2056,6 +2056,7 @@ export async function run() {
     );
   }
 
+
   // ⑩ 浏览器专用技能 browser-skill（09-19 用户：「browser skill 内置到已安装技能里面，专门跑浏览器自动化」
   //    → 随后「这个更好，那个替换掉」：改用 browser-skill 替换 browser-automation）
   //    要点：① 随应用写入 codexHome/skills/（内置=代码为准，启动时按内容覆盖）
@@ -2607,6 +2608,9 @@ export async function run() {
   );
 }
 
+
+
+
 {
   /* ── 【69】并发闸门已于 09-25 **整体删除**（用户：「直接把并发限制删了吧」）────────────
      被删的符号：`src/lib/concurrency.mjs`（concurrencyExceeded / normalizeMaxConcurrency / 两档常量）、
@@ -2666,6 +2670,7 @@ export async function run() {
   );
 }
 
+
 {
   // ── 【70】模型配置引导（⛔ 10-01 用户定稿：整体删除，首启只弹「开发工具」引导）──────
   //   登录页的快捷配置链路（handleLogin / markModelConfigured / 持久标记）是登录页自己的
@@ -2690,6 +2695,7 @@ export async function run() {
   // 引导专属样式不残留（⛔ 锚选择器形态而不是裸词，注释提到类名会自红）
   (!/\.model-guide-tabs\s*\{/.test(cssSrc70) ? ok : fail)("【70】引导专属样式已随组件删除（不留死样式）");
 }
+
 
 {
   // ── 【71】会话血缘：删源不得拖死子会话；已断链的必须自愈 ────────────────────
@@ -2759,6 +2765,7 @@ export async function run() {
     "【71】自愈只碰「源已丢失」的会话（源还在的正常会话不动，幂等）"
   );
 }
+
 
 {
   // ── 【72】上游协议手动开关（09-19 用户要求：Claude 类通道不认 responses，且自动判定不灵）──
@@ -3101,7 +3108,8 @@ export async function run() {
   );
   (/单次 CDP 往返/.test(bSkill) ? ok : fail)("【74】browser-skill 点明 browser_exec 的价值（多步合并成单次 CDP 往返）");
   (/三段循环/.test(bSkill) ? ok : fail)("【74】browser-skill 有「观察 → 动作 → 验证」三段协议");
-  (/判存在/.test(bSkill) ? ok : fail)("【74】browser-skill 有判存在规则（nuphus 随桌面总闸注册，通道不能写死）");
+  // ⛔ 10-12：MCP 工具对模型不可达 ⇒ 技能不再讲「判存在」，讲「当前唯一可用通道」。
+  (/唯一可用通道/.test(bSkill) && /unsupported call/.test(bSkill) ? ok : fail)("【74】browser-skill 讲明当前引擎下唯一可用通道（0.157 起 MCP 工具不下发，旧「判存在」那套已失效）");
 
   // ② 桌面技能：perceive/vision 分工 + 平台降级（Intel Mac 无本地 OCR）
   (/desktop_perceive/.test(dSkill) && /never click with them/.test(dSkill) ? ok : fail)(
@@ -3137,8 +3145,10 @@ export async function run() {
     "【74】applyCustomModel 与漂移判据共用 devInstructionsInput（两边输入不同会恒 true ⇒ 每次启动整份重写）"
   );
 
-  /* ⛔ 主仓 10-17 已删这条断言（文案与断言同时删）：新版指令改为「按工具列表判存在」，
-     不再声称 desktop_* "已注册、可直接调用" —— 那句话在工具被延迟暴露时是错的。 */
+  // ⑤ 桌面指令不得只说命令行（否则模型不会直接调已注册的 desktop_* 工具）
+  (/are NOT delivered to you/.test(di74) && /nuphus-call <tool> key=value/.test(di74) ? ok : fail)(
+    "【74】developer_instructions 明说 MCP 工具**不会**下发给模型、主线是 nuphus-call CLI（10-12 引擎实证）"
+  );
   (!/on-demand CLI bridge to desktop automation tools/.test(di74) ? ok : fail)(
     "【74】不得回退成「桌面只有 nuphus-call 命令行」的旧文案"
   );
@@ -3163,8 +3173,8 @@ export async function run() {
   if (pol) {
     const D = pol.NUPHUS_DESKTOP_TOOLS || [];
     const B = pol.NUPHUS_BROWSER_TOOLS || [];
-    (D.length === 15 && B.length === 23 && new Set([...D, ...B]).size === 38 ? ok : fail)(
-      `【75】nuphus 工具分组与实测枚举一致（桌面 15 + 浏览器 23 = 38；实际 ${D.length}+${B.length}）`
+    (D.length === 22 && B.length === 23 && new Set([...D, ...B]).size === 45 ? ok : fail)(
+      `【75】nuphus 工具分组与实测枚举一致（桌面 22 + 浏览器 23 = 45；实际 ${D.length}+${B.length}）`
     );
     (pol.shouldRegisterNuphus({ desktop: false, browser: true })
       && pol.shouldRegisterNuphus({ desktop: true, browser: false })
@@ -3173,7 +3183,7 @@ export async function run() {
     );
     const onlyBrowser = pol.nuphusDisabledTools({ desktop: false, browser: true });
     const onlyDesktop = pol.nuphusDisabledTools({ desktop: true, browser: false });
-    (onlyBrowser.length === 15 && !onlyBrowser.some((t) => t.startsWith("browser_")) ? ok : fail)(
+    (onlyBrowser.length === 22 && !onlyBrowser.some((t) => t.startsWith("browser_")) ? ok : fail)(
       "【75】只开浏览器 ⇒ 掩掉整组桌面工具（真实键鼠拿不到）且不误伤 browser_*"
     );
     (onlyDesktop.length === 23 && !onlyDesktop.some((t) => t.startsWith("desktop_")) ? ok : fail)(
@@ -3226,10 +3236,13 @@ export async function run() {
   (/判存在（必做的第一步）/.test(bs75) ? ok : fail)(
     "【75】desktop-skill 有「判存在」小节（总闸关着时别去调不存在的 desktop_*，也别用命令行绕）"
   );
-  (/IF `desktop_windows_list` is in your tool list/.test(di75) ? ok : fail)(
-    "【75】基础指令里桌面能力也按「工具列表里有没有 desktop_windows_list」判存在"
+  (/are NOT delivered to you/.test(di75) && /nuphus-call <tool> key=value/.test(di75) ? ok : fail)(
+    "【75】桌面能力改走 nuphus-call CLI（MCP 工具不下发给模型，0.157 起；旧的「看工具表判存在」恒假）"
   );
-
+  // ⛔ 10-12：开关关掉时该段桌面文案根本不注入，禁令改由 AUTOMATION DISABLED NOTE 承载（宿主判据）。
+  (/不得用 `nuphus-call` 从命令行绕过/.test(di75) ? ok : fail)(
+    "【75】总闸关闭时仍明确禁止命令行绕过（禁令在 AUTOMATION DISABLED NOTE，由宿主按开关下发）"
+  );
 }
 
 // ---------- 【273】Windows 原生控件清单通道（harness-uia，10-04）----------
@@ -4111,6 +4124,7 @@ export async function run() {
   }
 }
 
+
 // ---------- 【90】ipc-registry 域账本：与 main.ts / features 实际代码一致（09-21 架构改造批 4 前置）----------
 // registry 是「域 → 现在在哪」的唯一查表（electron/ipc-registry.ts）。守卫保证它不撒谎：
 //   · 每个 status=in-main|shell 的域：main.ts 里该前缀通道数必须 = 账本 count（搬走一个就得改账本）；
@@ -4320,8 +4334,8 @@ export async function run() {
 
     if (cd) {
       /* ① 剥壳（真跑）：宿主包上去的 shell 启动器不许出现在界面上 —— 真机原样见 command-display.mjs 文件头 */
-      const LAUNCHER = `"D:\\PPcode Desktop-refactor\\resources\\tools\\pwsh\\pwsh.exe"`;
-      const innerCommand = `Get-Content -LiteralPath 'D:\\PPcode Desktop-refactor\\src\\App.tsx'`;
+      const LAUNCHER = `"D:\\Codex Harness Desktop-refactor\\resources\\tools\\pwsh\\pwsh.exe"`;
+      const innerCommand = `Get-Content -LiteralPath 'D:\\Codex Harness Desktop-refactor\\src\\App.tsx'`;
       const stripped = cd.stripShellLauncher(`${LAUNCHER} -Command "${innerCommand}"`);
       (stripped === innerCommand ? ok : fail)(`【118】剥掉 pwsh 启动器外壳（实得 ${JSON.stringify(stripped).slice(0, 60)}）`);
       (cd.stripShellLauncher(`${LAUNCHER} -NoProfile -ExecutionPolicy Bypass -Command "npm run check"`) === "npm run check"
@@ -4345,9 +4359,9 @@ export async function run() {
       (cd.commandTarget("curl -X POST https://a.b.org/v1/x.json -d '{}'") === "" ? ok : fail)(
         `【118】URL 不当文件目标（实得 ${JSON.stringify(cd.commandTarget("curl -X POST https://a.b.org/v1/x.json -d '{}'"))}）`
       );
-      /* ⛔ 带空格的路径（`D:\PPcode Desktop-refactor\…`）必须保住盘符 ——
+      /* ⛔ 带空格的路径（`D:\Codex Harness Desktop-refactor\…`）必须保住盘符 ——
          第一版把 `\` 算进盘符前缀，这类路径直接匹配不到、盘符被吃掉。 */
-      const spaced = cd.commandTarget(`${LAUNCHER} -Command "Get-Content -LiteralPath 'D:\\PPcode Desktop-refactor\\src\\App.tsx'"`);
+      const spaced = cd.commandTarget(`${LAUNCHER} -Command "Get-Content -LiteralPath 'D:\\Codex Harness Desktop-refactor\\src\\App.tsx'"`);
       (/^D:\//.test(spaced) && /App\.tsx$/.test(spaced) ? ok : fail)(
         `【118】带空格路径保住盘符并归一为正斜杠（实得 ${JSON.stringify(spaced)}）`
       );
@@ -4555,7 +4569,7 @@ export async function run() {
       "【127】表头串 = 用途 · 目标（两者都显示，看不出目的才算没映射）"
     );
     (/\(\?!\[A-Za-z0-9_-\]\)/.test(cmdCode) ? ok : fail)(
-      "【127】目标提取带尾部负向断言（防 `.ppcode-harness` 被截成半截 `.codex`）"
+      "【127】目标提取带尾部负向断言（防 `.codex-harness` 被截成半截 `.codex`）"
     );
     /* ── 技能归属映射（09-24 用户：「还有使用了技能类似没看见」）── */
     const toolLib = join(ROOT, "src", "lib", "tool-display.mjs");

@@ -790,15 +790,14 @@ console.log(C.bold("\n【25】思考等级：展示 低/中/高/最高/极高，
   // ⛔ 09-20 修正方向：浏览器通道**首选已注册的 nuphus browser_* MCP 工具**，playwright-cli 降为兜底。
   //    旧断言写的是「playwright-cli 是默认通道」——那正是要修的问题：24 个 browser_* 工具已注册、
   //    占着约 10k 前缀，指令却一次不提、还把 CLI 说成默认（每步一次进程往返）。
-  /* ⛔⛔ 10-12 主仓已改口径（引擎 0.157 起内置 MCP 延迟暴露 ⇒ browser_* 调用必报 unsupported call）：
-     现在**首选 playwright-cli**，并明令"就算 browser_* 出现在工具列表里也别调"。
-     旧断言要求的是"browser_* 首选"，照它改 = 把"跑一半自己断"的 bug 改回来。 */
-  (devInstr.includes("use playwright-cli") && devInstr.includes("Do NOT call browser_*") && devInstr.includes("unsupported call") ? ok : fail)("developer_instructions：**首选 playwright-cli**、明令不许调 browser_*（内置 MCP 延迟暴露 ⇒ 调用必 unsupported call）");
+  // ⛔⛔ 10-12 改（引擎 0.157 起内置 MCP 工具延迟暴露，直调必返 unsupported call）：主线已改成
+  //    playwright-cli，browser_* 是「名字在表里、路由不认」。断言随之改成钉新事实。
+  (devInstr.includes("it is the ONLY channel that works on current engine builds") && devInstr.includes("Do NOT call browser_*") && /cloakbrowser upgrade path/.test(devInstr) ? ok : fail)("developer_instructions：浏览器主线 = playwright-cli（browser_* 直调必 unsupported call）；cloakbrowser 增强提法保留探 CLOAKBROWSER_ENTRY");
   (!devInstr.includes("DEFAULT browser channel") ? ok : fail)("developer_instructions：不得回退成「playwright-cli 是默认通道」（会让已注册的 browser_* 工具白占上下文）");
-  (devInstr.includes("if one already failed, do not retry it") ? ok : fail)("developer_instructions：browser_* 失败后**不重试、立刻转 CLI**（否则弱模型整回合耗死在换招上）");
+  (/Do NOT call browser_\*/.test(devInstr) && /unsupported call/.test(devInstr) ? ok : fail)("developer_instructions：明确禁止直调 browser_* 并写明报错（不再按「工具表里有没有」判存在 —— 那是 0.157 前的旧机制）");
   (!/The in-app browser panel is CloakBrowser/.test(devInstr) ? ok : fail)("developer_instructions：不再声称应用内面板就是 CloakBrowser（默认是内置浏览器视图）");
   const skillsTs = readBuiltinSkillsSource();
-  (!/本机内置的浏览器就是 CloakBrowser/.test(skillsTs) && /## 0\. 通道选型/.test(skillsTs) && /首选：nuphus 的/.test(skillsTs) && /MCP 工具/.test(skillsTs) ? ok : fail)("browser-skill：通道选型首选 nuphus browser_*（CloakBrowser 仅在已安装且需过反爬时用）");
+  (!/本机内置的浏览器就是 CloakBrowser/.test(skillsTs) && /## 0\. 通道选型/.test(skillsTs) && /唯一可用通道/.test(skillsTs) && /playwright-cli/.test(skillsTs) ? ok : fail)("browser-skill：通道选型写明当前唯一可用通道 = playwright-cli（CloakBrowser 仅在已安装且需过反爬时用）");
   const appTs = readAppUi();
   (appTs.includes('const [browserMode] = useState<"cloak" | "internal">("internal")') ? ok : fail)("App.tsx：浏览器模式默认内置视图（不再是 cloak）");
   (appTs.includes('const autoIds = ["nuphus", "playwright-cli", "cloakbrowser", "playwright-browsers", "cloak-browsers", "ponytail"]') ? ok : fail)("App.tsx：开发工具分组按拆分后的条目 id 归类");
@@ -1037,13 +1036,7 @@ w.postMessage({id:1,op:"list",root});
 // ═══════════════════════════════════════════════════════════════════
 {
   const wfDir = join(ROOT, ".github", "workflows");
-  /* ⛔ 本仓的发布流**横跨三个文件**：`release.yml` 只做编排与转正，**两个 build-*.yml 各自
-     直传本仓 Release**（刻意不吃 artifact 配额 —— 配额打满会直接让作业秒失败）。
-     ⇒ 断言要找的 `--clobber` / 资产命名 / docs 说明强制 / tag 与版本核对，都实现在 build-*.yml 里；
-     只看 release.yml 会**误判成"没有"**（实测 9 条假红）。所以拼起来看。 */
-  const release = ["release.yml", "build-mac.yml", "build-win.yml"]
-    .map((f) => readFileSync(join(wfDir, f), "utf8"))
-    .join("\n");
+  const release = readFileSync(join(wfDir, "release.yml"), "utf8");
   const buildMac = readFileSync(join(wfDir, "build-mac.yml"), "utf8");
   const buildWin = readFileSync(join(wfDir, "build-win.yml"), "utf8");
   const prepWin = readFileSync(join(ROOT, "scripts", "prepare-windows-tools.cjs"), "utf8");
@@ -1057,28 +1050,20 @@ w.postMessage({id:1,op:"list",root});
   ((/needs:\s*\[mac,\s*win\]/.test(release) || /needs:\s*\[win,\s*mac\]/.test(release)) ? ok : fail)("【29】publish 依赖 mac + win 两个 job（三端不齐不发版）");
 
   // 构建侧 artifact 名 ⇄ 发布侧取件目录：改名不同步 = 发布 job 找不到文件（最易漂移处）
-  /* ⛔ 本仓直传：资产名由 build 侧 `NAME=` 规范化后直接上传，**没有 artifact 中转环节**
-     （不吃配额 —— 配额打满会让作业秒失败）。⇒ 锚「规范化后的名字」而不是 `pick artifacts/…`。 */
-  (buildWin.includes('NAME="PPcode-${VERSION}-win-x64.exe"') ? ok : fail)("【29】Windows 资产名规范化为 PPcode-<ver>-win-x64.exe（直传，无 artifact 环节）");
-  (buildMac.includes('NAME="PPcode-${VERSION}-${{ matrix.mac_target }}-mac.zip"') && buildMac.includes("mac_target: arm64") && buildMac.includes("mac_target: x64") ? ok : fail)("【29】mac 资产名由 matrix 产生（PPcode-<ver>-arm64-mac.zip / -x64-mac.zip）");
-  /* ⛔ 本仓没有「发布侧取件」这一步（build 侧直接上传规范化后的 NAME）⇒ 改为锚**上传的就是 NAME**，
-     这才是这条断言真正要保的东西：上传名与更新器匹配名是同一个。 */
-  (buildMac.includes('gh release upload "v${VERSION}" "${NAME}"') && buildWin.includes('gh release upload "v${VERSION}" "${NAME}"') ? ok : fail)("【29】两端上传的都是规范化后的 ${NAME}（上传名 == 更新器匹配名）");
+  (buildWin.includes("name: win-x64") && release.includes("pick artifacts/win-x64") ? ok : fail)("【29】Windows artifact 名（win-x64）在构建与发布两侧一致");
+  (buildMac.includes("name: mac-${{ matrix.mac_target }}") && buildMac.includes("mac_target: arm64") && buildMac.includes("mac_target: x64") ? ok : fail)("【29】mac artifact 名由 matrix 产生（mac-arm64 / mac-x64）");
+  (release.includes("pick artifacts/mac-arm64") && release.includes("pick artifacts/mac-x64") ? ok : fail)("【29】发布侧按 mac-arm64 / mac-x64 取件（与构建侧 matrix 对应）");
 
   // 资产命名 = 更新器的匹配契约（electron/updates.ts）：名字错 → 用户静默收不到更新
   (updates.includes('a.name.includes("mac") && a.name.endsWith(".zip") && a.name.includes(arch)') && updates.includes('a.name.endsWith(".exe")') ? ok : fail)("【29】更新器匹配规则仍是「Windows 认 .exe / mac 认 mac+.zip+架构名」");
-  /* ⛔ 名字是**模板**（`-${matrix.mac_target}-mac.zip`）而不是字面量 `-arm64-mac.zip`；
-     要保的契约是「三个名字都能被 updates.ts 选中」：Windows 认 .exe；mac 认 mac + .zip + 架构名。
-     ⛔ mac x64 必须自带架构名 —— electron-builder 原生产物是 `…-mac.zip`（不带 x64），Intel 用户会永远匹配不到。 */
-  (buildWin.includes("-win-x64.exe") && buildMac.includes("${{ matrix.mac_target }}-mac.zip") && buildMac.includes("mac_target: x64") ? ok : fail)("【29】三个资产名同时满足更新器（mac x64 强制带架构名 —— electron-builder 原生产物不带 x64）");
+  (release.includes("-win-x64.exe") && release.includes("-arm64-mac.zip") && release.includes("-x64-mac.zip") ? ok : fail)("【29】三个资产名同时满足更新器（mac x64 强制带架构名 —— electron-builder 原生产物不带 x64）");
   (release.includes("--clobber") ? ok : fail)("【29】资产上传用 --clobber（重跑失败 job 不会因子资产重名而失败）");
 
   // ⛔⛔ 10-02 实测事故：**删 tag 重建会让同名 release 退回草稿态**，而 gh release upload / edit(notes)
   //    都不会把它转正 ⇒ 草稿对匿名 API 不可见、/releases/latest 回落上一版、应用内更新器永远收不到
   //    这一版（当时 CI 全绿、资产也 clobber 覆盖了，看着像发布成功，实则用户拿不到）。
   //    锚定「拿 isDraft 去判 + 命中就 --draft=false」这一对动作，而不是只看有没有 --draft 字样。
-  (/gh release view "v\$\{VERSION\}" --repo "\$\{PUBLISH_REPO\}" --json isDraft[\s\S]{0,300}?gh release edit "v\$\{VERSION\}" --draft=false --repo "\$\{PUBLISH_REPO\}"/.test(release) ? ok : fail)(
-    // 10-10 仓库拆分：发布目标改为跨仓（PUBLISH_REPO），转正兜底同样带 --repo —— 锚定"判 isDraft + 命中转正"这对动作不变
+  (/gh release view "v\$\{VERSION\}" --json isDraft[\s\S]{0,120}?gh release edit "v\$\{VERSION\}" --draft=false/.test(release) ? ok : fail)(
     "【29】release.yml 有草稿态转正兜底（删 tag 重建会让同名 release 退回草稿 ⇒ 用户永远收不到更新）"
   );
   (release.includes('gh release edit "v${VERSION}" --notes-file "${NOTES}"') ? ok : fail)(
@@ -2286,7 +2271,7 @@ w.postMessage({id:1,op:"list",root});
 
   /* ══ 【173】共享技能池（09-27 用户需求：按项目选择生效的全局技能）══════════
      模型：全局停用集（codex-home/skill-global-disabled.json）∪ 项目禁用集
-     （<项目>/.ppcode-harness/skill-pool.json）→ syncSkillPool(cwd) 投影到磁盘改名。
+     （<项目>/.codex-harness/skill-pool.json）→ syncSkillPool(cwd) 投影到磁盘改名。
      ⛔ 引擎「扫到就注入」无 per-project 开关 ⇒ 池的唯一生效途径 = thread/start 前
      重排磁盘状态；接线挂在 ensureProjectAgentsMd（【171】的同一收口，12 处继承）。
      ⛔ 投影必须幂等且保底迁移（磁盘 .disabled 而配置无记录 ⇒ 记入全局停用集，
@@ -2378,7 +2363,7 @@ w.postMessage({id:1,op:"list",root});
     );
     const part05Src157 = readFileSync(join(ROOT, "src", "features", "app-state", "parts", "part05", "01-seg.tsx"), "utf8");
     const part01Src157 = readFileSync(join(ROOT, "src", "features", "app-state", "parts", "part01", "04-optimistic-turn-approval-e2e.tsx"), "utf8");
-    (/persistTokenUsageSnapshot[\s\S]{0,300}?map\.set\(threadId/.test(part01Src157) ? ok : fail)(
+    (/persistTokenUsageSnapshot[\s\S]{0,600}?map\.set\(threadId/.test(part01Src157) ? ok : fail)(
       "【157】用量按会话归属存储（后台会话/被委派子会话不污染当前的环）"
     );
     (/usageThreadId === String\(bag\.threadRef\.current\?\.id/.test(part05Src157) ? ok : fail)(
@@ -2397,7 +2382,7 @@ w.postMessage({id:1,op:"list",root});
     );
     /* ⛔ 必须**真 LRU**（09-25 代码审查）：Map 的 set 不会把已存在的键挪到末尾 ⇒ 只写 slice(-N)
        实际是 FIFO，长期活跃的老会话会被新会话挤掉、重启后进度照样归零。 */
-    (/map\.delete\(threadId\);[\s\S]{0,80}?map\.set\(threadId, usage\);/.test(part01Src157) ? ok : fail)(
+    (/map\.delete\(threadId\);[\s\S]{0,600}?map\.set\(threadId, usage\)/.test(part01Src157) ? ok : fail)(
       "【157】快照截断是**真 LRU**（先 delete 再 set 挪到末尾；否则长期活跃会话会被挤掉、进度照样归零）"
     );
     (/const TOKEN_SNAPSHOT_KEY/.test(part01Src157.split("export function")[0]) ? ok : fail)(

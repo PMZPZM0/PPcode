@@ -184,7 +184,6 @@ export type LoginResult = { ok: boolean; account?: CloudAccountView; error?: str
  *  ⛔ `server.baseUrl` = 服务端**自报**的对外基址（由反代头推出来）—— 界面上「服务地址」显示它，
  *     而不是把编译期常量当固定事实。⛔ 它只用于显示，不参与地址解析（见 rememberServerBase）。 */
 type LoginReply = { ok?: boolean; token?: string; account?: { username?: string; role?: string }; server?: { baseUrl?: string }; error?: string };
-}; error?: string };
 
 /**
  * 账号密码登录云账号服务。

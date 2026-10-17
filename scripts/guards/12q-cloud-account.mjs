@@ -164,7 +164,7 @@ const navSrc = read("src/features/app-view/helpers/catalogs.ts");
 const helpSrc = read("src/components/HelpDialog.tsx");
 const typesSrc = read("src/features/app-view/types.ts");
 const pageSrc = read("src/features/settings-cloud/CloudAccountSection.tsx");
-ok(!HAS_CLOUD_UI || /cloud:\s*\{\s*render:/.test(registrySrc), "设置注册表有 cloud 页的 render 条目（缺了【101】会红）");
+ok(/cloud:\s*\{\s*render:/.test(registrySrc), "设置注册表有 cloud 页的 render 条目（缺了【101】会红）");
 ok(/\["cloud",\s*"云账号"/.test(navSrc), '设置导航含 ["cloud", "云账号"]（否则用户进不去这一页）');
 ok(/page:\s*"云账号"/.test(helpSrc), "帮助总览含「云账号」（缺了【32】会红）");
 ok(/"cloud"/.test(typesSrc) && /SettingsPage/.test(typesSrc), 'SettingsPage 类型含 "cloud"');

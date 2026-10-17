@@ -4,7 +4,7 @@ import fs from "node:fs";
 // Telegram 机器人网关：官方 Bot API 长轮询（getUpdates）/ sendMessage。
 // 凭据：@BotFather 创建机器人拿 Bot Token，填入即可；重启自动恢复。
 const API = "https://api.telegram.org";
-const stateFile = path.join(process.env.CODEX_HARNESS_USER_DATA || path.join(os.homedir(), "AppData", "Roaming", "PPcode"), "telegram-account.json");
+const stateFile = path.join(process.env.CODEX_HARNESS_USER_DATA || path.join(os.homedir(), "AppData", "Roaming", "Codex Harness Desktop"), "telegram-account.json");
 const POLL_TIMEOUT_MS = 30_000;
 
 export type TelegramEvents = {

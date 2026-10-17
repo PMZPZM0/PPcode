@@ -6,7 +6,7 @@ import fs from "node:fs";
 // 能力边界：只能向该群推送消息（markdown/text），不支持收消息/对话——企微群机器人无回调通道（腾讯限制）。
 // 凭据持久化 userData/wecom-webhook.json，重启自动恢复可用性校验。
 const STATE_FILE = path.join(
-  process.env.CODEX_HARNESS_USER_DATA || path.join(os.homedir(), "AppData", "Roaming", "PPcode"),
+  process.env.CODEX_HARNESS_USER_DATA || path.join(os.homedir(), "AppData", "Roaming", "Codex Harness Desktop"),
   "wecom-webhook.json",
 );
 
@@ -34,7 +34,7 @@ export class WecomWebhookGateway {
     const res = await fetch(clean, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ msgtype: "markdown", markdown: { content: `**PPcode** 已接入本群（${new Date().toLocaleString("zh-CN")}）\n自动化任务结果与通知将推送到这里。` } }),
+      body: JSON.stringify({ msgtype: "markdown", markdown: { content: `**Codex Harness** 已接入本群（${new Date().toLocaleString("zh-CN")}）\n自动化任务结果与通知将推送到这里。` } }),
       signal: AbortSignal.timeout(10_000),
     }).then((r) => r.json()) as any;
     if (res.errcode !== 0) throw new Error(`Webhook 无效：${res.errmsg ?? JSON.stringify(res).slice(0, 120)}`);

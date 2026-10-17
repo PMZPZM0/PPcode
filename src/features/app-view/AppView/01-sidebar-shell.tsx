@@ -153,6 +153,10 @@ import { NewbieGuide } from "../../newbie-guide";
 import { UpdateReadyToast } from "./UpdateReadyToast";
 import { CloseConfirmDialog } from "../../../components/CloseConfirmDialog";
 
+/* ⛔ 品牌差异（本仓 = PPcode）：整套代码复制自主仓，品牌字串必须走这里，
+   ⛔ 别直接写字面量 —— 从主仓同步本文件时这一行会冲突，届时**保留本仓值**（别整份套）。 */
+const BRAND_NAME = "PPcode";
+
 export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppApi; onOpenSettings?: (page: string) => void }) {
   const {
     accountDraft,
@@ -349,11 +353,11 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     <>
     {!popoutThreadId ? (
       <aside className={`sidebar ${mobileNav ? "mobile-open" : ""} ${sidebarFlyout ? "flyout-open" : ""}`} onMouseEnter={() => sidebarCollapsed && setSidebarFlyout(true)} onMouseLeave={() => sidebarCollapsed && setSidebarFlyout(false)}>        <div className="brand-row">
-              <button className={`brand-mark sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : "is-expanded"}`} aria-label={narrow ? "Codex Harness" : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} title={narrow ? "Codex Harness" : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} onClick={() => { if (narrow) return; const next = !sidebarCollapsed; setSidebarCollapsed(next); localStorage.setItem("sidebar-collapsed", String(next)); }}>
+              <button className={`brand-mark sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : "is-expanded"}`} aria-label={narrow ? BRAND_NAME : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} title={narrow ? BRAND_NAME : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} onClick={() => { if (narrow) return; const next = !sidebarCollapsed; setSidebarCollapsed(next); localStorage.setItem("sidebar-collapsed", String(next)); }}>
                 <img className="ch-logo ch-logo-img" src={`${import.meta.env.BASE_URL}icon.png`} alt="" aria-hidden="true" />
                 <span className="sidebar-toggle-arrow"><ArrowLeft size={13} strokeWidth={2.4} /></span>
               </button>
-              {!sidebarCollapsed && <div><strong className="brand-name">Codex Harness</strong></div>}
+              {!sidebarCollapsed && <div><strong className="brand-name">{BRAND_NAME}</strong></div>}
             </div>
             <div className="sidebar-tabs" role="tablist" aria-label="导航">
               <button className="sidebar-tab ic-blue" onClick={() => { startNewThread(); }}><MessageSquarePlus size={15} /><span>新建任务</span><kbd>{hk("Ctrl+N")}</kbd></button>

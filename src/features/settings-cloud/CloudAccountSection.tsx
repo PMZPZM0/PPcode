@@ -274,7 +274,10 @@ export function CloudAccountSection() {
               />
             </div>
             <details className="cloud-acct-adv">
-              <summary>服务地址（默认 {status.defaultBaseUrl}）</summary>
+              <summary>服务地址（高级 · 一般不用改）</summary>
+              <div className="cloud-acct-sub" style={{ margin: "0 0 6px" }}>
+                {status.active?.baseUrl ? <>当前连接：<code>{status.active.baseUrl}</code></> : <>留空 = 用服务端默认（<code>{status.defaultBaseUrl}</code>）</>}
+              </div>
               <input
                 className="field"
                 value={baseUrl}

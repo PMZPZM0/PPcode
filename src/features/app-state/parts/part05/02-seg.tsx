@@ -28,14 +28,14 @@ bag.popoutFromQuery = popoutFromQuery as typeof bag.popoutFromQuery;
     if (bag.popoutFromQuery) {
       bag.popoutThreadIdRef.current = bag.popoutFromQuery;
       bag.setPopoutThreadId(bag.popoutFromQuery);
-      try { document.title = `Codex Harness — 独立会话`; } catch { /* 忽略 */ }
+      try { document.title = `PPcode — 独立会话`; } catch { /* 忽略 */ }
       return;
     }
     void window.codex.popoutThreadId().then((id) => {
       if (id) {
         bag.popoutThreadIdRef.current = id;
         bag.setPopoutThreadId(id);
-        try { document.title = `Codex Harness — 独立会话`; } catch { /* 忽略 */ }
+        try { document.title = `PPcode — 独立会话`; } catch { /* 忽略 */ }
       }
     }).catch(() => undefined);
     // 主窗口侧：启动时同步一次「哪些会话已被弹窗」→ 侧栏隐藏它们

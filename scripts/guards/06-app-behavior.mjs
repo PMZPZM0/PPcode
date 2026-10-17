@@ -1037,7 +1037,13 @@ w.postMessage({id:1,op:"list",root});
 // ═══════════════════════════════════════════════════════════════════
 {
   const wfDir = join(ROOT, ".github", "workflows");
-  const release = readFileSync(join(wfDir, "release.yml"), "utf8");
+  /* ⛔ 本仓的发布流**横跨三个文件**：`release.yml` 只做编排与转正，**两个 build-*.yml 各自
+     直传本仓 Release**（刻意不吃 artifact 配额 —— 配额打满会直接让作业秒失败）。
+     ⇒ 断言要找的 `--clobber` / 资产命名 / docs 说明强制 / tag 与版本核对，都实现在 build-*.yml 里；
+     只看 release.yml 会**误判成"没有"**（实测 9 条假红）。所以拼起来看。 */
+  const release = ["release.yml", "build-mac.yml", "build-win.yml"]
+    .map((f) => readFileSync(join(wfDir, f), "utf8"))
+    .join("\n");
   const buildMac = readFileSync(join(wfDir, "build-mac.yml"), "utf8");
   const buildWin = readFileSync(join(wfDir, "build-win.yml"), "utf8");
   const prepWin = readFileSync(join(ROOT, "scripts", "prepare-windows-tools.cjs"), "utf8");
@@ -1051,13 +1057,20 @@ w.postMessage({id:1,op:"list",root});
   ((/needs:\s*\[mac,\s*win\]/.test(release) || /needs:\s*\[win,\s*mac\]/.test(release)) ? ok : fail)("【29】publish 依赖 mac + win 两个 job（三端不齐不发版）");
 
   // 构建侧 artifact 名 ⇄ 发布侧取件目录：改名不同步 = 发布 job 找不到文件（最易漂移处）
-  (buildWin.includes("name: win-x64") && release.includes("pick artifacts/win-x64") ? ok : fail)("【29】Windows artifact 名（win-x64）在构建与发布两侧一致");
-  (buildMac.includes("name: mac-${{ matrix.mac_target }}") && buildMac.includes("mac_target: arm64") && buildMac.includes("mac_target: x64") ? ok : fail)("【29】mac artifact 名由 matrix 产生（mac-arm64 / mac-x64）");
-  (release.includes("pick artifacts/mac-arm64") && release.includes("pick artifacts/mac-x64") ? ok : fail)("【29】发布侧按 mac-arm64 / mac-x64 取件（与构建侧 matrix 对应）");
+  /* ⛔ 本仓直传：资产名由 build 侧 `NAME=` 规范化后直接上传，**没有 artifact 中转环节**
+     （不吃配额 —— 配额打满会让作业秒失败）。⇒ 锚「规范化后的名字」而不是 `pick artifacts/…`。 */
+  (buildWin.includes('NAME="PPcode-${VERSION}-win-x64.exe"') ? ok : fail)("【29】Windows 资产名规范化为 PPcode-<ver>-win-x64.exe（直传，无 artifact 环节）");
+  (buildMac.includes('NAME="PPcode-${VERSION}-${{ matrix.mac_target }}-mac.zip"') && buildMac.includes("mac_target: arm64") && buildMac.includes("mac_target: x64") ? ok : fail)("【29】mac 资产名由 matrix 产生（PPcode-<ver>-arm64-mac.zip / -x64-mac.zip）");
+  /* ⛔ 本仓没有「发布侧取件」这一步（build 侧直接上传规范化后的 NAME）⇒ 改为锚**上传的就是 NAME**，
+     这才是这条断言真正要保的东西：上传名与更新器匹配名是同一个。 */
+  (buildMac.includes('gh release upload "v${VERSION}" "${NAME}"') && buildWin.includes('gh release upload "v${VERSION}" "${NAME}"') ? ok : fail)("【29】两端上传的都是规范化后的 ${NAME}（上传名 == 更新器匹配名）");
 
   // 资产命名 = 更新器的匹配契约（electron/updates.ts）：名字错 → 用户静默收不到更新
   (updates.includes('a.name.includes("mac") && a.name.endsWith(".zip") && a.name.includes(arch)') && updates.includes('a.name.endsWith(".exe")') ? ok : fail)("【29】更新器匹配规则仍是「Windows 认 .exe / mac 认 mac+.zip+架构名」");
-  (release.includes("-win-x64.exe") && release.includes("-arm64-mac.zip") && release.includes("-x64-mac.zip") ? ok : fail)("【29】三个资产名同时满足更新器（mac x64 强制带架构名 —— electron-builder 原生产物不带 x64）");
+  /* ⛔ 名字是**模板**（`-${matrix.mac_target}-mac.zip`）而不是字面量 `-arm64-mac.zip`；
+     要保的契约是「三个名字都能被 updates.ts 选中」：Windows 认 .exe；mac 认 mac + .zip + 架构名。
+     ⛔ mac x64 必须自带架构名 —— electron-builder 原生产物是 `…-mac.zip`（不带 x64），Intel 用户会永远匹配不到。 */
+  (buildWin.includes("-win-x64.exe") && buildMac.includes("${{ matrix.mac_target }}-mac.zip") && buildMac.includes("mac_target: x64") ? ok : fail)("【29】三个资产名同时满足更新器（mac x64 强制带架构名 —— electron-builder 原生产物不带 x64）");
   (release.includes("--clobber") ? ok : fail)("【29】资产上传用 --clobber（重跑失败 job 不会因子资产重名而失败）");
 
   // ⛔⛔ 10-02 实测事故：**删 tag 重建会让同名 release 退回草稿态**，而 gh release upload / edit(notes)

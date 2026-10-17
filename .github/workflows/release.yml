@@ -41,3 +41,39 @@ jobs:
   #（免费账户 500MB，一次三端 ~2GB）打满会让 upload-artifact 硬失败且 6-12 小时才重算，
   #  v0.1.1 / v0.1.2 连续两轮死在这一步（构建本身全绿）。现在由 build-win / build-mac
   #  各自**直传**到公开发布仓 Release（Release 资产不受该配额限制）。
+
+  publish:
+    # ⛔ 见 build-*.yml 的说明：两端各自直传**草稿**，这里等**都成功**了才转正。
+    #    失败方向的代价 = Release 停在草稿（可见、可手动转正），⛔ 不是悄悄发半成品。
+    needs: [mac, win]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 草稿转正 + 重写说明（两端资产齐了才发布）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_REPO: PMZPZM0/PPcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          NOTES="docs/releases/v${VERSION}.md"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} 与 package.json 的版本 ${VERSION} 不一致——先对齐版本号再打 tag"
+            exit 1
+          fi
+          if [ ! -f "${NOTES}" ]; then
+            echo "::error::缺少更新说明 ${NOTES} —— 发版必须写说明，不当静默无说明发布"
+            exit 1
+          fi
+          # 重写说明正文：只 upload 资产会让发布页停在**首建时**的旧正文
+          gh release edit "v${VERSION}" --notes-file "${NOTES}" --repo "${PUBLISH_REPO}"
+          # ⛔ 10-02 事故：删 tag 重建会让同名 release **退回草稿**，而 upload / edit(notes) 都不会转正
+          #    ⇒ 草稿对匿名 API 不可见、/releases/latest 回落上一版、应用内更新器永远收不到。
+          #    ⇒ 探测 isDraft，命中就转正。
+          if [ "$(gh release view "v${VERSION}" --repo "${PUBLISH_REPO}" --json isDraft --jq .isDraft)" = "true" ]; then
+            gh release edit "v${VERSION}" --draft=false --repo "${PUBLISH_REPO}"
+            echo "::notice::检测到草稿态，已转正 v${VERSION}"
+          fi
+          echo "::notice::已发布 v${VERSION}（两端资产齐）"

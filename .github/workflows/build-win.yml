@@ -83,7 +83,10 @@ jobs:
           if gh release view "v${VERSION}" --repo "${PUBLISH_REPO}" >/dev/null 2>&1; then
             gh release edit "v${VERSION}" --repo "${PUBLISH_REPO}" --notes-file "${NOTES}"
           else
-            gh release create "v${VERSION}" --repo "${PUBLISH_REPO}" --title "v${VERSION}" --notes-file "${NOTES}"
+          # ⛔ 建**草稿**而不是直接发布：两个 build job 各自直传同一个 Release，
+          #    「一个成功、一个失败」时会留下只有一半资产的**已发布**版本 ⇒ 用户可能拿到不完整更新。
+          #    草稿不进 /releases/latest（更新检查看不到），由 release.yml 的 publish 在两端成功后转正。
+            gh release create "v${VERSION}" --repo "${PUBLISH_REPO}" --title "v${VERSION}" --notes-file "${NOTES}" --draft
           fi
           cp "${ASSET}" "${NAME}"
           gh release upload "v${VERSION}" "${NAME}" "sha256-${NAME}.txt" --clobber --repo "${PUBLISH_REPO}"

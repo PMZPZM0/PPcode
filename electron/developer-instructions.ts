@@ -95,10 +95,22 @@ const DESKTOP_INSTRUCTIONS =
  *    所以必须写成条件式，否则模型会去调不存在的工具、把「没开」误判成「坏了」。
  *  - playwright-cli 降级为**兜底**通道（nuphus 不可用时仍能干活）。
  *  - cloakbrowser 仍是可选增强，可能根本没装 —— 必须先看环境变量再决定。
+ * ⛔⛔ 10-12 改（引擎日志实证 + 用户与真实用户同报「任务跑不完、自动断」）：
+ *  - **首选改为 `playwright-cli`**。原因：`browser_*` 走引擎内置 MCP 注册，而**引擎 0.157 起
+ *    内置 MCP 工具面对模型是「延迟暴露」** —— 列表里看得到、**调用必报 `unsupported call`**
+ *    （实证：`ERROR codex_core::tools::router: error=unsupported call: browser_navigate`）；
+ *    宿主的能力网关 `harness_tools`（25 个能力）也**不含**浏览器工具 ⇒ 该通道当前对模型不可达。
+ *  - 旧文案把 `browser_*` 写成 PREFERRED、把 CLI 写成 fallback：弱模型（deepseek 系）不会去核对
+ *    工具列表，直接照 PREFERRED 调 ⇒ 失败 ⇒ 换招重试 ⇒ **整个回合耗死在工具选择上**
+ *    （用户看到的就是「跑一半自己断」）。
+ *  - 现在：主线写 playwright-cli（PATH 上有、确定可用）；`browser_*` 只留一句「首次调用成功才继续」
+ *    并要求**失败立即转 CLI、绝不重试**。
  */
 const BROWSER_INSTRUCTIONS =
-  "\n2) Browser automation — two channels; pick by what is ACTUALLY in your tool list:\n   a) PREFERRED — the nuphus MCP browser tools (prefix `browser_`). If `browser_navigate` appears in your tool list, use these: one call per action instead of a process spawn per action, `browser_snapshot` returns only the accessibility tree's interactive elements (token-cheap), `browser_exec` batches several steps into ONE round trip, `browser_import_cookies` can reuse the user's existing Chrome login (use only with their knowledge). Loop: snapshot → act → `browser_wait_for`/re-snapshot to verify.\n   b) FALLBACK — `playwright-cli` (on PATH), for when the `browser_*` tools are NOT present (e.g. desktop automation is switched off in app settings, so nuphus is not registered). Workflow: `playwright-cli open <url>` → `playwright-cli snapshot` for element refs → `click e12` / `type` / `fill` / `press` / `screenshot`; named sessions with -s=name; consult `playwright-cli --help`.\n3) cloakbrowser — OPTIONAL anti-detection fingerprint Chromium (drop-in Playwright replacement that passes Cloudflare Turnstile, reCAPTCHA, FingerprintJS). It is downloadable on demand and may NOT be installed: check `process.env.CLOAKBROWSER_ENTRY` first. If it is unset, cloakbrowser is not installed — do NOT try to install it and do NOT treat it as broken; use the channel from (2) instead and tell the user it can be downloaded from Settings → Developer Tools. When it is set: `const { launch } = await import(process.env.CLOAKBROWSER_ENTRY)` then `await launch({ headless: false, humanize: true })`, driven with the standard Playwright API. Use it ONLY for bot-protected sites.\nBROWSERS: default browsing surface is the app's BUILT-IN browser view (right-side Chromium panel); CloakBrowser only opens its own separate fingerprint window. Full usage guides live in your skills `desktop-automation` and `browser-skill`. Do NOT wrap `require(\"playwright\")` yourself — the CLI and MCP channels are the only supported entry points.";
-
+  "\n2) Browser automation — use playwright-cli (on PATH) for ALL web work: it is the ONLY channel that works on current engine builds. " +
+  "⛔ Do NOT call browser_* (the nuphus MCP tools) even if those names appear in your tool list — every such call fails with unsupported call; " +
+  "if one already failed, do not retry it and do not keep switching channels: continue with playwright-cli immediately. " +
+  "Detailed commands, per-action cheat sheet, login/cookie reuse and the cloakbrowser upgrade path are in your skill browser-skill — load it when the task actually needs a browser.";
 /**
  * 内置媒体插件说明（生图 / 视觉辅助）。只在用户配置并启用对应插件后注入——
  * 引擎从而「知道」这些能力并通过 harness-media.mjs 命令行真实调用。
@@ -107,7 +119,12 @@ const BROWSER_INSTRUCTIONS =
  * mediaCommand 由 main.ts 组装（内置 node 绝对路径 + helper 脚本绝对路径）。
  */
 const IMAGE_INSTRUCTIONS = (mediaCommand: string) =>
-  `\n4) generate_image — text-to-image via the configured image plugin. ⛔ FIRST CHOICE: if the MCP tool \`image_generate\` is in your tool list, call it directly — it is the same plugin, with automatic retry, batch support (count 1-4, generated in parallel) and it lands files in the session workspace; do NOT write your own HTTP calls or shell scripts for image generation. CLI fallback: ${mediaCommand} image "<detailed prompt>". Either way the result is a DURABLE local file path — prefer it (view it with view_image(path), or reference the path); any gateway-hosted url is temporary (may expire within hours), so NEVER present url as a permanent link to the user. Use whenever the user asks to draw/generate/illustrate an image.`;
+  `\n4) IMAGE TOOLS — two SEPARATE families (10-09 用户要求：工具区分开、生成与编辑的 IPC 也分开)。Pick by what the user actually wants:\n`
+  + `   a) \`image_generate\` — DRAW a brand-new image (text-to-image via the configured plugin). First-class tool: retries automatically, supports batch (count 1-4, generated in parallel) and lands files in the session workspace. CLI fallback (only when the tool is absent): ${mediaCommand} image "<detailed prompt>".\n`
+  + `   b) \`image_edit\` — LOCAL deterministic editing of an EXISTING file: crop / resize / rotate / flip / format / brightness·contrast / grayscale·sepia·invert / blur / pixelate / composite (watermark) / ascii-only text / solid background. It needs NO API key, and it NEVER overwrites the source (writes \`<name>-edit.<ext>\`). Companion readers: \`image_info\` (size / format / alpha / bytes) and \`image_view\` (show a file to the user in-app, stays open until they close it). Use \`view_image\` when YOU need to look at pixels; use \`image_view\` when the USER should see it.\n`
+  + `   ⛔ RULE OF THUMB: change the SHAPE (geometry / color / encoding / overlay) → \`image_edit\`; change the MEANING (different subject / style / background content) → \`image_generate\` — image_edit cannot do semantic edits, so do not try to force them into ops.\n`
+  + `   ⛔ RIGHT AFTER an image was generated, if the user asks for a SMALL tweak, ASK FIRST with \`agent_ask\` — 「修图（保留这张，只改局部）」vs「重新生成」— never silently pick one for them.\n`
+  + `   Either way the result is a DURABLE local file path — prefer it (reference the path, or show it with \`image_view\`); any gateway-hosted url is temporary (may expire within hours), so NEVER present url as a permanent link to the user.`;
 
 /** 视频生成（09-29 用户：「让 Codex 能够直接调用这两个工作流」）。
  *  ⛔ 写成**条件式**（同 BROWSER / REVIEW 的纪律）：工具是全局 MCP 段，没配厂商的机器上

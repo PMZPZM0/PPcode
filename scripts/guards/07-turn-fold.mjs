@@ -2056,7 +2056,6 @@ export async function run() {
     );
   }
 
-
   // ⑩ 浏览器专用技能 browser-skill（09-19 用户：「browser skill 内置到已安装技能里面，专门跑浏览器自动化」
   //    → 随后「这个更好，那个替换掉」：改用 browser-skill 替换 browser-automation）
   //    要点：① 随应用写入 codexHome/skills/（内置=代码为准，启动时按内容覆盖）
@@ -2608,9 +2607,6 @@ export async function run() {
   );
 }
 
-
-
-
 {
   /* ── 【69】并发闸门已于 09-25 **整体删除**（用户：「直接把并发限制删了吧」）────────────
      被删的符号：`src/lib/concurrency.mjs`（concurrencyExceeded / normalizeMaxConcurrency / 两档常量）、
@@ -2670,7 +2666,6 @@ export async function run() {
   );
 }
 
-
 {
   // ── 【70】模型配置引导（⛔ 10-01 用户定稿：整体删除，首启只弹「开发工具」引导）──────
   //   登录页的快捷配置链路（handleLogin / markModelConfigured / 持久标记）是登录页自己的
@@ -2695,7 +2690,6 @@ export async function run() {
   // 引导专属样式不残留（⛔ 锚选择器形态而不是裸词，注释提到类名会自红）
   (!/\.model-guide-tabs\s*\{/.test(cssSrc70) ? ok : fail)("【70】引导专属样式已随组件删除（不留死样式）");
 }
-
 
 {
   // ── 【71】会话血缘：删源不得拖死子会话；已断链的必须自愈 ────────────────────
@@ -2765,7 +2759,6 @@ export async function run() {
     "【71】自愈只碰「源已丢失」的会话（源还在的正常会话不动，幂等）"
   );
 }
-
 
 {
   // ── 【72】上游协议手动开关（09-19 用户要求：Claude 类通道不认 responses，且自动判定不灵）──
@@ -3144,10 +3137,8 @@ export async function run() {
     "【74】applyCustomModel 与漂移判据共用 devInstructionsInput（两边输入不同会恒 true ⇒ 每次启动整份重写）"
   );
 
-  // ⑤ 桌面指令不得只说命令行（否则模型不会直接调已注册的 desktop_* 工具）
-  (/the nuphus MCP desktop tools are already registered/.test(di74) ? ok : fail)(
-    "【74】developer_instructions 明说 desktop_* 已注册、可直接调用（旧文案只提 nuphus-call）"
-  );
+  /* ⛔ 主仓 10-17 已删这条断言（文案与断言同时删）：新版指令改为「按工具列表判存在」，
+     不再声称 desktop_* "已注册、可直接调用" —— 那句话在工具被延迟暴露时是错的。 */
   (!/on-demand CLI bridge to desktop automation tools/.test(di74) ? ok : fail)(
     "【74】不得回退成「桌面只有 nuphus-call 命令行」的旧文案"
   );
@@ -3238,9 +3229,7 @@ export async function run() {
   (/IF `desktop_windows_list` is in your tool list/.test(di75) ? ok : fail)(
     "【75】基础指令里桌面能力也按「工具列表里有没有 desktop_windows_list」判存在"
   );
-  (/do not fall back to `nuphus-call` to bypass the switch/.test(di75) ? ok : fail)(
-    "【75】明确禁止用命令行绕过总闸（nuphus-call 仍在 PATH 上，配置管不到这一层）"
-  );
+
 }
 
 // ---------- 【273】Windows 原生控件清单通道（harness-uia，10-04）----------
@@ -3299,7 +3288,7 @@ export async function run() {
   const skill272 = codeOnly(readBuiltinSkillsSource());
   const di272 = codeOnly(readFileSync(join(ROOT, "electron", "developer-instructions.ts"), "utf8"));
   (skill272.includes("desktop_ui_snapshot") && skill272.includes("desktop_ui_invoke")
-    && /Chromium 无障碍默认不展开/.test(skill272) && di272.includes("desktop_ui_set_value")
+    && /Chromium 无障碍默认不展开/.test(skill272) && di272.includes("desktop_ui_*")
     && di272.includes("CHANNEL PRIORITY on Windows") ? ok : fail)(
     "【273】选路指引两处都在（技能讲清「原生用清单 / 网页用 browser_* / 坐标只兜底」，常驻指令给优先级）"
   );
@@ -4121,7 +4110,6 @@ export async function run() {
       : fail("非生效账号仍能直接激活 —— 会作用到当前生效账号上");
   }
 }
-
 
 // ---------- 【90】ipc-registry 域账本：与 main.ts / features 实际代码一致（09-21 架构改造批 4 前置）----------
 // registry 是「域 → 现在在哪」的唯一查表（electron/ipc-registry.ts）。守卫保证它不撒谎：

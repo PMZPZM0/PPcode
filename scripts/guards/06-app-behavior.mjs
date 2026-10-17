@@ -790,9 +790,12 @@ console.log(C.bold("\n【25】思考等级：展示 低/中/高/最高/极高，
   // ⛔ 09-20 修正方向：浏览器通道**首选已注册的 nuphus browser_* MCP 工具**，playwright-cli 降为兜底。
   //    旧断言写的是「playwright-cli 是默认通道」——那正是要修的问题：24 个 browser_* 工具已注册、
   //    占着约 10k 前缀，指令却一次不提、还把 CLI 说成默认（每步一次进程往返）。
-  (devInstr.includes("PREFERRED — the nuphus MCP browser tools") && devInstr.includes("FALLBACK — `playwright-cli`") && devInstr.includes("CLOAKBROWSER_ENTRY") ? ok : fail)("developer_instructions：浏览器通道首选 nuphus browser_* MCP 工具、playwright-cli 为兜底；cloakbrowser 先探 CLOAKBROWSER_ENTRY");
+  /* ⛔⛔ 10-12 主仓已改口径（引擎 0.157 起内置 MCP 延迟暴露 ⇒ browser_* 调用必报 unsupported call）：
+     现在**首选 playwright-cli**，并明令"就算 browser_* 出现在工具列表里也别调"。
+     旧断言要求的是"browser_* 首选"，照它改 = 把"跑一半自己断"的 bug 改回来。 */
+  (devInstr.includes("use playwright-cli") && devInstr.includes("Do NOT call browser_*") && devInstr.includes("unsupported call") ? ok : fail)("developer_instructions：**首选 playwright-cli**、明令不许调 browser_*（内置 MCP 延迟暴露 ⇒ 调用必 unsupported call）");
   (!devInstr.includes("DEFAULT browser channel") ? ok : fail)("developer_instructions：不得回退成「playwright-cli 是默认通道」（会让已注册的 browser_* 工具白占上下文）");
-  (devInstr.includes("If `browser_navigate` appears in your tool list") ? ok : fail)("developer_instructions：通道按「工具列表里有没有 browser_navigate」判存在（nuphus 随桌面总闸注册，写成绝对会调不存在的工具）");
+  (devInstr.includes("if one already failed, do not retry it") ? ok : fail)("developer_instructions：browser_* 失败后**不重试、立刻转 CLI**（否则弱模型整回合耗死在换招上）");
   (!/The in-app browser panel is CloakBrowser/.test(devInstr) ? ok : fail)("developer_instructions：不再声称应用内面板就是 CloakBrowser（默认是内置浏览器视图）");
   const skillsTs = readBuiltinSkillsSource();
   (!/本机内置的浏览器就是 CloakBrowser/.test(skillsTs) && /## 0\. 通道选型/.test(skillsTs) && /首选：nuphus 的/.test(skillsTs) && /MCP 工具/.test(skillsTs) ? ok : fail)("browser-skill：通道选型首选 nuphus browser_*（CloakBrowser 仅在已安装且需过反爬时用）");

@@ -97,6 +97,10 @@ import { modelViewerFeature as feat_model_viewer } from "./features/model-viewer
 import { imageLabFeature as feat_image_lab } from "./features/image-lab";
 import { freeGatewayFeature as feat_free_gateway } from "./features/free-gateway-ipc";
 import { whatsNewFeature as feat_whatsnew } from "./features/whats-new-ipc";
+import { cloudAuthFeature as feat_cloud_auth } from "./features/cloud-auth-ipc";
+import { cloudModelsFeature as feat_cloud_models } from "./features/cloud-models-ipc";
+import { cloudKbFeature as feat_cloud_kb } from "./features/cloud-kb-ipc";
+import { cloudMemoryFeature as feat_cloud_memory } from "./features/cloud-memory-ipc";
 
 import { app } from "electron";
 import { readAppSettingsSync } from "./app-settings";
@@ -200,6 +204,10 @@ export const ENABLED: EnabledDomain[] = [
   { id: "image-lab", plugin: feat_image_lab as Plugin<unknown>, config: null },
   { id: "free-gateway", plugin: feat_free_gateway as Plugin<unknown>, config: null },
   { id: "whatsnew", plugin: feat_whatsnew as Plugin<unknown>, config: null },
+  { id: "cloud-auth", plugin: feat_cloud_auth as Plugin<unknown>, config: null },
+  { id: "cloud-models", plugin: feat_cloud_models as Plugin<unknown>, config: null },
+  { id: "cloud-kb", plugin: feat_cloud_kb as Plugin<unknown>, config: null },
+  { id: "cloud-memory", plugin: feat_cloud_memory as Plugin<unknown>, config: null },
 ];
 
 /**

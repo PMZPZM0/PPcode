@@ -90,11 +90,22 @@ ok(S.normalizeManifestUrl("http://x/y.json") === "", "自定义源只收 https�
 const masked = S.maskToken("github_pat_11ABCDEFG0abcdefghij");
 ok(!masked.includes("ABCDEFG") && masked.includes("…"), "令牌掩码 = " + masked);
 
+/* ⛔⛔ 10-12 纪律：**内置公开仓一律丢弃令牌** —— 带令牌就会让 updates.ts 恒直连、不走国内镜像
+   （令牌还会被发到第三方反代），与「必须走国内镜像更新」正好相反，且**不报错、只变慢**。
+   ⇒ 这里要测的是**两条不同的契约**；旧断言笼统写"存了就该读回"，与纪律冲突，必然恒红。 */
 S.saveUpdateSource({ token: "github_pat_VERIFY_ONLY" });
 cfg = S.readUpdateSource();
-ok(cfg.token === "github_pat_VERIFY_ONLY", "令牌落盘并回读");
+ok(cfg.token === "" && cfg.repo === "PMZPZM0/PPcode", "默认公开仓：令牌**被丢弃**（保住国内镜像可用，⛔ 不是 bug）");
+
+/* 自定义私有仓：令牌才真需要 ⇒ 应保留，且渲染层视图只给掩码 */
+S.saveUpdateSource({ repo: "someone/private-repo", token: "github_pat_VERIFY_ONLY" });
+cfg = S.readUpdateSource();
+ok(cfg.token === "github_pat_VERIFY_ONLY", "自定义私有仓：令牌落盘并回读");
 const view = S.viewOfUpdateSource(cfg);
 ok(view.hasToken === true && !JSON.stringify(view).includes("VERIFY_ONLY"), "渲染层视图不含令牌原文（只有 " + view.tokenHint + "）");
+
+/* 复位到默认（isEmpty ⇒ 配置文件自动删除，后续用例不受影响） */
+S.saveUpdateSource({ repo: "PMZPZM0/PPcode", token: "", manifestUrl: "" });
 let threw = "";
 try { S.saveUpdateSource({ repo: "not a repo" }); } catch (e) { threw = e.message; }
 ok(/owner\/name/.test(threw), "非法仓库被拒：" + threw);

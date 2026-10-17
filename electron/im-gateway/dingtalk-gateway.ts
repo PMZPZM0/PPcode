@@ -9,7 +9,7 @@ import fs from "node:fs";
 import DingTalkStream from "dingtalk-stream";
 
 const STATE_FILE = path.join(
-  process.env.CODEX_HARNESS_USER_DATA || path.join(os.homedir(), "AppData", "Roaming", "PPcode"),
+  process.env.CODEX_HARNESS_USER_DATA || path.join(os.homedir(), "AppData", "Roaming", "Codex Harness Desktop"),
   "dingtalk-account.json",
 );
 

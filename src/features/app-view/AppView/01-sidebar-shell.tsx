@@ -152,6 +152,7 @@ import { Slot } from "../../../runtime/registry";
 import { NewbieGuide } from "../../newbie-guide";
 import { UpdateReadyToast } from "./UpdateReadyToast";
 import { CloseConfirmDialog } from "../../../components/CloseConfirmDialog";
+import { FileTrustDialog } from "../../../components/FileTrustDialog";
 
 /* ⛔ 品牌差异（本仓 = PPcode）：整套代码复制自主仓，品牌字串必须走这里，
    ⛔ 别直接写字面量 —— 从主仓同步本文件时这一行会冲突，届时**保留本仓值**（别整份套）。 */
@@ -638,6 +639,8 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     {/* ⛔ 10-13 关闭确认弹窗（应用内卡片，替代原生系统框）：自包含组件（自己订阅
         close-confirm:ask / 自己回包），主进程关窗守卫 preventDefault 后推事件到这里。 */}
     <CloseConfirmDialog />
+    {/* 工作区外文件预览的授权确认（10-18，应用内模态） */}
+    <FileTrustDialog />
     </>
   );
 }

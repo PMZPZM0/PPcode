@@ -125,7 +125,7 @@ contextBridge.exposeInMainWorld("codex", {
   ponytailModeGet: () => __ipc("ponytail:mode:get", 0, []) as Promise<string>,
   ponytailModeSet: (mode: string) => __ipc("ponytail:mode:set", 1, [mode]) as Promise<{ mode: string }>,
   writeFile: (path: string, content: string, root: string) => __ipc("fs:write", 3, [{ path, content, root }]),
-  readFile: (path: string) => __ipc("fs:read", 1, [{ path }]),
+  readFile: (path: string, threadId?: string) => __ipc("fs:read", 1, [{ path, threadId }]),
   fileExists: (path: string) => __ipc("fs:exists", 1, [{ path }]),
   chooseDirectory: () => __ipc("dialog:directory", 0, []),
   chooseImages: () => __ipc("dialog:images", 0, []),
@@ -566,6 +566,8 @@ contextBridge.exposeInMainWorld("codex", {
   queueTimerCancel: (input: { queuedSubmissionId: string }) => __ipc("queue-timer:cancel", 1, [input]) as Promise<{ ok: boolean }>,
   /* 在系统资源管理器中定位文件（可信根校验同 fs:read）；画布生成产物「打开文件夹」 */
   revealInFolder: (path: string) => __ipc("fs:reveal", 1, [{ path }]),
+  /* 10-18：用户点击「允许并预览」后放行该目录（持久化）。只能由渲染层用户手势触发 */
+  allowFsPath: (path: string) => __ipc("fs:allow", 1, [{ path }]),
   readModel: (path: string) => __ipc("model-viewer:read", 1, [{ path }]),
   /* 图像工坊读通道（image-lab 域，10-09）：渲染层浮层预览拉图片字节；路径闸 = resolveImagePath（可信根 + 图片扩展名 + 128MB），与修图通道共用同一道闸 */
   readImage: (path: string) => __ipc("image-lab:read", 1, [{ path }]),

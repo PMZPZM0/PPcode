@@ -6,12 +6,12 @@
  */
 export const HARNESS_API_SKILL = `---
 name: harness-api
-description: PPcode 宿主的接口清单与可拓展能力。当用户提「做个功能 / 加个集成 / 能不能自动 XX / 宿主有没有 XX 能力 / 帮我接上 XX」这类需求时先读它 —— 按域查现成接口，不用扫描源码，也不要重造宿主已有的能力。
+description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当用户提「做个功能 / 加个集成 / 能不能自动 XX / 宿主有没有 XX 能力 / 帮我接上 XX」这类需求时先读它 —— 按域查现成接口，不用扫描源码，也不要重造宿主已有的能力。
 ---
 
 # 宿主接口清单与可拓展能力（自动生成，勿手改）
 
-数据源：electron/ipc-channels.manifest.json（95 个能力域 / 491 个通道），由 scripts/gen-capability-skill.mjs 生成。
+数据源：electron/ipc-channels.manifest.json（96 个能力域 / 495 个通道），由 scripts/gen-capability-skill.mjs 生成。
 
 ## 怎么用
 
@@ -40,7 +40,7 @@ description: PPcode 宿主的接口清单与可拓展能力。当用户提「做
 |---|---|---|
 | 宿主原生能力（新接口） | \`electron/ipc-channels.manifest.json\` 加一条 → \`npm run gen:ipc\` → 补 \`ipc-registry.ts\` 的域 \`count\` | ⛔ 生成物勿手改；守卫【2】【90】【107】盯；改完**重跑本清单生成器** |
 | 教模型的流程（怎么做事） | 内置技能 \`electron/builtin-skills/NN-*.ts\` + 在 \`builtin-skills.ts\` 登记 | 正文必须**字面量**（【86】做配置面安全扫描），勿运行时拼装 |
-| 个人 / 项目的经验与流程 | \`<workspace>/.codex/skills/<name>/SKILL.md\`（引擎原生发现，**默认落点**） | 跨项目才放 \`$CODEX_HOME/skills/\`；⛔ 别放 \`.ppcode-harness/skills\`（引擎不读） |
+| 个人 / 项目的经验与流程 | \`<workspace>/.codex/skills/<name>/SKILL.md\`（引擎原生发现，**默认落点**） | 跨项目才放 \`$CODEX_HOME/skills/\`；⛔ 别放 \`.codex-harness/skills\`（引擎不读） |
 | 外部服务 / API 接入 | **MCP 连接器**（设置 → 连接器；或自写 MCP server） | 工具面是动态的，以 \`tools/list\` 实际返回为准 |
 | 让某个角色长期替你干活 | **专家 / 专家团**（定义 + 技能包） | 成员在独立会话里跑，产出由主理人汇总 |
 | 定时 / 周期任务 | **调度器**（\`scheduler:*\`） | 任务真的在指定 workspace 目录里跑（不是「看起来在那里」） |
@@ -163,7 +163,7 @@ QQ 通道
 通道：app:doctor, app:engine-info, app:home-dir, app:perf-counters, app:relaunch, app:storage-clear, app:storage-info, app:userData
 
 ### work-logs（3 通道）
-各项目的**工作日志与项目记忆**管理（<项目>/.ppcode-harness/memory/**：长期记忆 MEMORY.md / 坑与纪律 LESSONS.md+lessons/ / 每日工作日志 logs/YYYY-MM-DD.md / archive / project）——设置 → 数据管理 → 工作日志。可看正文、按项目与类型分组、批量删除。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事；删除是销毁性的（工作日志删了不会重建）
+各项目的**工作日志与项目记忆**管理（<项目>/.codex-harness/memory/**：长期记忆 MEMORY.md / 坑与纪律 LESSONS.md+lessons/ / 每日工作日志 logs/YYYY-MM-DD.md / archive / project）——设置 → 数据管理 → 工作日志。可看正文、按项目与类型分组、批量删除。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事；删除是销毁性的（工作日志删了不会重建）
 通道：work-logs:scan, work-logs:read, work-logs:delete
 
 ### capabilities（1 通道）
@@ -337,7 +337,7 @@ SkillHub **专家市场包**（skillhub.cn/skillspackage，55 包）：list 浏�
 通道：expert-market:install, expert-market:list
 
 ### kb（9 通道）
-**项目级本地知识库**（<项目>/.ppcode-harness/knowledge/）：list 列文档 / add-text·add-files 导入 md·txt·代码文档（自动分块）/ search 分块全文检索（带高亮片段）/ read 读全文 / remove 删除。用户要「把资料存进知识库 / 查项目资料」时用它；语义向量后端为按需下载项。⛔⚠️ 上面是 **IPC 桥（给设置页 UI 用），不是模型工具** —— 模型侧只有两个：\`knowledge_search(query, limit?)\` 检索（workspace 缺省 = 调用者 cwd；装了 Laya 时最相关的一条会被置顶标注）与 \`knowledge_add(title, text, source?)\` 写入（10-04 补，此前模型只能读不能写；⚠️ 同名不覆盖会堆重复条目、⚠️ 写入不做语义向量化、⚠️ 专家/被调度会话不许写、⚠️ 装了 Laya 时低价值内容会被拒写并说明原因——充实内容后重试即可）
+**项目级本地知识库**（<项目>/.codex-harness/knowledge/）：list 列文档 / add-text·add-files 导入 md·txt·代码文档（自动分块）/ search 分块全文检索（带高亮片段）/ read 读全文 / remove 删除。用户要「把资料存进知识库 / 查项目资料」时用它；语义向量后端为按需下载项。⛔⚠️ 上面是 **IPC 桥（给设置页 UI 用），不是模型工具** —— 模型侧只有两个：\`knowledge_search(query, limit?)\` 检索（workspace 缺省 = 调用者 cwd；装了 Laya 时最相关的一条会被置顶标注）与 \`knowledge_add(title, text, source?)\` 写入（10-04 补，此前模型只能读不能写；⚠️ 同名不覆盖会堆重复条目、⚠️ 写入不做语义向量化、⚠️ 专家/被调度会话不许写、⚠️ 装了 Laya 时低价值内容会被拒写并说明原因——充实内容后重试即可）
 通道：kb:add-files, kb:add-text, kb:embed-install, kb:embed-status, kb:embed-uninstall, kb:list, kb:read, kb:remove, kb:search
 
 ### whatsnew（3 通道）
@@ -423,6 +423,10 @@ RPA 配方（录制好的桌面自动化流程）
 ### cloud-auth（5 通道）
 **云账号**的登录 / 登出 / 切换（10-16）：用账号密码换云端会话令牌（⛔ 不是配对流程）；令牌在 safeStorage 里，⛔ 渲染层与模型侧都拿不到明文。用户说「登录云端 / 退出云账号 / 换个云账号」时用它。⛔ 与本机「中转站账号」是两条独立的登录线，别混
 通道：cloud-auth:login, cloud-auth:logout, cloud-auth:switch, cloud-auth:status, cloud-auth:points
+
+### cloud（4 通道）
+**云端会话同步**（10-18 自云助手移植）：把本机会话**按行增量**推到云端、按需从云端拉回、以及冲突解决（\`cloud:sync/status|push|pull|conflict/resolve\`）。⛔ 与 cloud-auth（登录）/ cloud-models（模型目录）是并列的独立板块。用户说「上传会话 / 同步会话到云端 / 从云端恢复会话」时用它。⛔ 服务端可能由管理员关闭同步，此时会返回 \`session-sync-disabled\`（人话「管理员已关闭云端会话同步」），不要当成网络故障重试
+通道：cloud:sync/status, cloud:sync/push, cloud:sync/pull, cloud:sync/conflict/resolve
 
 ### cloud-models（6 通道）
 **云端模型目录同步**（10-16）：登录后自动把云端「已勾选」的模型写成本机供应商 \`cloud\`（勾选 = 下拉框可见），并默认每 10 分钟自动保持更新。用户说「云端模型没同步 / 拉一下云端模型 / 勾了模型选不到」时用它（sync 是唯一同步入口，force=true 会重签代理令牌）

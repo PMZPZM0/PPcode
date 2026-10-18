@@ -229,7 +229,7 @@ if (!mainSrc || !preloadSrc) {
         "【2】vite-env.d.ts 生成段与 manifest 逐字节一致"
       );
       const regSrc = readFileSync(join(ROOT, "electron", "ipc-registry.ts"), "utf8");
-      const regCh = new Set([...regSrc.matchAll(/["']([\w-]+(?::[\w-]+)+)["']/g)].map((x) => x[1]));
+      const regCh = new Set([...regSrc.matchAll(/["']([\w-]+(?::[\w/-]+)+)["']/g)].map((x) => x[1]));
       const unregistered = [...new Set(manifest.channels.map((c) => c.channel))].filter((c) => !regCh.has(c));
       (unregistered.length === 0 ? ok : fail)(
         `【2】manifest 频道全部在 ipc-registry 登记（未登记 ${unregistered.length} 个：${unregistered.slice(0, 6).join(", ")}）`

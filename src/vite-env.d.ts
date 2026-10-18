@@ -463,7 +463,7 @@ interface Window {
     ponytailModeGet(): Promise<string>;
     ponytailModeSet(mode: string): Promise<{ mode: string }>;
     writeFile(path: string, content: string, root: string): Promise<void>;
-    readFile(path: string): Promise<{ dataBase64: string; size: number }>;
+    readFile(path: string, threadId?: string): Promise<{ dataBase64: string; size: number }>;
     fileExists(path: string): Promise<{ exists: boolean }>;
     chooseDirectory(): Promise<string | null>;
     chooseImages(): Promise<string[]>;
@@ -904,6 +904,8 @@ interface Window {
     queueTimerCancel(input: { queuedSubmissionId: string }): Promise<{ ok: boolean }>;
     /* 在系统资源管理器中定位文件（可信根校验同 fs:read）；画布生成产物「打开文件夹」 */
     revealInFolder(path: string): Promise<{ ok: boolean }>;
+    /* 10-18：用户点击「允许并预览」后放行该目录（持久化）。只能由渲染层用户手势触发 */
+    allowFsPath(path: string): Promise<{ ok: boolean; dir: string }>;
     readModel(path: string): Promise<{ data: Uint8Array; size: number }>;
     /* 图像工坊读通道（image-lab 域，10-09）：渲染层浮层预览拉图片字节；路径闸 = resolveImagePath（可信根 + 图片扩展名 + 128MB），与修图通道共用同一道闸 */
     readImage(path: string): Promise<{ data: Uint8Array; size: number }>;

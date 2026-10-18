@@ -25,7 +25,7 @@ const OUT = path.join(ROOT, "electron", "builtin-skills", "14-skill-harness-api.
 /* ── 每域的「用户可感知能力」描述（人工维护；新域必须补，缺了生成器报错）──
    口径：写给引擎看 —— 用户提什么需求时该想到这个域、能力边界在哪。一句话。 */
 const DOMAIN_DESCRIPTIONS = {
-  "work-logs": "各项目的**工作日志与项目记忆**管理（<项目>/.ppcode-harness/memory/**：长期记忆 MEMORY.md / 坑与纪律 LESSONS.md+lessons/ / 每日工作日志 logs/YYYY-MM-DD.md / archive / project）——设置 → 数据管理 → 工作日志。可看正文、按项目与类型分组、批量删除。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事；删除是销毁性的（工作日志删了不会重建）",
+  "work-logs": "各项目的**工作日志与项目记忆**管理（<项目>/.codex-harness/memory/**：长期记忆 MEMORY.md / 坑与纪律 LESSONS.md+lessons/ / 每日工作日志 logs/YYYY-MM-DD.md / archive / project）——设置 → 数据管理 → 工作日志。可看正文、按项目与类型分组、批量删除。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事；删除是销毁性的（工作日志删了不会重建）",
   "video": "内置视频生成接口（国内外 8 家：可灵/万相/Seedance/CogVideoX/MiniMax/Runway/Luma/Veo）：submit 提交 → poll 轮询 → download 落工作区；凭证存 userData/video-providers.json",
   "poll": "轮询板块的配置与中止（间隔 / 超时上限 / 失败重试次数，存 userData/poll-settings.json；poll:abort = 用户在界面上按「中止」时停掉主进程的等待循环）。⛔ 这是**轮询行为**的配置，不是任务本身 —— 提交/查询任务走 video 域那套工具",
   "drama-canvas": "AI 短剧无限画布：把工作流拆成卡片摆在无限画布上（生图/短剧/白模/3D 建模/电商出图各类模板），连线表示「这份输入喂给下一步」。**画布可被模型读写**：board-sync 由画布自动镜像快照，模型用真工具 workflow_read 读内容、workflow_writeback 把产物写回节点（卡片实时显示）——「按画布搭的流程跑」是可行请求",
@@ -39,14 +39,16 @@ const DOMAIN_DESCRIPTIONS = {
   "bridge": "引擎桥连接状态",
   "prompt": "提示词增强（把用户草稿改写为更完整的 prompt）",
   "model-viewer": "**3D 模型预览**（10-05）：read(path) 读会话工作区里的 .glb / .gltf 模型（可信根内、≤256MB，字节直传给预览弹窗）。通常不直接调 —— 引擎侧走 harness_tools 网关的 `preview_3d` 在应用内弹出可旋转的 3D 预览；本域通道是渲染层弹窗的取数后端",
+  "html-video": "**本地 HTML→MP4**（10-11，P1）：render(source, seconds?, fps?, width?, height?, outPath?) 把一段 HTML/CSS 动画在本地渲成 MP4 —— Chromium 抓帧 + 运行时自带 MP4 编码器，**零 ffmpeg 依赖、不联网、不花厂商额度**。source = 可信根内的 .html 绝对路径或 http(s) URL（其余一律拒）；outPath 同样过可信根闸，不传落 <userData>/renders/。模型侧走 harness_tools 网关的 `video_render_html`。典型用法：把工作区里做好的界面/动画/分镜 HTML 成品化成 mp4",
   "image-lab": "**图像工坊**（10-09，Windows/Mac 同一份实现）：read(path) 读图片字节（可信根内、图片扩展名白名单、≤128MB，直传给浮层预览）。⛔ 模型侧不直接调这条通道 —— 四个工具是**各自独立的 dynamicTool**（不走 harness_tools 网关），且各有一条自己的 IPC：`image_generate`→image-lab:generate（**唯一要生图插件凭证的**）、`image_edit`→image-lab:edit（修图：缩放 / 裁剪 / 旋转 / 翻转 / 转格式 / 明暗对比 / 灰度·棕褐 / 模糊 / 马赛克 / 水印合成 / 加英文文字——中文会画成空白；**零凭证**，产出不覆盖原图）、`image_info`→image-lab:info（读尺寸·格式·透明·字节数）、`image_view`→image-lab:view（应用内弹浮层给用户看）。改「形」用 image_edit、改「意」（换主体/风格）用 image_generate；只做小改动前先 agent_ask 问用户。生成与编辑都会弹「图像工坊」浮层，工具调用结束自动收起。⛔ 编辑引擎是 jimp（纯 JS），不许换成 sharp/canvas 这类原生库",
   "free-gateway": "**免费模型网关**（10-12，第三方开源项目 dsh-our-free-model 的本地侧车，MIT）：把它的独立网关（127.0.0.1:18900，OpenAI 兼容）作为可选下载服务接入。⛔ 这些通道是**宿主生命周期管理**（下载/启停/健康/取 Key/管理台/拉模型清单），不是模型工具 —— 模型侧永远不调它们；要用免费模型：模型设置页点推荐卡 → 下载并启动 → 在上游管理台登录渠道账号 → 一键注册为供应商，然后正常选模型。⛔ 免责：上游与本项目开发者无关，渠道合规性与可用性由使用者自担",
   "whatsnew": "「更新到新版本后首次启动」的**新功能介绍弹窗**（10-06）：state 取该版本的要点与「该不该弹」（判定含：这个版本有没有要点、用户看过没有、是升级还是全新安装——全新安装不弹，避免新用户看到莫名其妙的「更新内容」）；ack 记下当前版本已看过 ⇒ 同版本不再弹。要点数据在主进程 electron/whats-new-notes.ts，每次发版要加一条（守卫【11r】钉）。⛔ 模型侧用不到它",
+  "kb": "**项目级本地知识库**（<项目>/.codex-harness/knowledge/）：list 列文档 / add-text·add-files 导入 md·txt·代码文档（自动分块）/ search 分块全文检索（带高亮片段）/ read 读全文 / remove 删除。用户要「把资料存进知识库 / 查项目资料」时用它；语义向量后端为按需下载项。⛔⚠️ 上面是 **IPC 桥（给设置页 UI 用），不是模型工具** —— 模型侧只有两个：`knowledge_search(query, limit?)` 检索（workspace 缺省 = 调用者 cwd；装了 Laya 时最相关的一条会被置顶标注）与 `knowledge_add(title, text, source?)` 写入（10-04 补，此前模型只能读不能写；⚠️ 同名不覆盖会堆重复条目、⚠️ 写入不做语义向量化、⚠️ 专家/被调度会话不许写、⚠️ 装了 Laya 时低价值内容会被拒写并说明原因——充实内容后重试即可）",
+  "cloud": "**云端会话同步**（10-18 自云助手移植）：把本机会话**按行增量**推到云端、按需从云端拉回、以及冲突解决（`cloud:sync/status|push|pull|conflict/resolve`）。⛔ 与 cloud-auth（登录）/ cloud-models（模型目录）是并列的独立板块。用户说「上传会话 / 同步会话到云端 / 从云端恢复会话」时用它。⛔ 服务端可能由管理员关闭同步，此时会返回 `session-sync-disabled`（人话「管理员已关闭云端会话同步」），不要当成网络故障重试",
   "cloud-auth": "**云账号**的登录 / 登出 / 切换（10-16）：用账号密码换云端会话令牌（⛔ 不是配对流程）；令牌在 safeStorage 里，⛔ 渲染层与模型侧都拿不到明文。用户说「登录云端 / 退出云账号 / 换个云账号」时用它。⛔ 与本机「中转站账号」是两条独立的登录线，别混",
   "cloud-models": "**云端模型目录同步**（10-16）：登录后自动把云端「已勾选」的模型写成本机供应商 `cloud`（勾选 = 下拉框可见），并默认每 10 分钟自动保持更新。用户说「云端模型没同步 / 拉一下云端模型 / 勾了模型选不到」时用它（sync 是唯一同步入口，force=true 会重签代理令牌）",
   "cloud-kb": "**云端知识库**（跨设备共享的那一份）→ 本机 MCP 连接器 `cloud-kb`（10-16）。⛔ 与「本地项目级知识库」（kb 域，随项目走）**不是一回事**：这份存在服务端，换台机器登录也在。未开通权益时服务端不建库不发钥匙，本域只会如实报 not-activated",
   "cloud-memory": "**云端记忆**的凭据与上游切换（10-16，10-17 修正）。⛔ 记忆中枢**没有记忆读写接口**（所有路径都是同一个 OpenAI 兼容转发口），**也没有 MCP 端点** ⇒ 记忆不是靠工具调用的，而是在**对话请求层**由服务端自动注入/写入。所以本域做的是：拿到该账号的 userKey 后把**对话上游切到记忆端点**（记忆即全域生效，且天然按账号隔离）。未开通/被停用时自动切回。用户说「云端记忆没生效 / 打开云端记忆」时用它。",
-  "kb": "**项目级本地知识库**（<项目>/.ppcode-harness/knowledge/）：list 列文档 / add-text·add-files 导入 md·txt·代码文档（自动分块）/ search 分块全文检索（带高亮片段）/ read 读全文 / remove 删除。用户要「把资料存进知识库 / 查项目资料」时用它；语义向量后端为按需下载项。⛔⚠️ 上面是 **IPC 桥（给设置页 UI 用），不是模型工具** —— 模型侧只有两个：`knowledge_search(query, limit?)` 检索（workspace 缺省 = 调用者 cwd；装了 Laya 时最相关的一条会被置顶标注）与 `knowledge_add(title, text, source?)` 写入（10-04 补，此前模型只能读不能写；⚠️ 同名不覆盖会堆重复条目、⚠️ 写入不做语义向量化、⚠️ 专家/被调度会话不许写、⚠️ 装了 Laya 时低价值内容会被拒写并说明原因——充实内容后重试即可）",
   "pet": "桌面宠物（官方 Codex 宠物格式：pet.json + 8×9 图集）：list 发现四目录宠物 / settings-get·set 开关与选择 / roots 目录清单 / open-dir / import 从只读目录导入用户区 / toggle·show·hide 显示控制。宠物本体渲染在独立透明置顶浮窗，宿主侧只做发现与设置",
   "laya": "Laya 智能判断（GitHub NandhaKishorM/laya，Apache-2.0，非自回归决策引擎 33ms）：status 安装与服务状态 / install 安装更新（pip 清华镜像 + 权重走 hf-mirror）/ decide-effort 思考等级自动判断（choice: low/medium/high/xhigh + 校准置信度，<0.45 弃权）——渲染层思考档「自动」开关的数据端；失败一律降级手选档，不是硬依赖",
   "expert-market": "SkillHub **专家市场包**（skillhub.cn/skillspackage，55 包）：list 浏览/搜索、install 一键安装——元技能 + orchestration.children 子技能落盘技能目录 + **专家中心自动新增对应专家卡片**（卡片 systemPrompt = 包元技能正文）。用户要「装个专家/装套工作流」时用它",
@@ -153,7 +155,7 @@ const totalChannels = domains.reduce((a, d) => a + d.count, 0);
 const lines = [];
 lines.push("---");
 lines.push("name: harness-api");
-lines.push("description: PPcode 宿主的接口清单与可拓展能力。当用户提「做个功能 / 加个集成 / 能不能自动 XX / 宿主有没有 XX 能力 / 帮我接上 XX」这类需求时先读它 —— 按域查现成接口，不用扫描源码，也不要重造宿主已有的能力。");
+lines.push("description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当用户提「做个功能 / 加个集成 / 能不能自动 XX / 宿主有没有 XX 能力 / 帮我接上 XX」这类需求时先读它 —— 按域查现成接口，不用扫描源码，也不要重造宿主已有的能力。");
 lines.push("---");
 lines.push("");
 lines.push("# 宿主接口清单与可拓展能力（自动生成，勿手改）");
@@ -191,7 +193,7 @@ lines.push("| 想加的东西 | 落点（改哪里 / 用什么） | 注意 |");
 lines.push("|---|---|---|");
 lines.push("| 宿主原生能力（新接口） | `electron/ipc-channels.manifest.json` 加一条 → `npm run gen:ipc` → 补 `ipc-registry.ts` 的域 `count` | ⛔ 生成物勿手改；守卫【2】【90】【107】盯；改完**重跑本清单生成器** |");
 lines.push("| 教模型的流程（怎么做事） | 内置技能 `electron/builtin-skills/NN-*.ts` + 在 `builtin-skills.ts` 登记 | 正文必须**字面量**（【86】做配置面安全扫描），勿运行时拼装 |");
-lines.push("| 个人 / 项目的经验与流程 | `<workspace>/.codex/skills/<name>/SKILL.md`（引擎原生发现，**默认落点**） | 跨项目才放 `$CODEX_HOME/skills/`；⛔ 别放 `.ppcode-harness/skills`（引擎不读） |");
+lines.push("| 个人 / 项目的经验与流程 | `<workspace>/.codex/skills/<name>/SKILL.md`（引擎原生发现，**默认落点**） | 跨项目才放 `$CODEX_HOME/skills/`；⛔ 别放 `.codex-harness/skills`（引擎不读） |");
 lines.push("| 外部服务 / API 接入 | **MCP 连接器**（设置 → 连接器；或自写 MCP server） | 工具面是动态的，以 `tools/list` 实际返回为准 |");
 lines.push("| 让某个角色长期替你干活 | **专家 / 专家团**（定义 + 技能包） | 成员在独立会话里跑，产出由主理人汇总 |");
 lines.push("| 定时 / 周期任务 | **调度器**（`scheduler:*`） | 任务真的在指定 workspace 目录里跑（不是「看起来在那里」） |");

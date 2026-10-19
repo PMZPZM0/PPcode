@@ -1,6 +1,6 @@
 {
   "name": "ppcode",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Independent desktop harness for OpenAI Codex",
   "main": "dist-electron/main.js",

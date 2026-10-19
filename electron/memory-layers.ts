@@ -57,6 +57,8 @@ const LESSON_FILES: Record<string, string> = {
   [PREFERENCE_CATEGORY]: "preferences.md",
 };
 const LESSON_MISC_FILE = "misc.md";
+/** MCP 后端下自动捕获的 lesson 候选落点（仍写进 lessons/misc.md，由 Codex 下一轮落 MCP 后删除）。 */
+const PENDING_MCP_SECTION = "待入 MCP（自动捕获，落库后删除）";
 /** 迁移源：v1 摊在 memory/ 根的旧纪律文件名（v2 起改为 lessons/<分类>.md） */
 const LEGACY_LESSONS = "LESSONS.md";
 const LEGACY_MARK = ".layout-v2-done";
@@ -599,6 +601,34 @@ export class MemoryLayers {
       ? body.replace("# 纪律与记忆", `# 纪律与记忆\n\n> ⚠️ 条目已超过 ${LESSONS_MAX_LINES} 行，请在设置 → 记忆里整理/并入 MEMORY.md（不自动删除）。`)
       : body;
     await this.writeText(file, out);
+    return true;
+  }
+
+  /**
+   * MCP 后端下的自动捕获落点（10-20）：lesson 候选不静默丢，也不双写。
+   * 先写进 lessons/misc.md 的「待入 MCP」节；Codex 下一轮读常驻记忆时看到，调 MCP `memory-write`
+   * 落库后把该行删掉。内置后端直接走 appendLesson。
+   */
+  async appendPendingLesson(workspace: string, line: string, dedupeKey: string, category?: string): Promise<boolean> {
+    if (effectiveMemoryBackend() !== "mcp") return this.appendLesson(workspace, line, dedupeKey, category);
+    const dir = this.projectDir(workspace);
+    const text = String(line ?? "").trim();
+    if (!dir || !text) return false;
+    if (/\[Harness\s*(?:常驻记忆|相关记忆)|\[(?:常驻记忆结束|记忆结束)\]/.test(text)) return false;
+    const verdict = shouldRememberLine(text, category);
+    if (!verdict.keep) {
+      console.log(`[memory] 未入待归档（${verdict.reason}）：${text.slice(0, 80)}`);
+      return false;
+    }
+    await this.migrateLayout(dir);
+    const file = path.join(this.lessonsDir(dir), LESSON_MISC_FILE);
+    const existing = await this.readText(file);
+    const key = String(dedupeKey ?? "").trim();
+    const all = await this.readLessons(workspace);
+    const norm = (s: string) => String(s ?? "").replace(/[\s，。！？、,.!?:：；;""''（）()【】\[\]]/g, "");
+    if (key && norm(all).includes(key)) return false;
+    if (norm(existing).includes(norm(text))) return false;
+    await this.writeText(file, appendLessonLine(existing, PENDING_MCP_SECTION, text));
     return true;
   }
 

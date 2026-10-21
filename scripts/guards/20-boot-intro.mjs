@@ -98,7 +98,8 @@ ok(
   html.includes('setAttribute("data-boot-intro"') && html.includes('getItem("boot-intro")') && html.includes("background: #050403"),
   "index.html 首帧：读 boot-intro 键 ⇒ setAttribute 打 data-boot-intro ⇒ 底色用动画自己的 #050403（断言锚代码形态，不锚注释）"
 );
-ok(html.includes('get("pet") === "1"') && html.includes("prefers-reduced-motion"), "首帧判定也带宠物浮窗与减弱动效（否则透明窗上会闪一块黑）");
+/* 10-21 起宠物有两个浮窗面（?pet=1 / ?pet=activity），首帧判定改成 petSurface 合取式。 */
+ok(html.includes('get("pet")') && /petSurface\s*===\s*"1"\s*\|\|\s*petSurface\s*===\s*"activity"/.test(html) && html.includes("prefers-reduced-motion"), "首帧判定也带宠物浮窗（含活动气泡）与减弱动效（否则透明窗上会闪一块黑）");
 ok(
   css.includes("position: fixed") && css.includes("z-index: 9999") && /\.boot550c-host\s*\{[^}]*background:\s*#050403/.test(css),
   "宿主 .boot550c-host 固定定位 + z-index 9999（压过主界面 / 设置 / 画布 / 模态）+ 底色与动画同色（内容未塞进去的那一瞬也不透出主界面）"

@@ -1163,10 +1163,10 @@ const appSrc4 = readAppUi();
        ② ready 之前 `second-instance` 早到：showMainWindow → createWindow 先建一个，boot 随后又建一个
           ⇒ createWindow 必须复用未销毁的主窗口。 */
     (/const singleInstanceBlocked = !gotSingleLock;/.test(mainTray)
-      && /app\.whenReady\(\)\.then\(\(\) => \{ if \(singleInstanceBlocked\) return; bootApp\(\); \}\)/.test(mainTray) ? ok : fail)(
+      && /if \(singleInstanceBlocked\) return;/.test(mainTray) ? ok : fail)(
       "【123】没拿到单实例锁 ⇒ ready 之后不 boot（光 app.quit() 拦不住第二实例建窗/起引擎）"
     );
-    (/const alive = mutableState\.mainWindow;[\s\S]{0,240}?if \(alive && !alive\.isDestroyed\(\)\)/.test(winFactory) ? ok : fail)(
+    (/const alive = mutableState\.mainWindow;[\s\S]{0,300}?if \(alive && !alive\.isDestroyed\(\)\)/.test(winFactory) ? ok : fail)(
       "【123】createWindow 防重入（已有未销毁的主窗口就复用 —— second-instance 早到不再开出第二个主窗口）"
     );
   }

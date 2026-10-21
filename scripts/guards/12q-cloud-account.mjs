@@ -183,6 +183,24 @@ ok(
   "同步后刷新渲染层供应商状态（不刷新 ⇒ 同步成功了但下拉框还是空的）",
 );
 
+ok(
+  /cloud-login-simple/.test(pageSrc) && /cloud-tutorial/.test(pageSrc) && /cloud-advanced/.test(pageSrc),
+  "云账号页三段式：登录即用卡 / 新手教程 / 手动流程折叠（10-22 用户令「流程简化，保留手动流程，加上新手教程」）",
+);
+ok(
+  /doProvision/.test(pageSrc) && /provisionCloud/.test(pageSrc),
+  "已登录有一键同步 / 修复（与登录页共用 provisionCloud，⛔ 不写第二套）",
+);
+const bridgeSrc = read("src/features/settings-cloud/CloudAccountSyncBridge.tsx");
+ok(
+  /cloudKbStatus/.test(bridgeSrc) && /enabled/.test(bridgeSrc) && /activation\?\.applied/.test(bridgeSrc) && /readMemoryBackend/.test(bridgeSrc),
+  "服务器云管理联动只刷新**已接通**的资源（知识库 enabled / 记忆 backend=cloud）—— 不把用户手动关掉的又悄悄打开",
+);
+ok(
+  /CloudAccountSyncBridge/.test(read("src/features/app-view/AppView.tsx")),
+  "联动桥挂在主窗口（AppView），独立弹窗不重复跑",
+);
+
 /* ── ⑪ 首启登录页也有「云账号」入口（用户 10-16 实测「我还没看见登录界面」）──
    ⛔ 只做设置页不够：**首启看到的是 LoginScreen**，那里没有入口 = 新用户根本发现不了这套能力。 */
 const loginSrc = read("src/features/auth/LoginScreen.tsx");

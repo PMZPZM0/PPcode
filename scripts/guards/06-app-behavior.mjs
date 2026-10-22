@@ -1756,69 +1756,45 @@ w.postMessage({id:1,op:"list",root});
     (bagSrc.includes("companyPreviewTeamId: string | null;") ? ok : fail)("【154】companyPreviewTeamId 已登记 bag-types");
     const cssEntry = readFileSync(join(ROOT, "src", "styles.css"), "utf8");
     (cssEntry.includes("./styles/20-team-office") ? ok : fail)("【154】办公室样式已接入 styles.css（20-team-office）");
-    /* ⛔⛔ 10-05 加：**显示器内容区必须落在屏幕玻璃上，不是椅背上。**
-       背景（用户两次报「显示器还是固定的 / 没对准 / 没显示」）：
-         · 10-04 那版 screen 坐标是"扫 bg.webp"得到的，但判据同时命中了**椅背**
-           （椅背 rgb(47,65,95) 与屏幕玻璃同属"暗且偏蓝"）⇒ 六个屏面全落在椅背上；
-         · 而椅背随后会被**重贴**盖回人物身上（OfficeCanvas 的 backrest 重贴）
-           ⇒ 画上去的动态内容被整块盖掉 ⇒ 用户看到的仍是背景图里烙死的静态屏幕。
-       ⇒ 判据用**几何不可能性**：屏面底必须高于椅背顶（相对坐标 screen.y+h <= backrest.dy）。
-         ⛔ 无阈值可调、无需读图；坐标一旦写回椅背范围立刻变红。 */
-    const fmtSrc = existsSync(join(ROOT, "src", "features", "team-office", "office-format.ts"))
-      ? readFileSync(join(ROOT, "src", "features", "team-office", "office-format.ts"), "utf8") : "";
-    const seatRows = [...fmtSrc.matchAll(/y:\s*(-?\d+),\s*facing:\s*"up",\s*backrest:\s*\{\s*dx:\s*(-?\d+),\s*dy:\s*(-?\d+),\s*w:\s*\d+,\s*h:\s*\d+\s*\},\s*screen:\s*\{\s*x:\s*(-?\d+),\s*y:\s*(-?\d+),\s*w:\s*(\d+),\s*h:\s*(\d+)\s*\}/g)];
-    (seatRows.length === 6 ? ok : fail)(`【154】SEATS 六个座位都带 screen 矩形（解析到 ${seatRows.length} 个 —— ⛔ 0 个说明正则失配、断言在空跑）`);
-    const onChair = seatRows.filter((m) => Number(m[5]) + Number(m[7]) > Number(m[3]));
-    (onChair.length === 0 ? ok : fail)(`【154】⛔⛔ 每个屏面都**完全在椅背上方**（压到椅背上会被椅背重贴整块盖掉）—— 违例 ${onChair.length} 个`);
-    /* ⛔ 判据落在**注释里**（量法说明）⇒ ⛔ 不能先剥注释再找（那样必然恒红 —— 第一版就写错了）。 */
-    (/(is_glass|sum\s*<\s*190)/.test(fmtSrc) ? ok : fail)(
-      "【154】量法注释点名**亮度判据**（⛔ 旧的 `b>r+20` 类判据会把椅背一起收进来）");
-    const officeCss = existsSync(join(ROOT, "src", "styles", "20-team-office.css")) ? readFileSync(join(ROOT, "src", "styles", "20-team-office.css"), "utf8") : "";
-    /* 形态守卫（09-27 v8「PixiJS 渲染」）：v1 折线图 / v2 div 色块 / v3 单张 SVG 插画
-       三版都被用户否过（「歪歪扭扭」「不好看」「手绘人物和素材家具违和」）⇒ 断言钉死：
-       画布 = PixiJS Application + 逐帧 animateScene，⛔ 不许退回任何一种被否形态。 */
-    /* ── 当前实现（原生 canvas 2D，v19 起）─────────────────────────────
-       ⛔ 这里原先断言的是 PixiJS 形态（`new Application` / `animateScene` /
-          `OfficeScene` / `pointertap`），那些文件已随 v19 换实现而删除
-          ⇒ 断言早已失效，本轮**显式移除**（⛔ 不留死断言）。
-       下面是**当下真实存在**的实现面。 */
-    const canvasPath154 = join(ROOT, "src", "features", "team-office", "OfficeCanvas.tsx");
-    const canvasSrc154 = existsSync(canvasPath154) ? readFileSync(canvasPath154, "utf8") : "";
-    const screenPath154 = join(ROOT, "src", "features", "team-office", "office-screen.ts");
-    const screenSrc154 = existsSync(screenPath154) ? readFileSync(screenPath154, "utf8") : "";
-    const cssSrc154 = existsSync(join(ROOT, "src", "styles", "20-team-office.css"))
-      ? readFileSync(join(ROOT, "src", "styles", "20-team-office.css"), "utf8") : "";
-    (canvasSrc154.includes('getContext("2d")') && canvasSrc154.includes("drawScreen(") ? ok : fail)(
-      "【154】场景是原生 canvas 2D 且逐帧画显示器内容（v19 形态）"
+    /* ── 当前实现（白色简洁工位板，10-22 对照 Marvis 重做）────────────
+       ⛔ 旧像素 canvas / office-sim / drawScreen 的断言整段移除；
+       现行家具/角色是 DOM + SVG，家具与显示器逐项由守卫 11d 复查。 */
+    const fmtNew154 = readFileSync(join(ROOT, "src", "features", "team-office", "office-format.ts"), "utf8");
+    const canvasNew154 = readFileSync(join(ROOT, "src", "features", "team-office", "OfficeCanvas.tsx"), "utf8");
+    const screenNew154 = readFileSync(join(ROOT, "src", "features", "team-office", "office-screen.ts"), "utf8");
+    const cssNew154 = readFileSync(join(ROOT, "src", "styles", "20-team-office.css"), "utf8");
+    (fmtNew154.includes("CANVAS_W = 1560") && fmtNew154.includes("CANVAS_H = 1270") ? ok : fail)(
+      "【154】白色工位板 1560×1270"
     );
-    (cssSrc154.includes(".office-pixel-canvas") ? ok : fail)(
-      "【154】画布宿主容器样式齐全（.office-pixel-canvas —— 类名是接口）"
+    (/DESK_COLS = \[\d+, \d+\]/.test(canvasNew154) && (canvasNew154.match(/DESK_ROWS = \[[^\]]+\]/)?.[0].match(/\d+/g) ?? []).length === 5 ? ok : fail)(
+      "【154】2 列 × 5 排 = 10 个工位"
     );
-    (!/\.ofc-(desk|bubble|type-a|zzz|sip)/.test(cssSrc154) ? ok : fail)(
-      "【154】⛔ 场景级 .ofc-* 旧样式已清干净（留着 = 死样式，CSS 覆盖告警会一直报）"
+    (canvasNew154.includes("function SeatedCat") && canvasNew154.includes("function StandingCat") && canvasNew154.includes("SCARVES") ? ok : fail)(
+      "【154】黑猫成员：坐姿/站姿 + 彩色围巾"
     );
-    /* ⛔⛔ 显示器内容必须画在**背景之后**：画在背景前等于没画（会被背景盖掉）。 */
-    const drawIdx154 = canvasSrc154.indexOf("drawScreen(");
-    const bgIdx154 = canvasSrc154.indexOf("ctx.drawImage(bg, 0, 0, CANVAS_W, CANVAS_H)");
-    (bgIdx154 >= 0 && drawIdx154 > bgIdx154 ? ok : fail)(
-      "【154】⛔⛔ 显示器内容画在背景之后（画在背景前 = 被背景盖住 = 用户报的「没显示」）"
+    (/onClick=\{onOpen\}/.test(canvasNew154) && /role="button"/.test(canvasNew154) ? ok : fail)(
+      "【154】点击/键盘进入成员会话"
     );
-    (!canvasSrc154.includes("ipcRenderer") && !/window as any\)\.codex/.test(canvasSrc154) ? ok : fail)(
-      "【154】画布层零 IPC（事件驱动：成员状态由宿主 props 传入）"
+    (/eventWordZhOf/.test(canvasNew154) && /effectivePhase/.test(canvasNew154) ? ok : fail)(
+      "【154】状态走真实阶段 + 真实事件（⛔ 不编状态）"
     );
-    /* ⛔⛔ 待机 ≠ 熄屏（10-05 用户报「显示器都还是固定的」的第二层原因）：
-       `idle` 必须有**自己的**屏保分支，⛔ 不许再让它落到 `off`。 */
-    (/if \(mode === "idle"\)/.test(screenSrc154) ? ok : fail)(
-      "【154】⛔⛔ idle 有自己的屏保分支（⛔ 退回 off ⇒ 委托跑完全员待机、六屏全黑静止）"
+    (canvasNew154.includes("ws-screen") && canvasNew154.includes("ws-screen-scan") ? ok : fail)(
+      "【154】每台显示器都有实时内容（状态色 + 代码条 + 扫描线）"
     );
-    (/return "code";[\s\S]{0,300}?return "idle";/.test(screenSrc154) ? ok : fail)(
-      "【154】⛔⛔ 有人坐工位但没在跑 ⇒ 映射到 idle（屏保），⛔ 不是 off"
+    (!/assets\/office-bg|bgUrl|petList|pet:\/\/|imageSmoothingEnabled/.test(canvasNew154) ? ok : fail)(
+      "【154】⛔ 不再引照片底图 / 宠物管线"
     );
-    (/if \(!input\.occupied\) return "off";/.test(screenSrc154) ? ok : fail)(
-      "【154】off 语义收窄为**空座**（⛔ 别再让「待机」共用它）"
+    (!/OfficeSim|SEATS|drawScreen\(/.test(canvasNew154) ? ok : fail)(
+      "【154】旧模拟层/逐帧屏已整体退役"
     );
-    (/let officeSimSingletonRef/.test(canvasSrc154) ? ok : fail)(
-      "【154】sim 是模块级常驻单例（⛔ 组件级 ⇒ 每次打开预览都重播进场）"
+    (canvasNew154.includes("const fit = Math.min(sw / CANVAS_W, sh / CANVAS_H)") && /addEventListener\("wheel"[\s\S]{0,80}?\{ passive: false \}/.test(canvasNew154) ? ok : fail)(
+      "【154】contain 基准 + 滚轮缩放"
+    );
+    (cssNew154.includes(".ws-cat") && cssNew154.includes("@keyframes cat-type-r") && cssNew154.includes("@keyframes ws-scan") ? ok : fail)(
+      "【154】猫 / 显示器都是持续动画"
+    );
+    (!/ipcRenderer|window\.codex\./.test(canvasNew154) ? ok : fail)(
+      "【154】画布层零 IPC（成员状态由宿主 props 传入）"
     );
   }
 
@@ -3297,46 +3273,45 @@ w.postMessage({id:1,op:"list",root});
   }
 
 
-  /* ══ 【233】像素办公室（team-office v19）═════════════════════════════
-     实现整体删除过一次（用户「太丑了」），重做后按「目录存在才跑」守卫；
-     ⛔ 断言钉的都是这轮实测踩过的坑，别删。 */
+  /* ══ 【233】白色简洁办公室（team-office，10-22 对照 Marvis 重做）══════════
+     2 列 × 5 排 = 10 个工位；白桌 + 黑屏 + 白灰椅 + 黑猫成员（彩色围巾）；
+     家具/角色全部 DOM + SVG，⛔ 不再有位图底图。 */
   if (!existsSync(join(ROOT, "src", "features", "team-office", "office-format.ts"))) {
-    /* v19 实现不在（再次下线）⇒ 跳过 */
+    /* 实现不在（再次下线）⇒ 跳过 */
   } else {
-    const fmtSrc = readFileSync(join(ROOT, "src", "features", "team-office", "office-format.ts"), "utf8");
-    const simSrc = readFileSync(join(ROOT, "src", "features", "team-office", "office-sim.ts"), "utf8");
-    const canvasSrc = readFileSync(join(ROOT, "src", "features", "team-office", "OfficeCanvas.tsx"), "utf8");
-
-    /* ① 精灵格式常量与 MetroCity 图集一致（16×32，7 列；列 6 = 坐姿） */
-    (fmtSrc.includes("FRAME_W = 16") && fmtSrc.includes("FRAME_H = 32") ? ok : fail)(
-      "【233】精灵帧 16×32（MetroCity CC0 图集网格）"
+    const fmt233 = readFileSync(join(ROOT, "src", "features", "team-office", "office-format.ts"), "utf8");
+    const canvas233 = readFileSync(join(ROOT, "src", "features", "team-office", "OfficeCanvas.tsx"), "utf8");
+    const css233 = readFileSync(join(ROOT, "src", "styles", "20-team-office.css"), "utf8");
+    (fmt233.includes("CANVAS_W = 1560") && fmt233.includes("CANVAS_H = 1270") && fmt233.includes("TEAM_OFFICE_LIMIT = 10") ? ok : fail)(
+      "【233】白色工位板 1560×1270 / 人数上限 10"
     );
-    (fmtSrc.includes("COL_SIT = 6") ? ok : fail)("【233】坐姿列号 = 6（图集第 7 列）");
-
-    /* ② ⛔ 座位格必须在碰撞图的可走行：桌矩形 y1 只到 8/13（椅行 9/14 留空）。
-       座位被挡 ⇒ findPath 返回 null ⇒ 成员永远走不到工位（实测全员困在门口） */
-    (/\{ x0: 6, y0: 6, x1: 10, y1: 8 \}/.test(simSrc) && /\{ x0: 19, y0: 11, x1: 23, y1: 13 \}/.test(simSrc) ? ok : fail)(
-      "【233】桌碰撞矩形不含椅子行（椅行 9/14 可走）"
+    (/DESK_COLS = \[\d+, \d+\]/.test(canvas233) && (canvas233.match(/DESK_ROWS = \[[^\]]+\]/)?.[0].match(/\d+/g) ?? []).length === 5 ? ok : fail)(
+      "【233】2 列 × 5 排 = 10 个工位"
     );
-
-    /* ③ ⛔ 门凹龛必须连通房间（col 5 也要开）—— 只开 2-4 会被左墙封死 */
-    (simSrc.includes("for (const x of [2, 3, 4, 5]) g[at(x, y)] = 0;") ? ok : fail)(
-      "【233】门凹龛连通房间（cols 2-5 × rows 15-18）"
+    (canvas233.includes("function SeatedCat") && canvas233.includes("function StandingCat") && canvas233.includes("SCARVES") ? ok : fail)(
+      "【233】黑猫成员：坐姿（背对）/站姿（正面）+ 彩色围巾"
     );
-
-    /* ③b ⛔ 行为模型 = 人人有工位、坐班是常态（09-30 用户纠错：别把没任务的人映射成永久闲逛） */
-    (simSrc.includes("坐班是常态") && simSrc.includes("onBreak") ? ok : fail)(
-      "【233】坐班常态模型（非 running 也坐工位，闲逛只是短暂休息）"
+    (/onClick=\{onOpen\}/.test(canvas233) && /role="button"/.test(canvas233) ? ok : fail)(
+      "【233】工位可点击进入成员会话（键盘可达）"
     );
-
-    /* ③c ⛔ 回工位必须**当场 BFS 重规划**并精确落到座位像素；⛔ 不许回放"来时路线的反向"
-     * （10-06 晚逐帧实测：陈旧 homePath 的头是**出发地** ⇒ 人朝饮水机走直线、撞进「桌子行 +
-     *  座位格」的夹角 ⇒ 每帧动 0.68px 却从不靠近路点、`path` 一格不减，僵持 1692 秒）。 */
-    (simSrc.includes("private headHome") && simSrc.includes("back.push({ x: seat.x, y: seat.y })") && !/\.homePath\s*=/.test(simSrc) ? ok : fail)(
-      "【233】回工位当场重规划 + 精确落座（⛔ homePath 已整体删除，不许回放陈旧路线）"
+    (/eventWordZhOf/.test(canvas233) && /effectivePhase/.test(canvas233) ? ok : fail)(
+      "【233】猫的姿态/状态走真实阶段 + 真实事件（⛔ 不编状态）"
     );
-    (simSrc.includes('activity: null | "tea" | "water" | "book"') && simSrc.includes("agent.activity = null") && simSrc.includes("agent.path = []") ? ok : fail)(
-      "【233】休息活动（tea/water/book）在 mode 沿清空 + 清在途路径"
+    (canvas233.includes("ws-screen") && canvas233.includes("ws-screen-scan") ? ok : fail)(
+      "【233】每台显示器都有实时内容（状态色 + 代码条 + 扫描线）"
+    );
+    (!/assets\/office-bg|bgUrl|petList|pet:\/\/|imageSmoothingEnabled/.test(canvas233) ? ok : fail)(
+      "【233】⛔ 不再引照片底图 / 宠物管线"
+    );
+    (!/OfficeSim|SEATS|drawScreen\(/.test(canvas233) ? ok : fail)(
+      "【233】旧模拟层/逐帧屏已整体退役"
+    );
+    (canvas233.includes("const fit = Math.min(sw / CANVAS_W, sh / CANVAS_H)")
+      && /addEventListener\("wheel"[\s\S]{0,80}?\{ passive: false \}/.test(canvas233) ? ok : fail)(
+      "【233】contain 基准 + 滚轮缩放"
+    );
+    (css233.includes(".ws-cat") && css233.includes("@keyframes cat-type-r") && css233.includes("@keyframes ws-scan") ? ok : fail)(
+      "【233】猫 / 显示器都是持续动画"
     );
 
     /* ══ 【237】Laya 智能判断（10-01 用户立项）═══════════════════════════
@@ -3577,38 +3552,7 @@ w.postMessage({id:1,op:"list",root});
       );
     }
 
-    /* ③c 坐姿打字微动画 = 图集两个坐姿变体交替（cols 5/6） */
-    (fmtSrc.includes("SIT_FRAMES = [5, 6]") && canvasSrc.includes("SIT_FRAMES[") ? ok : fail)(
-      "【233】坐姿用双帧变体交替（打字微动画）"
-    );
-
-    /* ③d ⛔ 坐姿锚点从椅背顶推导 + 椅背重贴：人不抬高看不清谁坐在哪、不重贴就是人物挡住椅子。
-       ⛔ 锚**per-seat backrest**（10-01 实测：两排椅子相对座位高度差 25px，统一公式/常量
-       必然弄错一排——上排人物整个被盖掉「头都没了」）。 */
-    /* ⛔ 锚「坐姿分支取 per-seat 偏移 − 31」，不锚换行（10-06 拆行后旧字面量匹配假红）。 */
-    (/const dy = a\.action === "sit"\s*\?\s*Math\.round\(a\.y \+ r\.dy - 31\)/.test(canvasSrc) ? ok : fail)(
-      "【233】坐姿锚点从椅背顶推导（人物顶 = 椅背顶 - 31，两排自适应）"
-    );
-    (canvasSrc.includes("SEATS[a.seatIndex]?.backrest") && canvasSrc.includes("ctx.drawImage(bg, a.x + r.dx") ? ok : fail)(
-      "【233】坐姿画完重贴椅背矩形（人坐进椅子，不是挡住椅子；矩形按座位实测值）"
-    );
-
-    /* ⑤ 渲染必须关平滑（像素风最近邻放大）+ 资产走 Vite import（可达闭包，别回 public/） */
-    (canvasSrc.includes("imageSmoothingEnabled = false") ? ok : fail)(
-      "【233】canvas 关像素平滑（否则像素被拉糊）"
-    );
-    (canvasSrc.includes('from "./assets/bg.webp?inline"') && canvasSrc.includes("assets/chars/char_0.png") ? ok : fail)(
-      "【233】办公室资产走 Vite import（打包可达闭包内；bg 必须 ?inline —— 80KB 超内联阈值，拆文件 = 构建版白底）"
-    );
-
-    /* ⑥ 事件驱动边界：域不订阅引擎、不开 IPC —— 状态只从 props 进（架构规则 §2.2） */
-    (!/ipcRenderer|window\.codex\./.test(simSrc) ? ok : fail)(
-      "【233】sim 不碰 IPC（状态一律由宿主 props 传入）"
-    );
-    (canvasSrc.includes("membersRef") ? ok : fail)(
-      "【233】成员状态经 ref 进渲染循环（props 变化即画面变化 = 事件驱动落点）"
-    );
-
+    /* 旧像素版 233 的坐姿/资产/事件边界断言已随实现换代删除（白底版本由守卫 11d 覆盖）。 */
     /* ⑦ 入口三件套：按钮回调接通 / bag 状态在 / AppView 挂载 */
     const timelineSrc = readFileSync(join(ROOT, "src", "features", "app-view", "AppView", "02-main-stage", "01-timeline.tsx"), "utf8");
     (timelineSrc.includes("onOpenOffice={() => setCompanyPreviewTeamId(railTeam.teamId)}") ? ok : fail)(

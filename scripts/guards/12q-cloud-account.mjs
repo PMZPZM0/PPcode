@@ -160,7 +160,7 @@ const registrySrc = read("src/features/app-view/AppView/08-settings-sheet/01-set
    下面 5 条按"本仓声称提供的能力"判：有入口就严格要求，没有就如实跳过。
    ⛔ 不是"关掉守卫"：主进程侧（凭据不落明文 / 上游唯一决策点 / 集成闸门）仍严格断言。
    ⛔ 声明必须在**第一条用它的断言之前**（否则 TDZ，整个守卫直接异常退出 —— 实测踩到）。 */
-const HAS_CLOUD_UI = /mode === "cloud"/.test(read("src/features/auth/LoginScreen.tsx"));
+const HAS_CLOUD_UI = /(?:mode|method) === "cloud"/.test(read("src/features/auth/LoginScreen.tsx"));
 
 const navSrc = read("src/features/app-view/helpers/catalogs.ts");
 const helpSrc = read("src/components/HelpDialog.tsx");
@@ -217,20 +217,25 @@ ok(
    ⛔ 只做设置页不够：**首启看到的是 LoginScreen**，那里没有入口 = 新用户根本发现不了这套能力。 */
 const loginSrc = read("src/features/auth/LoginScreen.tsx");
 ok(
-  !HAS_CLOUD_UI || (/mode === "cloud"/.test(loginSrc) && /"openai" \| "cloud"/.test(loginSrc)),
-  '首启登录页有 cloud 模式（mode 联合类型含 "cloud"）',
+  !HAS_CLOUD_UI || (/(?:mode|method) === "cloud"/.test(loginSrc) && /"relay" \| "cloud"|"openai" \| "cloud"/.test(loginSrc)),
+  '首启登录页有 cloud 模式（state 联合类型含 "cloud"）',
 );
 ok(
-  !HAS_CLOUD_UI || /login-option-title">云账号</.test(loginSrc),
-  "首启登录页有「云账号」选项卡（缺了 ⇒ 新用户看不到这套能力）",
+  !HAS_CLOUD_UI || /云管理账号|login-option-title">云账号</.test(loginSrc),
+  "首启登录页有「云管理账号 / 云账号」入口（缺了 ⇒ 新用户看不到这套能力）",
 );
 ok(
-  !HAS_CLOUD_UI || (/cloudAuthLogin/.test(loginSrc) && /cloudModelsSync/.test(loginSrc)),
-  "首启登录页的云账号走真通道（cloudAuthLogin + cloudModelsSync）",
+  !HAS_CLOUD_UI || (/cloudAuthLogin/.test(loginSrc) && /provisionCloud/.test(loginSrc)),
+  "首启登录页的云账号走真通道（cloudAuthLogin + provisionCloud 自动配置）",
 );
 ok(
-  !HAS_CLOUD_UI || /provider: "cloud", name: "云端模型"/.test(loginSrc),
-  "登录后把供应商落成 id=cloud / 名=云端模型（与主进程 cloud-provider 的口径一致）",
+  !HAS_CLOUD_UI || (/onCloudReady/.test(loginSrc) || /provider: "cloud", name: "云端模型"/.test(loginSrc)),
+  "登录后接上云端供应商（PPcode：onCloudReady 读生效供应商；主仓：provider=cloud）",
+);
+ok(
+  !HAS_CLOUD_UI || (/provisionCloud\(api, \{ activate: true, onlyIfEmpty: true \}\)/.test(loginSrc)
+    && /onCloudReady/.test(loginSrc)),
+  "首启云登录：provisionCloud(activate:true) 自动配置并在需要时切生效位/重启引擎，随后 onCloudReady 进主界面",
 );
 
 /* ── ⑫⛔⛔ 10-16 用户实测两条：供应商「测试」永远 401 / 加完供应商引擎配置没跟上 ──

@@ -7,6 +7,10 @@
  *   「PPtoken 粘贴 Key / OpenAI 官方订阅 / 自定义 API」三个入口整块移除；
  *   注册作为**同一个方法的另一半**（页签切换），不是第二种登录方式。
  *
+ * 10-22 用户：「登录选项加一套云管理账号登录功能」——在登录页增加第二种**账号体系**：
+ *   中转站账号（原有）与云管理账号（cloud-* 域 + provisionCloud 自动配置）。
+ *   ⛔ 不是把 OpenAI/自定义 API 那些旧入口搬回来；云账号同样只有「账号 + 密码」。
+ *
  * ⛔ 为什么登录/注册都走 `lib/relay.ts` 的 performRelay*：那是全应用唯一的
  *   「登录/注册 → 选计费 → 生成供应商 → 生效」实现（引导弹窗共用）。这里只做界面与归因。
  * ⛔ 邀请归因的单一真相源是 `lib/relay-affiliate.ts`（URL ?aff= → 本地 30 天 → 内置默认码），
@@ -15,9 +19,11 @@
  * 公开面见同目录 index.ts。
  */
 
-import { Wallet, WifiOff, Mail, Lock, UserRound, Eye, EyeOff, Loader2, Sparkles, KeyRound } from "lucide-react";
+import { Wallet, WifiOff, Mail, Lock, UserRound, Eye, EyeOff, Loader2, Sparkles, KeyRound, Cloud, ExternalLink } from "lucide-react";
 import { createPortal } from "react-dom";
 import { performRelayLogin } from "../../lib/relay";
+import { provisionCloud } from "../../lib/cloud-provision.mjs";
+import { cloudUserCenterUrl } from "../../lib/cloud-links.mjs";
 import { describeCredentialFix, normalizeCredential } from "../../lib/relay-input.mjs";
 import { captureAffiliateFromUrl } from "../../lib/relay-affiliate";
 import { RegisterPanel } from "./RegisterPanel";
@@ -105,7 +111,7 @@ const DEFAULT_GATEWAY = "https://api.pptoken.cc";
 const GATEWAY_KEY = "relay-gateway";
 const LOGO_SRC = `${import.meta.env.BASE_URL}pptoken-logo.png`;
 
-export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string }) => Promise<boolean> }) {
+export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => void; onLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string }) => Promise<boolean>; onCloudReady?: (info: { username?: string }) => Promise<boolean> }) {
   const [tab, setTab] = useState<"login" | "register">("login");
   const [gateway, setGateway] = useState(() => window.localStorage.getItem(GATEWAY_KEY) || DEFAULT_GATEWAY);
   const [email, setEmail] = useState("");
@@ -116,6 +122,17 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
   const [busy, setBusy] = useState(false);
   /** 提交时净化了什么（全角→半角 / 去空白……）；没改就为空。 */
   const [fixNote, setFixNote] = useState("");
+  /* ── 登录方式（10-22 用户：「登录选项加一套云管理账号登录功能」）──
+     中转站是原有的 sub2api 网关账号；云管理账号走主进程 cloud-* 域，登录后由
+     `provisionCloud` 自动配好模型 / 知识库 / 记忆，最后交给 onLogin 保存并重启引擎。 */
+  const [method, setMethod] = useState<"relay" | "cloud">("relay");
+  const [cloudAccount, setCloudAccount] = useState(() => {
+    try { return localStorage.getItem("ppcode-cloud-account") || ""; } catch { return ""; }
+  });
+  const [cloudPassword, setCloudPassword] = useState("");
+  const [showCloudPw, setShowCloudPw] = useState(false);
+  const [cloudBase, setCloudBase] = useState("");
+  const [cloudCenterUrl, setCloudCenterUrl] = useState("");
   /** 本机已保存的中转站会话（同网关 + 同邮箱且有效时，允许不重输密码直接继续）。 */
   const [savedSession, setSavedSession] = useState<{ baseUrl: string; email: string } | null>(null);
   /* 进页面先吃 URL 上的 ?aff=（外链带进来的归因）落本地 30 天 —— 注册时静默带上。
@@ -129,6 +146,18 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
     }).catch(() => undefined);
   }, []);
   useEffect(() => { refreshSavedSession(); }, [refreshSavedSession]);
+  /* 云账号服务基址 → 用户中心注册链接；已登录过就把账号回填（密码永远不落盘）。
+     ⛔ 链接由 `cloud-links.mjs` 按账号服务基址派生，不写死云端域名。 */
+  useEffect(() => {
+    let alive = true;
+    void (window.codex as any).cloudAuthStatus?.().then((s: any) => {
+      if (!alive) return;
+      setCloudCenterUrl(cloudUserCenterUrl(String(s?.defaultBaseUrl || s?.active?.baseUrl || "")));
+      const activeName = String(s?.active?.username || "").trim();
+      if (activeName) setCloudAccount((prev) => prev || activeName);
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
 
   /* 中转站账户登录：登录 → 自动选计费（有套餐用套餐，否则余额）→ 生成供应商进主界面 */
   const relayLogin = async (opts: { skipLogin?: boolean } = {}) => {
@@ -157,6 +186,57 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
       refreshSavedSession();
     }
     setBusy(false);
+  };
+
+  /**
+   * 云管理账号登录（复用主进程 cloud-* 域与 `provisionCloud` 编排，⛔ 不另写一套）：
+   *   账号密码 → 云端会话令牌 → 自动同步模型 / 知识库 / 记忆 → 生效位（需要时重启引擎）
+   *   → `onCloudReady` 把当前供应商接进 UI。
+   * ⛔ 不再走 onLogin 的「裸 /models 探测 + 再存一遍」：云端代理不一定支持裸探测，用户要的是
+   *   「登录好自动配置好」；保存与重启由 `cloud-models:activate` 统一完成。
+   */
+  const cloudLogin = async () => {
+    setBusy(true); setStatus("");
+    try {
+      const api = window.codex as any;
+      if (!api.cloudAuthLogin) { setStatus("当前构建未包含云账号接口，请更新后再试"); return; }
+      const r = await api.cloudAuthLogin({
+        baseUrl: cloudBase.trim() || undefined,
+        username: cloudAccount.trim(),
+        password: cloudPassword,
+      });
+      if (!r?.ok) { setStatus(r?.error || "云账号登录失败"); return; }
+      try { localStorage.setItem("ppcode-cloud-account", cloudAccount.trim()); } catch { /* 忽略 */ }
+      /* 自动配置；令牌失效的 401 由 sync 内部自愈，仍失败才 force 重签一次（与设置页同口径）。 */
+      let report = await provisionCloud(api, { activate: true, onlyIfEmpty: true });
+      if (!report.models?.ok) {
+        const forced = await api.cloudModelsSync?.({ force: true });
+        if (forced?.ok) report = await provisionCloud(api, { activate: true, onlyIfEmpty: true });
+      }
+      if (!report.models?.ok) {
+        setStatus(`已登录，但云端模型同步失败：${report.models?.error || "未知原因"} —— 可到 设置 → 云账号 点「一键同步」重试`);
+        onSkip();
+        return;
+      }
+      if (report.models.count <= 0) {
+        setStatus("已登录，但云端还没有勾选任何模型 —— 去云端用户中心勾选后，到 设置 → 云账号 点「一键同步」");
+        onSkip();
+        return;
+      }
+      /* ⛔ 生效位/保存/重启都已在 provisionCloud(activate:true) 里完成（需要时它才切生效位并重启引擎）；
+         这里只把当前生效供应商接进 UI —— 不再对云端代理做一次裸 /models 探测。 */
+      const ready = await onCloudReady?.({ username: username.trim() || undefined });
+      if (!ready) {
+        setStatus(report.activated
+          ? "云账号已登录并配置完成，但本机没读到生效供应商 —— 请到 设置 → 云账号 点「一键同步」"
+          : "云账号已登录，云端配置已写好；本机已有其他供应商，未抢生效位 —— 可到 设置 → 模型 切换");
+        onSkip();
+      }
+    } catch (error: any) {
+      setStatus("云账号登录失败：" + (error?.message ?? error));
+    } finally {
+      setBusy(false);
+    }
   };
 
   /** 本机已保存的会话是否正好对应「当前填的网关 + 邮箱」⇒ 才允许跳过登录直接继续。 */
@@ -191,6 +271,23 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
           <span className="authx-tab-ink" data-tab={tab} aria-hidden="true" />
         </div>
 
+        {/* 登录方式：中转站 / 云管理账号（10-22 用户：「登录选项加一套云管理账号登录功能」）。
+            两条线互不影响：中转站走 sub2api 网关，云账号走 cloud-* 域 + 自动配置。 */}
+        {tab === "login" && (
+          <div className="authx-method" role="tablist" aria-label="登录方式">
+            <button type="button" role="tab" aria-selected={method === "relay"} className={method === "relay" ? "on" : ""}
+              onClick={() => { setMethod("relay"); setStatus(""); setFixNote(""); }}>
+              <Wallet size={16} />
+              <span><b>中转站账号</b><small>sub2api · 余额 / 套餐</small></span>
+            </button>
+            <button type="button" role="tab" aria-selected={method === "cloud"} className={method === "cloud" ? "on" : ""}
+              onClick={() => { setMethod("cloud"); setStatus(""); setFixNote(""); }}>
+              <Cloud size={16} />
+              <span><b>云管理账号</b><small>登录即用 · 自动配置</small></span>
+            </button>
+          </div>
+        )}
+
         {tab === "register" ? (
           <RegisterPanel
             baseUrl={(gateway.trim() || DEFAULT_GATEWAY).replace(/\/$/, "")}
@@ -200,6 +297,7 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
           />
         ) : (
           <div className="authx-panel">
+            {method === "relay" ? (<>
             <label className="authx-field">
               <span>账号邮箱</span>
               <div className="authx-input">
@@ -261,6 +359,57 @@ export function LoginScreen({ onSkip, onLogin }: { onSkip: () => void; onLogin: 
             <p className="authx-note">
               没有账号？切到上方「注册」——只需邮箱验证码，注册完自动登录并接好模型供应商。
             </p>
+            </>) : (<>
+            <label className="authx-field">
+              <span>云账号</span>
+              <div className="authx-input">
+                <Mail size={14} />
+                <input value={cloudAccount} onChange={(e) => setCloudAccount(e.target.value)}
+                  placeholder="你在云端注册的账号（与网页端同一个）" autoComplete="username" spellCheck={false}
+                  onKeyDown={(e) => { if (e.key === "Enter" && cloudAccount.trim() && cloudPassword && !busy) void cloudLogin(); }} />
+              </div>
+            </label>
+
+            <label className="authx-field">
+              <span>密码</span>
+              <div className="authx-input">
+                <Lock size={14} />
+                <input type={showCloudPw ? "text" : "password"} value={cloudPassword} onChange={(e) => setCloudPassword(e.target.value)}
+                  placeholder="云账号密码" autoComplete="current-password"
+                  onKeyDown={(e) => { if (e.key === "Enter" && cloudAccount.trim() && cloudPassword && !busy) void cloudLogin(); }} />
+                <button type="button" className="authx-eye" onClick={() => setShowCloudPw((v) => !v)} title={showCloudPw ? "隐藏密码" : "显示密码"}>
+                  {showCloudPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </label>
+
+            <details className="authx-adv">
+              <summary>服务地址（可选）</summary>
+              <label className="authx-field">
+                <span>云端账号服务地址</span>
+                <div className="authx-input">
+                  <Cloud size={14} />
+                  <input value={cloudBase} onChange={(e) => setCloudBase(e.target.value)} placeholder="留空用默认云端；自建部署才需要填" spellCheck={false} />
+                </div>
+              </label>
+            </details>
+
+            {status && <div className="authx-error">{status}</div>}
+
+            <button type="button" className="authx-primary" disabled={!cloudAccount.trim() || !cloudPassword || busy} onClick={() => void cloudLogin()}>
+              {busy ? <><Loader2 size={15} className="authx-spin" />正在登录并自动配置…</> : <><Cloud size={15} />登录并自动配置</>}
+            </button>
+
+            <p className="authx-note">
+              登录后自动同步云端勾选的模型，并接通云端知识库与记忆；需要保存 / 重启时会自动完成，稍等片刻即可进入主界面。
+            </p>
+            {cloudCenterUrl && (
+              <button type="button" className="authx-cloud-link"
+                onClick={() => { void window.codex.openExternal(cloudCenterUrl).catch(() => undefined); }}>
+                <ExternalLink size={13} />还没有云账号？去云端用户中心注册
+              </button>
+            )}
+            </>)}
           </div>
         )}
 

@@ -86,6 +86,50 @@ bag.send = send as typeof bag.send;
   }
 bag.handleLogin = handleLogin as typeof bag.handleLogin;
 
+  /**
+   * 云账号登录收尾（10-22）：`provisionCloud` 已经写好了云端供应商（必要时已重启引擎），
+   * 这里只把**当前生效供应商**接进 bag 并进主界面 —— ⛔ 不再 probe `/models` 再存一遍：
+   * 云端代理不一定对裸探测友好，且用户要的是「自动配置好」，不是再赌一次探测。
+   */
+  async function handleCloudReady(info: { username?: string } = {}): Promise<boolean> {
+    try {
+      const preservedThreadId = bag.accountSwitchThreadRef.current;
+      if (info.username) {
+        localStorage.setItem("username", info.username);
+        bag.setUsername(info.username);
+        void window.codex.setNickname(info.username).catch(() => undefined);
+      }
+      const current: any = await (window.codex as any).getCustomModel?.();
+      if (!current?.provider || !current?.model) return false;
+      const models: string[] = Array.isArray(current.models)
+        ? current.models.map((m: any) => (typeof m === "string" ? m : m?.id)).filter(Boolean)
+        : [current.model];
+      const id = `custom:${current.provider}:${current.model}`;
+      bag.setModelId(id);
+      bag.applyGlobalModelChoice(id);
+      bag.setEffort("high");
+      localStorage.setItem("default-effort", "high");
+      bag.adoptSavedProvider(current, models.length ? models : [current.model]);
+      localStorage.setItem("login-skipped", "false");
+      bag.markModelConfigured();
+      bag.setShowLogin(false);
+      bag.showToast(
+        "云账号登录成功",
+        current.provider === "cloud"
+          ? `云端模型已生效${models.length ? ` · ${models.length} 个模型` : ""}`
+          : `云账号已登录；本机已有其他供应商，保持 ${current.name || current.provider} 生效`,
+      );
+      await bag.refreshThreads().catch(() => undefined);
+      if (preservedThreadId) await bag.openThread(preservedThreadId);
+      bag.accountSwitchThreadRef.current = null;
+      return true;
+    } catch (error: any) {
+      bag.setNotice("云账号登录收尾失败：" + (error?.message ?? error));
+      return false;
+    }
+  }
+bag.handleCloudReady = handleCloudReady as typeof bag.handleCloudReady;
+
   async function handleSkip() {
     localStorage.setItem("login-skipped", "true");
     bag.setShowLogin(false);
@@ -114,5 +158,5 @@ bag.hadModelConfigured = hadModelConfigured as typeof bag.hadModelConfigured;
     bag.setShowLogin(true);
   }
 bag.handleLogout = handleLogout as typeof bag.handleLogout;
-  return { send, handleLogin, handleSkip, MODEL_CONFIGURED_KEY, markModelConfigured, hadModelConfigured, handleLogout };
+  return { send, handleLogin, handleCloudReady, handleSkip, MODEL_CONFIGURED_KEY, markModelConfigured, hadModelConfigured, handleLogout };
 }

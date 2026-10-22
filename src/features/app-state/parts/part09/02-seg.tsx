@@ -256,7 +256,11 @@ bag.saveInlineRename = saveInlineRename as typeof bag.saveInlineRename;
 
 
   const earlyView = bag.showLogin ? (
-      <LoginScreen onSkip={() => void bag.handleSkip()} onLogin={(info) => bag.handleLogin(info)} />
+      <LoginScreen
+        onSkip={() => void bag.handleSkip()}
+        onLogin={(info) => bag.handleLogin(info)}
+        onCloudReady={(info) => bag.handleCloudReady(info)}
+      />
     ) : null;
 bag.earlyView = earlyView as typeof bag.earlyView;
 

@@ -1413,6 +1413,96 @@ const CHECKS = [
     },
   },
   {
+    id: "office-scene",
+    name: "🏢 白色简洁办公室：10 工位 + 黑猫成员 + 实时显示器（10-22 对照 Marvis 重做）",
+    run: async (h) => {
+      /* 10-22 用户：「现在就一张图，不要，删除重新做」→「一样的白色简洁场景，逆向出来一摸一样」。
+         本项量真 DOM：白底 1560×1270 / 10 个工位 / 黑猫成员 / 显示器持续动画 /
+         悬停详情卡 / 点击反馈 / 滚轮真缩放。⛔ 不接受任何照片位图。 */
+      await h.waitFor(`!!document.querySelector(".app-shell")`, { label: "界面就绪", timeoutMs: 40000 });
+      await h.eval(`localStorage.setItem("officeProbe","1")`);
+      await h.reload({ waitMs: 2500 });
+      await h.waitFor(`!!document.querySelector(".office-scene-stage")`, { timeoutMs: 20000 });
+      await h.waitFor(`document.querySelectorAll(".office-agent").length > 0`, { timeoutMs: 20000 });
+      await wait(1800);
+      const first = await h.eval(`(function(){
+        const stage=document.querySelector(".office-scene-stage");
+        const board=document.querySelector(".office-board");
+        const agents=[...document.querySelectorAll(".office-agent")];
+        const cats=[...document.querySelectorAll(".ws-cat")];
+        const screens=[...document.querySelectorAll(".ws-screen")];
+        return {
+          w: stage ? stage.offsetWidth : 0, h: stage ? stage.offsetHeight : 0,
+          workstations: document.querySelectorAll(".ws").length,
+          agents: agents.length, cats: cats.length, screens: screens.length,
+          imgs: board ? board.querySelectorAll("img").length : -1,
+          desks: document.querySelectorAll(".ws-desk-top").length,
+          chairs: document.querySelectorAll(".ws-chair").length,
+          names: agents.slice(0,3).map(a => (a.querySelector(".ws-name")?.innerText || "").trim()),
+          cursor: agents[0] ? getComputedStyle(agents[0]).cursor : "",
+        };
+      })()`).catch(() => null);
+      h.check("① 白色场景：1560×1270 工位板 / 10 个工位 / 黑猫 / 零位图",
+        Boolean(first && first.w === 1560 && first.h === 1270 && first.workstations === 10
+          && first.desks === 10 && first.chairs === 10 && first.cats === first.agents
+          && first.agents >= 1 && first.imgs === 0),
+        JSON.stringify(first));
+      const anim = await h.eval(`(function(){
+        const bar=document.querySelector(".ws-screen > i");
+        const tail=document.querySelector(".ws-cat .cat-tail");
+        const arm=document.querySelector(".ws-cat.is-run .cat-arm-r");
+        return {
+          screen: bar ? getComputedStyle(bar).animationName : "",
+          tail: tail ? getComputedStyle(tail).animationName : "",
+          arm: arm ? getComputedStyle(arm).animationName : "",
+          screens: document.querySelectorAll(".ws-screen").length,
+          screensWithScan: document.querySelectorAll(".ws-screen-scan").length,
+        };
+      })()`).catch(() => null);
+      h.check("② 场景是活的：显示器代码条 + 扫描线 + 猫摇尾 + 运行中敲键盘",
+        Boolean(anim && anim.screen.includes("ws-bar") && anim.tail.includes("cat-tail")
+          && anim.arm.includes("cat-type-r") && anim.screens === 10 && anim.screensWithScan === 10),
+        JSON.stringify(anim));
+      await h.hover(".office-agent");
+      await wait(450);
+      const hover = await h.eval(`(function(){
+        const card=document.querySelector(".office-agent-card");
+        return card ? { text: (card.innerText || "").trim(), visible: card.getBoundingClientRect().width > 0 } : null;
+      })()`).catch(() => null);
+      h.check("③ 悬停工位出详情卡（姓名/职业/状态 + 点击打开会话）",
+        Boolean(hover && hover.visible && hover.text.includes("点击打开会话")),
+        JSON.stringify(hover));
+      h.check("④ 工位指针是手型（可点这件事有视觉提示）", first?.cursor === "pointer", JSON.stringify({ cursor: first?.cursor }));
+      const zoom = await h.eval(`(function(){
+        const wrap=document.querySelector(".office-scene-wrap");
+        const stage=document.querySelector(".office-scene-stage");
+        if(!wrap||!stage) return null;
+        const before=getComputedStyle(stage).transform;
+        const r=wrap.getBoundingClientRect();
+        wrap.dispatchEvent(new WheelEvent("wheel",{deltaY:-120,clientX:r.left+r.width/2,clientY:r.top+r.height/2,bubbles:true,cancelable:true}));
+        const after=getComputedStyle(stage).transform;
+        const scale=(t)=>{ const m=/matrix\\(([^)]+)\\)/.exec(t||""); return m ? Number(m[1].split(",")[0]) : 0; };
+        return { before: scale(before), after: scale(after) };
+      })()`).catch(() => null);
+      h.check("⑤ 滚轮以指针为中心真缩放（舞台 transform 倍率变大）",
+        Boolean(zoom && zoom.before > 0 && zoom.after > zoom.before * 1.05), JSON.stringify(zoom));
+      await h.eval(`(function(){
+        const a=document.querySelector(".office-agent");
+        if(a) a.dispatchEvent(new MouseEvent("click",{bubbles:true}));
+        return 1;
+      })()`).catch(() => undefined);
+      await wait(900);
+      const after = await h.eval(`(function(){
+        const overlay=!!document.querySelector(".office-overlay");
+        const hint=document.querySelector(".office-overlay-hint");
+        return { overlay, hint: hint ? (hint.textContent||"").trim() : "" };
+      })()`).catch(() => null);
+      h.check("⑥ 点击工位有明确反馈（开会话关浮层 / 或出「还没有会话」提示 —— ⛔ 不许静默）",
+        Boolean(after && (!after.overlay || (after.hint && after.hint.length > 0))), JSON.stringify(after));
+      await h.screenshot("office-scene");
+    },
+  },
+  {
     id: "file-summary",
     name: "㉓ 文件更改汇报 · 真回合全链路（运行中实时编辑行 + 收尾汇总卡 + 交互，10-06 两次重写）",
     run: async (h) => {
@@ -3869,6 +3959,7 @@ const LATEST_ROUND = "10-22";   // 10-22 轮：右栏标签改版（撤终端、
 const ROUND_OF = {
   "file-cards": "10-22",   // 10-22 轮：Qoder 式本轮产物文件卡 + 右栏工作区文件预览
   "cloud-simple": "10-22",   // 10-22 轮：云账号登录即用
+  "office-scene": "10-22",   // 10-22 轮：白色简洁办公室（10 工位 + 黑猫 + 实时显示器；结构由守卫 11d/06 钉）
   "panel-tabs": "10-22",   // 10-22 轮：右栏标签撤终端、审阅顶到第二位（默认宽 308px 五个排不下）
   "ui-sketch": "10-06",   // ⛔ 10-06 重写：三形态探针（手机+电脑屏 / platform web 真落盘）+ 预览 + 还原；编号改执行顺序
   "file-summary": "10-06",   // 文件更改汇报卡：运行中行/胶囊 + 收尾卡 + 悬停 diff 预览 + 交互（10-06 两次重写）

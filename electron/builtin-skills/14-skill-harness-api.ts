@@ -11,7 +11,7 @@ description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当
 
 # 宿主接口清单与可拓展能力（自动生成，勿手改）
 
-数据源：electron/ipc-channels.manifest.json（97 个能力域 / 513 个通道），由 scripts/gen-capability-skill.mjs 生成。
+数据源：electron/ipc-channels.manifest.json（97 个能力域 / 514 个通道），由 scripts/gen-capability-skill.mjs 生成。
 
 ## 怎么用
 
@@ -55,7 +55,7 @@ description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当
 
 ## 能力域
 
-### pet（19 通道）
+### pet（20 通道）
 桌面宠物（官方 Codex 宠物格式：pet.json + 8×9 图集）：list 发现四目录宠物 / settings-get·set 开关与选择 / roots 目录清单 / open-dir / import 从只读目录导入用户区 / toggle·show·hide 显示控制。宠物本体渲染在独立透明置顶浮窗，宿主侧只做发现与设置
 通道：pet:list, pet:settings-get, pet:settings-set, pet:state, pet:roots, pet:open-dir, pet:import, pet:toggle, pet:show, pet:hide, pet:interactive-rect, pet:activity-open, pet:activity-stop, pet:activity-reply, pet:activity-toggle, pet:open-main, pet:focus-thread, pet:drag-start, pet:drag-move, pet:drag-end
 

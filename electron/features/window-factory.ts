@@ -62,7 +62,7 @@ export function createWindow() {
     minWidth: 640,
     minHeight: 480,
     backgroundColor: "#ffffff",
-    title: "Codex Harness Desktop",
+    title: "PPcode",
     icon: existsSync(windowIcon) ? windowIcon : undefined,
     autoHideMenuBar: true,
     // 无边框标题栏：系统标题栏隐藏，应用 topbar 顶到窗口边缘（省 ~32px 高度）。
@@ -260,7 +260,7 @@ export function createPopoutWindow(threadId: string) {
     minWidth: 520,
     minHeight: 420,
     backgroundColor: "#ffffff",
-    title: "Codex Harness Desktop — 独立会话",
+    title: "PPcode — 独立会话",
     icon: existsSync(windowIcon) ? windowIcon : undefined,
     autoHideMenuBar: true,
     // 独立弹窗同款平台分叉（mac hiddenInset / win overlay），理由见 createWindow

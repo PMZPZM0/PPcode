@@ -3718,6 +3718,23 @@ w.postMessage({id:1,op:"list",root});
       && persSrc235.includes("向观众介绍你是 Codex")) ? ok : fail)(
       "【235】AGENTS.md 注入身份基线（被问「你是谁」按本应用回答；弹幕场景改用人设，不向观众自我介绍 Codex）"
     );
+    /* 10-22 用户：「给 PPCode 里面的 Codex 自我介绍也改一下，让他知道自己是 ppCode 应用，
+       不是 Codexharness」——身份基线必须自称 PPcode；这里同时钉负向，防止上游镜像把它带回去。 */
+    ((persSrc235.includes("你是 **PPcode**") && persSrc235.includes("我是跑在 PPcode 里")
+      && persSrc235.includes("不要自称「Codex Harness」")
+      && !persSrc235.includes("你是 **Codex Harness Desktop**")) ? ok : fail)(
+      "【235】身份基线自称 PPcode（不是 Codex Harness / Codex Harness Desktop）"
+    );
+    /* 10-22：能力清单是生成物，⛔ 手改会被 gen:ipc 回滚 ⇒ 品牌必须写在生成器里，
+       成品也复查一次（生成器 + 产物双锚）。 */
+    const genCapSrc235 = readFileSync(join(ROOT, "scripts", "gen-capability-skill.mjs"), "utf8");
+    (genCapSrc235.includes("description: PPcode 宿主的接口清单") ? ok : fail)(
+      "【235】能力清单生成器品牌 = PPcode（⛔ 手改生成物会被 gen:ipc 回滚）"
+    );
+    const harnessSkillSrc235 = readFileSync(join(ROOT, "electron", "builtin-skills", "14-skill-harness-api.ts"), "utf8");
+    (harnessSkillSrc235.includes("description: PPcode 宿主的接口清单") ? ok : fail)(
+      "【235】能力清单成品描述 = PPcode"
+    );
 
     /* ③ 独立设置页三件套（注册表 / 类型 / 导航）+ 帮助总览 + 域页面在位 */
     const registrySrc235 = readFileSync(join(ROOT, "src", "features", "app-view", "AppView", "08-settings-sheet", "01-settings-layout", "00-settings-registry.tsx"), "utf8");

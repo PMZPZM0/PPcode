@@ -156,7 +156,7 @@ const totalChannels = domains.reduce((a, d) => a + d.count, 0);
 const lines = [];
 lines.push("---");
 lines.push("name: harness-api");
-lines.push("description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当用户提「做个功能 / 加个集成 / 能不能自动 XX / 宿主有没有 XX 能力 / 帮我接上 XX」这类需求时先读它 —— 按域查现成接口，不用扫描源码，也不要重造宿主已有的能力。");
+lines.push("description: PPcode 宿主的接口清单与可拓展能力。当用户提「做个功能 / 加个集成 / 能不能自动 XX / 宿主有没有 XX 能力 / 帮我接上 XX」这类需求时先读它 —— 按域查现成接口，不用扫描源码，也不要重造宿主已有的能力。");
 lines.push("---");
 lines.push("");
 lines.push("# 宿主接口清单与可拓展能力（自动生成，勿手改）");

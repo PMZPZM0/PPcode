@@ -346,7 +346,9 @@ export function BackendConsolePanel({ workspace, workspaceEnabled, onNotice, onO
             </div>
             <div className="bc-row">
               <span className="bc-row-label">记忆端点</span>
-              <span className="bc-row-value"><code>memapi.ppz123.asia</code> · 每账号独立空间</span>
+              {/* ⛔ 不写死域名：PPcode 默认接的是客户自建服务器（ppcode.pptoken.cc），
+                  写死 memapi.ppz123.asia 会让自建部署看到"指向别人家的地址"。 */}
+              <span className="bc-row-value">由云账号下发 · 每账号独立空间</span>
             </div>
             <div className="bc-row">
               <span className="bc-row-label">注入 / 回写</span>

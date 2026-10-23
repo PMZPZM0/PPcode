@@ -24,8 +24,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-/** 云账号服务基址默认值。可用 `HARNESS_ACCOUNTS_BASE` 覆盖（自建部署）。 */
-export const DEFAULT_ACCOUNTS_BASE = "https://ppz123.asia/cloud-api";
+/** 云账号服务基址默认值。可用 `HARNESS_ACCOUNTS_BASE` 覆盖（自建部署）。
+ *  ⛔⛔ PPcode 的默认值是**客户自建服务器**（10-23 用户令「PPCODE 的服务地址要连客户这台」），
+ *     与桌面版主仓（`https://ppz123.asia/cloud-api`）**故意不同** —— 主仓同步时不要把这行覆盖回去。
+ *     判据：本仓 `package.json.name = "ppcode"`，主仓是 `codex-harness-desktop`。 */
+export const DEFAULT_ACCOUNTS_BASE = "https://ppcode.pptoken.cc/cloud-api";
 
 /** 服务端**自报**的对外基址（登录回包里的 server.baseUrl）。
  *  ⛔ 只用于**显示**（cloud-auth:status 的 defaultBaseUrl）—— 让界面别把编译期常量当固定事实。

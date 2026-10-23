@@ -229,13 +229,15 @@ ok(
   "首启登录页的云账号走真通道（cloudAuthLogin + provisionCloud 自动配置）",
 );
 ok(
-  !HAS_CLOUD_UI || (/onCloudReady/.test(loginSrc) || /provider: "cloud", name: "云端模型"/.test(loginSrc)),
-  "登录后接上云端供应商（PPcode：onCloudReady 读生效供应商；主仓：provider=cloud）",
+  !HAS_CLOUD_UI || (/onCloudReady/.test(loginSrc) || /provider: "cloud", name: "云端模型"/.test(loginSrc))
+    && /ProviderSetupDialog/.test(loginSrc),
+  "登录后接上云端供应商：统一自动配置弹窗勾选模型，完成后 onCloudReady 读生效供应商",
 );
 ok(
-  !HAS_CLOUD_UI || (/provisionCloud\(api, \{ activate: true, onlyIfEmpty: true \}\)/.test(loginSrc)
+  !HAS_CLOUD_UI || (/provisionCloud\(api, \{ activate: false \}\)/.test(loginSrc)
+    && /setSetupIntent\(\{[\s\S]{0,160}?source: "cloud"/.test(loginSrc)
     && /onCloudReady/.test(loginSrc)),
-  "首启云登录：provisionCloud(activate:true) 自动配置并在需要时切生效位/重启引擎，随后 onCloudReady 进主界面",
+  "首启云登录：provisionCloud(activate:false) 只读目录，勾选/保存/激活交给统一弹窗，随后 onCloudReady 进主界面",
 );
 
 /* ── ⑫⛔⛔ 10-16 用户实测两条：供应商「测试」永远 401 / 加完供应商引擎配置没跟上 ──

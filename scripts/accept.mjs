@@ -1731,6 +1731,17 @@ const CHECKS = [
             && editorUi.modal && editorUi.fields >= 3 && editorUi.modelBlock && editorUi.actions),
           JSON.stringify({ modelUi, editorUi }));
         await h.screenshot("provider-autosetup-entry");
+        /* 清掉上一轮失败/中断留下的同名测试供应商（否则本轮会出现两张同名卡、回执与 after 取错行）。 */
+        await h.eval(`(async function(){
+          try {
+            const l=await window.codex.listCustomModels();
+            for (const p of l.providers.filter(x=>String(x.name||"").includes("自动配置测试供应商"))) {
+              await window.codex.removeCustomModel(p.provider);
+            }
+          } catch {}
+          return true;
+        })()`).catch(() => undefined);
+        await wait(400);
         before = await h.eval(`(async function(){
           const l=await window.codex.listCustomModels();
           const current=l.providers.find(p=>p.provider===l.current);
@@ -1805,13 +1816,16 @@ const CHECKS = [
             restart:document.querySelector(".provider-setup-restart-hint")?.innerText||"",
           };
         })()`);
-        h.check("④ 保存完成回执：旧供应商自动停用 + 即将重启",
-          Boolean(receipt.title === "已保存并启用" && receipt.text.includes("旧供应商已自动停用") && receipt.restart.includes("重启")),
+        h.check("④ 保存完成回执：旧供应商自动停用（原本没有则为唯一启用）+ 即将重启",
+          Boolean(receipt.title === "已保存并启用"
+            && (receipt.text.includes("旧供应商已自动停用") || receipt.text.includes("已确认为唯一启用的供应商"))
+            && receipt.restart.includes("重启")),
           JSON.stringify({ receipt, before }));
 
-        /* 先点「稍后重启」停掉 6 秒倒计时，再查主进程 —— 否则验收运行到一半应用会真重启。 */
+        /* 10-24 用户：配置完自动重启，不再有「稍后重启」。
+           验收子进程带 CODEX_HARNESS_NO_RELAUNCH=1 ⇒ 点「立即重启」只走收尾、不会真断 CDP。 */
         await h.eval(`(function(){
-          const btn=[...document.querySelectorAll(".provider-setup-done-actions button")].find(b=>(b.textContent||"").includes("稍后重启"));
+          const btn=[...document.querySelectorAll(".provider-setup-done-actions button")].find(b=>(b.textContent||"").includes("立即重启"));
           if(!btn) return false; btn.click(); return true;
         })()`);
         await h.waitFor(`!document.querySelector('[data-testid="provider-setup"]')`, { label: "弹窗关闭", timeoutMs: 5000 });

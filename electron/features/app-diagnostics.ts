@@ -257,6 +257,8 @@ export const appFeature = defineFeature<null>({
     });
 
     ipcHost.handle("app:relaunch", () => {
+      /* 验收/自动化：只验证「配置完会自动重启」的调用，不要让被测应用真的重启掉（否则 CDP 断线）。 */
+      if (process.env.CODEX_HARNESS_NO_RELAUNCH === "1") return;
       /* ⛔ dev 下 relaunch 必须**摘掉 VITE_DEV_SERVER_URL**（09-27 实证修白屏）：
          新实例由 relaunch 继承当前进程的环境变量，而 dev 的启动脚本是
          `concurrently -k "vite" "wait-on tcp:5173 && electron ."` —— `-k` 让旧 electron 一退出

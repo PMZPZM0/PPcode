@@ -24,7 +24,6 @@ const KB_CHANNELS = ["kb:list", "kb:add-text", "kb:add-files", "kb:remove", "kb:
  */
 async function applyKbConnectorLink(backend: "local" | "cloud"): Promise<{ applied: boolean; note?: string }> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const req: any = typeof require === "function" ? require : null;
     const mod: any = req ? req("./cloud-kb-ipc") : null;
     if (typeof mod?.applyKbBackend !== "function") return { applied: false, note: "本仓无云端知识库模块（只存设置）" };

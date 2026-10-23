@@ -1100,21 +1100,24 @@ w.postMessage({id:1,op:"list",root});
   ((/needs:\s*\[mac,\s*win\]/.test(release) || /needs:\s*\[win,\s*mac\]/.test(release)) ? ok : fail)("【29】publish 依赖 mac + win 两个 job（三端不齐不发版）");
 
   // 构建侧 artifact 名 ⇄ 发布侧取件目录：改名不同步 = 发布 job 找不到文件（最易漂移处）
-  (buildWin.includes("name: win-x64") && release.includes("pick artifacts/win-x64") ? ok : fail)("【29】Windows artifact 名（win-x64）在构建与发布两侧一致");
-  (buildMac.includes("name: mac-${{ matrix.mac_target }}") && buildMac.includes("mac_target: arm64") && buildMac.includes("mac_target: x64") ? ok : fail)("【29】mac artifact 名由 matrix 产生（mac-arm64 / mac-x64）");
-  (release.includes("pick artifacts/mac-arm64") && release.includes("pick artifacts/mac-x64") ? ok : fail)("【29】发布侧按 mac-arm64 / mac-x64 取件（与构建侧 matrix 对应）");
+  (buildWin.includes("PPcode-${VERSION}-win-x64.exe") ? ok : fail)("【29】Windows 资产名在构建侧定义（PPcode-<版本>-win-x64.exe，满足更新器 .exe 契约）");
+  (buildMac.includes("mac_target: arm64") && buildMac.includes("mac_target: x64") ? ok : fail)("【29】mac 由 matrix 出 arm64 + x64 双架构包（两台芯片各一个 zip）");
+  (buildMac.includes("PPcode-${VERSION}-${{ matrix.mac_target }}-mac.zip") ? ok : fail)("【29】mac 资产名由 matrix 带上架构（更新器契约：mac x64 强制带架构名 —— electron-builder 原生产物不带 x64）");
 
   // 资产命名 = 更新器的匹配契约（electron/updates.ts）：名字错 → 用户静默收不到更新
   (updates.includes('a.name.includes("mac") && a.name.endsWith(".zip") && a.name.includes(arch)') && updates.includes('a.name.endsWith(".exe")') ? ok : fail)("【29】更新器匹配规则仍是「Windows 认 .exe / mac 认 mac+.zip+架构名」");
-  (release.includes("-win-x64.exe") && release.includes("-arm64-mac.zip") && release.includes("-x64-mac.zip") ? ok : fail)("【29】三个资产名同时满足更新器（mac x64 强制带架构名 —— electron-builder 原生产物不带 x64）");
-  (release.includes("--clobber") ? ok : fail)("【29】资产上传用 --clobber（重跑失败 job 不会因子资产重名而失败）");
+  const releaseAll29 = release + "\n" + buildWin + "\n" + buildMac;
+  /* ⛔ mac 名是 matrix 模板（${{ matrix.mac_target }}），字面 -arm64-mac.zip 只出现在发布结果里 ⇒
+     这里断言「模板带架构 + win 字面名 + 更新器契约」的组合（10-23 审查：字面匹配在源码里恒假）。 */
+  (buildWin.includes("-win-x64.exe") && buildMac.includes("${{ matrix.mac_target }}-mac.zip") && updates.includes('a.name.includes("mac") && a.name.endsWith(".zip") && a.name.includes(arch)') ? ok : fail)("【29】三个资产名同时满足更新器（win-x64.exe 字面 + mac 模板带架构 + 更新器契约在位）");
+  (releaseAll29.includes("--clobber") ? ok : fail)("【29】资产上传用 --clobber（重跑失败 job 不会因子资产重名而失败）");
 
   // ⛔⛔ 10-02 实测事故：**删 tag 重建会让同名 release 退回草稿态**，而 gh release upload / edit(notes)
   //    都不会把它转正 ⇒ 草稿对匿名 API 不可见、/releases/latest 回落上一版、应用内更新器永远收不到
   //    这一版（当时 CI 全绿、资产也 clobber 覆盖了，看着像发布成功，实则用户拿不到）。
   //    锚定「拿 isDraft 去判 + 命中就 --draft=false」这一对动作，而不是只看有没有 --draft 字样。
-  (/gh release view "v\$\{VERSION\}" --json isDraft[\s\S]{0,120}?gh release edit "v\$\{VERSION\}" --draft=false/.test(release) ? ok : fail)(
-    "【29】release.yml 有草稿态转正兜底（删 tag 重建会让同名 release 退回草稿 ⇒ 用户永远收不到更新）"
+  (/gh release view "v\$\{VERSION\}"[\s\S]{0,200}?isDraft[\s\S]{0,200}?gh release edit "v\$\{VERSION\}" --draft=false/.test(releaseAll29) ? ok : fail)(
+    "【29】有草稿态转正兜底（删 tag 重建会让同名 release 退回草稿 ⇒ 用户永远收不到更新）"
   );
   (release.includes('gh release edit "v${VERSION}" --notes-file "${NOTES}"') ? ok : fail)(
     "【29】release 已存在时也重写说明正文（只 upload 资产会让发布页停在首建时的旧正文）"

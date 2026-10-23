@@ -265,7 +265,7 @@ export const EXTENSIBILITY_ENTRIES = [
     purpose: "新增一类「用户可以攒起来复用」的素材（现在是 片段/截图/文件/链接）：一种数据 + 三个消费面。",
     where: [
       "electron/favorites.ts（读盘归一化 / 原子写 / 批量删除只认显式 id）",
-      "electron/features/favorites-ipc.ts（favorites:* 通道）",
+      "electron/features/favorites/ipc.ts（favorites:* 通道）",
       "src/features/app-state/parts/part07/03-seg.tsx（镜像 + 插入/发送/加入记忆）",
       "src/features/settings-favorites/FavoritesSettingsSection.tsx（批量管理页）",
       "src/features/app-view/AppView/02-main-stage/03-composer/02-composer-form.tsx（加号菜单子面板）",

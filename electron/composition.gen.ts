@@ -45,7 +45,7 @@ import { dramaCanvasFeature as feat_drama_canvas } from "./features/drama-canvas
 import { engineFeature as feat_engine } from "./features/engine-ipc";
 import { expertMarketFeature as feat_expert_market } from "./features/expert-market-ipc";
 import { externalFeature as feat_external } from "./features/external-ipc";
-import { favoritesFeature as feat_favorites } from "./features/favorites-ipc";
+import { favoritesFeature as feat_favorites } from "./features/favorites/ipc";
 import { feishuFeature as feat_feishu } from "./features/feishu-ipc";
 import { freeGatewayFeature as feat_free_gateway } from "./features/free-gateway-ipc";
 import { fsFeature as feat_fs } from "./features/fs-ipc";

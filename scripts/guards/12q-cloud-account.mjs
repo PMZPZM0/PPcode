@@ -432,5 +432,14 @@ ok(!/enabled: models\.length > 0 \? true/.test(providerSrc),
 ok(/const enabled = models\.length > 0 && \(cloudActive \|\| !othersEnabled\)/.test(providerSrc),
   "云端行的 enabled = 「生效中」或「空场」—— 不是「有模型就亮」（否则每 10 分钟把用户的选择顶回来）");
 
+/* ── ⑨⛔ 默认账号服务地址 = **客户自建服务器**（10-23 用户令「PPCODE 的服务地址要连客户这台」）──
+   ⛔ 这条是**防同步覆盖**用的棘轮：桌面版主仓的同一行是 ppz123.asia，按三仓同步流程 apply 过来
+     会把它冲掉，而且冲掉之后「设置页默认地址」会静默变回主站 —— 面板上看不出任何异常。
+     所以在这里钉死；真要改默认地址，必须同时改这条断言（逼人想一遍）。 */
+ok(
+  /export const DEFAULT_ACCOUNTS_BASE = "https:\/\/ppcode\.pptoken\.cc\/cloud-api"/.test(read("electron/cloud-api.ts")),
+  "PPcode 默认账号服务地址 = https://ppcode.pptoken.cc/cloud-api（⛔ 同步覆盖会红）",
+);
+
 console.log(`\n【cloud-account】${checks - fails}/${checks} 通过`);
 if (fails > 0) process.exit(1);

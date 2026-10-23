@@ -21,8 +21,9 @@
 
 import { Wallet, WifiOff, Mail, Lock, UserRound, Eye, EyeOff, Loader2, Sparkles, KeyRound, Cloud, ExternalLink } from "lucide-react";
 import { createPortal } from "react-dom";
-import { performRelayLogin } from "../../lib/relay";
+import { performRelayLogin, writeRelayActive } from "../../lib/relay";
 import { provisionCloud } from "../../lib/cloud-provision.mjs";
+import { ProviderSetupDialog, type ProviderSetupCompleted, type ProviderSetupIntent } from "../provider-setup";
 import { cloudUserCenterUrl } from "../../lib/cloud-links.mjs";
 import { describeCredentialFix, normalizeCredential } from "../../lib/relay-input.mjs";
 import { captureAffiliateFromUrl } from "../../lib/relay-affiliate";
@@ -111,7 +112,7 @@ const DEFAULT_GATEWAY = "https://api.pptoken.cc";
 const GATEWAY_KEY = "relay-gateway";
 const LOGO_SRC = `${import.meta.env.BASE_URL}pptoken-logo.png`;
 
-export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => void; onLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string }) => Promise<boolean>; onCloudReady?: (info: { username?: string }) => Promise<boolean> }) {
+export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => void; onLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string; saved?: any; models?: string[] }) => Promise<boolean>; onCloudReady?: (info: { username?: string }) => Promise<boolean> }) {
   const [tab, setTab] = useState<"login" | "register">("login");
   const [gateway, setGateway] = useState(() => window.localStorage.getItem(GATEWAY_KEY) || DEFAULT_GATEWAY);
   const [email, setEmail] = useState("");
@@ -120,6 +121,8 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
   const [username, setUsername] = useState(() => localStorage.getItem("username") || "");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  /* 10-24：中转站 / 云账号登录后统一进「自动配置」弹窗 —— 检测模型 → 勾选 → 保存启用 → 重启。 */
+  const [setupIntent, setSetupIntent] = useState<ProviderSetupIntent | null>(null);
   /** 提交时净化了什么（全角→半角 / 去空白……）；没改就为空。 */
   const [fixNote, setFixNote] = useState("");
   /* ── 登录方式（10-22 用户：「登录选项加一套云管理账号登录功能」）──
@@ -159,6 +162,31 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
     return () => { alive = false; };
   }, []);
 
+  /* 弹窗完成后：中转站走 onLogin 的预保存收尾；云账号走 onCloudReady 接生效供应商。 */
+  const finishSetup = async ({ result, intent }: ProviderSetupCompleted, options: { restart: boolean }) => {
+    const saved = result.saved;
+    const models = result.models ?? [];
+    let ok = false;
+    if (intent.source === "cloud") {
+      ok = Boolean(await onCloudReady?.({ username: intent.account || username.trim() || undefined }));
+    } else {
+      ok = await onLogin({
+        provider: saved?.provider || intent.provider,
+        name: saved?.name || intent.name,
+        baseUrl: saved?.baseUrl || intent.baseUrl,
+        apiKey: "",
+        model: saved?.model || models[0] || "",
+        username: intent.account || username.trim() || undefined,
+        saved,
+        models,
+      });
+      if (ok && intent.relayActive) writeRelayActive({ ...intent.relayActive, switchedAt: Date.now() });
+    }
+    setSetupIntent(null);
+    if (!ok) { setStatus("供应商已保存，但进入主界面失败 —— 请重启应用后重试"); return; }
+    if (options.restart) window.setTimeout(() => { void window.codex.relaunchApp().catch(() => undefined); }, 900);
+  };
+
   /* 中转站账户登录：登录 → 自动选计费（有套餐用套餐，否则余额）→ 生成供应商进主界面 */
   const relayLogin = async (opts: { skipLogin?: boolean } = {}) => {
     setBusy(true); setStatus(""); setFixNote("");
@@ -180,12 +208,27 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
       username: username.trim() || undefined,
       skipLogin: opts.skipLogin,
       onLogin,
+      deferActivation: true,
     });
+    setBusy(false);
     if (!result.ok) {
       setStatus(result.message ?? "登录失败");
       refreshSavedSession();
+      return;
     }
-    setBusy(false);
+    if (!result.pending) { setStatus("登录成功，但没有解析到可用供应商 —— 请稍后重试"); return; }
+    /* 模型列表交给弹窗拉取并展示进度；勾选后由弹窗落盘，取消则供应商不写进档案。 */
+    setSetupIntent({
+      provider: result.pending.provider,
+      name: result.pending.name,
+      baseUrl: result.pending.baseUrl,
+      apiKey: result.pending.apiKey,
+      source: "relay",
+      editable: false,
+      autoStart: true,
+      account: username.trim() || result.active?.email,
+      relayActive: result.active,
+    });
   };
 
   /**
@@ -207,31 +250,30 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
       });
       if (!r?.ok) { setStatus(r?.error || "云账号登录失败"); return; }
       try { localStorage.setItem("ppcode-cloud-account", cloudAccount.trim()); } catch { /* 忽略 */ }
-      /* 自动配置；令牌失效的 401 由 sync 内部自愈，仍失败才 force 重签一次（与设置页同口径）。 */
-      let report = await provisionCloud(api, { activate: true, onlyIfEmpty: true });
+      /* 自动配置；令牌失效的 401 由 sync 内部自愈，仍失败才 force 重签一次（与设置页同口径）。
+         ⛔ 生效位交给统一弹窗：勾选模型 → 保存并启用 → 旧供应商自动停用 → 重启。
+         这里不再 activate（否则会先偷偷切一次生效位、多重启一次引擎）。 */
+      let report = await provisionCloud(api, { activate: false });
       if (!report.models?.ok) {
         const forced = await api.cloudModelsSync?.({ force: true });
-        if (forced?.ok) report = await provisionCloud(api, { activate: true, onlyIfEmpty: true });
+        if (forced?.ok) report = await provisionCloud(api, { activate: false });
       }
       if (!report.models?.ok) {
         setStatus(`已登录，但云端模型同步失败：${report.models?.error || "未知原因"} —— 可到 设置 → 云账号 点「一键同步」重试`);
         onSkip();
         return;
       }
-      if (report.models.count <= 0) {
-        setStatus("已登录，但云端还没有勾选任何模型 —— 去云端用户中心勾选后，到 设置 → 云账号 点「一键同步」");
-        onSkip();
-        return;
-      }
-      /* ⛔ 生效位/保存/重启都已在 provisionCloud(activate:true) 里完成（需要时它才切生效位并重启引擎）；
-         这里只把当前生效供应商接进 UI —— 不再对云端代理做一次裸 /models 探测。 */
-      const ready = await onCloudReady?.({ username: username.trim() || undefined });
-      if (!ready) {
-        setStatus(report.activated
-          ? "云账号已登录并配置完成，但本机没读到生效供应商 —— 请到 设置 → 云账号 点「一键同步」"
-          : "云账号已登录，云端配置已写好；本机已有其他供应商，未抢生效位 —— 可到 设置 → 模型 切换");
-        onSkip();
-      }
+      /* count=0 也让弹窗打开：云端可能列出了模型但都没勾选，弹窗里可以直接全选。 */
+      setBusy(false);
+      setSetupIntent({
+        provider: "cloud",
+        name: "云端模型",
+        baseUrl: "",
+        apiKey: "",
+        source: "cloud",
+        autoStart: true,
+        account: cloudAccount.trim() || username.trim() || undefined,
+      });
     } catch (error: any) {
       setStatus("云账号登录失败：" + (error?.message ?? error));
     } finally {
@@ -401,7 +443,7 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
             </button>
 
             <p className="authx-note">
-              登录后自动同步云端勾选的模型，并接通云端知识库与记忆；需要保存 / 重启时会自动完成，稍等片刻即可进入主界面。
+              登录后自动同步云端模型并接通云端知识库与记忆，随后打开模型配置：勾选要用的模型 → 保存并启用 → 重启。
             </p>
             {cloudCenterUrl && (
               <button type="button" className="authx-cloud-link"
@@ -415,6 +457,13 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
 
         <button className="ghost login-skip authx-skip" onClick={onSkip}><WifiOff size={14} />暂时不登录，直接进入</button>
       </div>
+      {setupIntent && (
+        <ProviderSetupDialog
+          intent={setupIntent}
+          onClose={() => setSetupIntent(null)}
+          onCompleted={finishSetup}
+        />
+      )}
     </div>
   );
 }

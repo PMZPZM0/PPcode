@@ -2600,6 +2600,7 @@ w.postMessage({id:1,op:"list",root});
   {
     const fmCss180 = readFileSync(join(ROOT, "src", "styles", "42-function-menu.css"), "utf8");
     (/\.sidebar-options-top\s*\{/.test(fmCss180) && /\.function-menu-tour\s*\{/.test(fmCss180)
+      && /\.sidebar-options-pinned \.sidebar-nav-bottom\s*\{[\s\S]{0,80}?max-height:\s*32vh/.test(fmCss180)
       && /\.function-menu-editor-backdrop\s*\{\s*z-index:\s*900/.test(fmCss180)
       && !/function-menu-composer/.test(fmCss180) ? ok : fail)(
       "【180】顶/底两种位置、教程、编辑弹窗样式在位（旧的对话框上方样式已移除）"
@@ -2616,8 +2617,16 @@ w.postMessage({id:1,op:"list",root});
     const bottomNavIdx = side180.indexOf('className="sidebar-nav sidebar-nav-bottom"');
     const optionsIdx = side180.indexOf("sidebar-options");
     (quickIdx > 0 && topNavIdx === -1 && optionsIdx > 0 && optionsIdx < bottomNavIdx && bottomNavIdx < accountIdx
-      && side180.indexOf('renderOptionsGroup("top")') > quickIdx ? ok : fail)(
-      "【180】顶部只剩新建/搜索；功能入口组分 top/bottom 两处渲染，账户行仍是贴底锚"
+      && side180.indexOf("renderPinnedOptions()") > quickIdx && side180.includes('renderOptionsGroup("bottom")') ? ok : fail)(
+      "【180】顶部只剩新建/搜索；功能入口组顶部常驻、底部仍可折叠，账户行仍是贴底锚"
+    );
+    const pinnedStart = side180.indexOf("const renderPinnedOptions");
+    const pinnedEnd = side180.indexOf("const navigateGuideTarget", pinnedStart);
+    const pinned180 = pinnedStart >= 0 && pinnedEnd > pinnedStart ? side180.slice(pinnedStart, pinnedEnd) : "";
+    (pinned180.includes("sidebar-options-pinned") && pinned180.includes('maybeShowFunctionMenuTour("top"')
+      && pinned180.includes('<FunctionMenu location="top" />') && !pinned180.includes("sidebar-options-toggle")
+      && !pinned180.includes("hidden=") ? ok : fail)(
+      "【180】顶部入口常驻：无折叠头 / 无 hidden，内容由同一份功能入口配置渲染"
     );
     const tailAfterAccount = side180.slice(accountIdx);
     (!/className="sidebar-(?:nav|options)/.test(tailAfterAccount) ? ok : fail)(

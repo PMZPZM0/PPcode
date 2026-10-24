@@ -186,3 +186,4 @@
 
 | 2026-10-11 | 输入框底栏动态状态灯（同步主版） | 新增 | `src/features/status/ComposerStatusLights.tsx`、`02-composer-form.tsx`、`04-cards-tools.css`、守卫 12d | 同步主仓 a1625c6：目标模式🎯/等待选择🔔/挂起消息/RPA配方/子智能体/专家团六盏灯；最多一盏、3s 轮流、窄窗两档自适应；守卫 12d 15 条 + 副本实测过 | 72b115e7 |
 | 2026-10-11 | 检查更新与安装包下载走国内镜像优先（同步主版） | 改动 | `electron/gh-mirror.ts`、`electron/updates.ts`、市场模块、守卫 12e | 同步主仓 b93f506：gh-proxy → ghfast → 直连镜像序 + digest sha256 强制校验；副本特有令牌安全门（只读令牌恒直连，绝不过第三方反代）；tsc 0 错、12e 14/14 | d9f7390a |
+| 2026-10-24 | 控制台更新收口：引擎只留一处、去重复开关与「一键更新全部」 | 修复 | `src/features/settings-general/GeneralSettingsSection.tsx`、`src/features/settings-general/AutoUpdateCard.tsx`、`scripts/guards/03-runtime-boot.mjs`、`scripts/guards/11u-notice-feedback.mjs`、`scripts/guards/12l-component-update.mjs`、`scripts/accept.mjs` | 用户截图指出引擎更新多个板块、其他组件重复开关、一键更新全部丑。删独立引擎卡（引擎只在组件清单一行）；删顶部其他组件开关列表；删「一键更新全部」，保留刷新/逐行更新；引擎取源提示并入组件更新卡。验收 updates-simplified 6/6。三仓同步 | c9380ff |

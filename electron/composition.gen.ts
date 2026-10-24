@@ -8,6 +8,7 @@ import "./ipc-host";
 import "./runtime/seams";
 import type { Plugin } from "./context";
 import { mountFeature } from "./context";
+import { bossGroupsFeature as feat_boss_groups } from "./features/boss-groups-ipc";
 import { agentsFeature as feat_agents } from "./features/agents-ipc";
 import { appFeature as feat_app } from "./features/app-diagnostics";
 import { appSettingsFeature as feat_appSettings } from "./features/app-settings-ipc";
@@ -118,6 +119,7 @@ export type EnabledDomain = { id: string; plugin: Plugin<unknown>; config: unkno
  *     调用 mountEnabledDomains()。原因见该函数注释（10-07 设置缓存被写坏事故）。
  *  ⛔⛔ 本函数体是**模板字符串**：里面**绝不能出现反引号**（会把模板提前闭合 ⇒ 生成器语法错误）。 */
 export const ENABLED: EnabledDomain[] = [
+  { id: "boss-groups", plugin: feat_boss_groups as Plugin<unknown>, config: null },
   { id: "agents", plugin: feat_agents as Plugin<unknown>, config: null },
   { id: "app", plugin: feat_app as Plugin<unknown>, config: null },
   { id: "appSettings", plugin: feat_appSettings as Plugin<unknown>, config: null },

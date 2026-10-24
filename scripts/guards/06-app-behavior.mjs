@@ -2537,9 +2537,9 @@ w.postMessage({id:1,op:"list",root});
   const fmStore180 = codeOnly(readFileSync(join(ROOT, "src", "features", "function-menu", "store.ts"), "utf8"));
   const fmDefault180 = normalizeFunctionMenu(null);
   (FUNCTION_MENU_DEFAULT_ORDER.join(">") === "schedule>frontend>extensions>team>identity>login>newbie"
-    && fmDefault180.location === "top" && fmDefault180.overflow.length === 0
+    && fmDefault180.location === "bottom" && fmDefault180.overflow.length === 0
     ? ok : fail)(
-    "【180】功能入口默认顺序 + 默认位置 = 搜索任务下面（top），数据模型单一真相源"
+    "【180】功能入口默认顺序 + 默认位置 = 侧栏底部（安装默认，可折叠），数据模型单一真相源"
   );
   (["自动化", "前端开发", "拓展", "团队", "登录管理", "新手教程", "个性化&记忆"].every((label) => fmSrc180.includes(label))
     && fmSrc180.includes('schedule: { label: "自动化"') ? ok : fail)(
@@ -2603,6 +2603,14 @@ w.postMessage({id:1,op:"list",root});
     "【180】排序/更多落 localStorage、每个位置首次教程只弹一次；编辑菜单真有 dragstart/onDrop"
   );
   {
+    const appSettingsSrc180 = codeOnly(readFileSync(join(ROOT, "electron", "app-settings.ts"), "utf8"));
+    (fmStore180.includes("saveAppSettings") && fmStore180.includes("readAppSettings")
+      && side180.includes("saveAppSettings({ sidebarOptionsCollapsed") && side180.includes("readAppSettings")
+      && appSettingsSrc180.includes("functionMenu") && appSettingsSrc180.includes("sidebarOptionsCollapsed") ? ok : fail)(
+      "【180】功能入口位置/顺序/折叠态落主进程 app-settings，启动回灌（重启/强杀不丢用户改动）"
+    );
+  }
+  {
     const fmCss180 = readFileSync(join(ROOT, "src", "styles", "42-function-menu.css"), "utf8");
     (/\.sidebar-options-top\s*\{/.test(fmCss180) && /\.function-menu-tour\s*\{/.test(fmCss180)
       && /\.sidebar-options-top \.sidebar-options-toggle\s*\{\s*margin-top:\s*2px/.test(fmCss180)
@@ -2650,6 +2658,9 @@ w.postMessage({id:1,op:"list",root});
     );
     (/localStorage\.setItem\("sidebar-options-collapsed"/.test(side180) ? ok : fail)(
       "【180】折叠态跨重启保留（sidebar-options-collapsed，与 sidebar-collapsed 同口径）"
+    );
+    (/localStorage\.getItem\("sidebar-options-collapsed"\) !== "false"/.test(side180) ? ok : fail)(
+      "【180】安装后默认折叠（只有用户显式展开过 false 才展开）"
     );
     /* 无缝展开/折叠：grid 行高 0fr ↔ 1fr 过渡（不再用 hidden 瞬切）。 */
     const css41 = readFileSync(join(ROOT, "src", "styles", "41-sidebar-guide.css"), "utf8");

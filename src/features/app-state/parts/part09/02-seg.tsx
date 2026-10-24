@@ -9,6 +9,7 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { isCompactionItem } from "../../../../lib/compaction-item.mjs";
+import { BossGroupMembersButton } from "../../../../features/boss-group-view";
 import "@xterm/xterm/css/xterm.css";
 import { FieldHelp, LoginScreen } from "../../../../features/auth";
 import { DispatchMenu, DispatchBadge } from "../../../../features/dispatch";
@@ -355,6 +356,9 @@ bag.earlyView = earlyView as typeof bag.earlyView;
         <button className="icon-button popout-return-btn" title="返回主应用（关闭本独立窗口）" onClick={() => void window.codex.popoutClose(bag.thread?.id ?? null)}><Minimize2 size={16} /></button>
       ) : (
         <>
+          {/* 10-24 用户令：群成员图标在「搜索历史」图标**左边**；只有 BOSS 会话（当前线程是某群的 boss 线程）才渲染，
+              窄屏由 CSS media query 隐藏。 */}
+          <BossGroupMembersButton threadId={bag.thread?.id ?? ""} />
           {/* 当前会话搜索（09-24）：顶栏 🔍 打开搜索条。只搜当前会话的消息，点结果跳到那条消息。 */}
           <div className="history-search-wrap">
             <button

@@ -2738,8 +2738,9 @@ w.postMessage({id:1,op:"list",root});
   );
   const sideStyles180 = readStyles();
   (/\.sidebar-quick\s*\{[\s\S]{0,260}?flex-direction:\s*column/.test(sideStyles180)
-    && /\.sidebar-quick \.sidebar-quick-btn\s*\{[\s\S]{0,260}?width:\s*100%[\s\S]{0,260}?border-radius:\s*12px/.test(sideStyles180) ? ok : fail)(
-    "【180】新会话 / 搜索任务是上下两行、主按钮整行宽（10-24 用户对照截图，不再并排胶囊）"
+    && /\.sidebar-quick \.sidebar-quick-btn\s*\{[\s\S]{0,260}?width:\s*100%[\s\S]{0,260}?border-radius:\s*12px/.test(sideStyles180)
+    && /\.sidebar-quick \.sidebar-quick-btn\.sidebar-quick-search\s*\{[\s\S]{0,120}?justify-content:\s*flex-start/.test(sideStyles180) ? ok : fail)(
+    "【180】新会话 / 搜索任务是上下两行、主按钮整行宽、搜索任务靠左（10-24 用户对照截图，不再并排胶囊）"
   );
   (/className="sidebar-tab sidebar-cap-row" title=\{meta\.title\}/.test(fmSrc180)
     && fmSrc180.includes("schedule: { label: \"自动化\"") ? ok : fail)(

@@ -48,6 +48,7 @@
 .sidebar-quick .sidebar-quick-btn.primary svg { color: var(--accent); }
 .sidebar-quick .sidebar-quick-btn.sidebar-quick-search {
   height: 32px;
+  justify-content: flex-start;
   color: var(--muted);
 }
 .sidebar-quick .sidebar-quick-btn.sidebar-quick-search:hover {

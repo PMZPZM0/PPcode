@@ -1406,11 +1406,13 @@ const CHECKS = [
         const a=btns[0]?.getBoundingClientRect(), b=btns[1]?.getBoundingClientRect();
         return { n:btns.length, labels:btns.map((x)=>x.innerText.trim()),
           stacked:!!(a&&b&&b.top>=a.bottom-1), sameWidth:!!(a&&b&&Math.abs(a.width-b.width)<1),
-          sameLeft:!!(a&&b&&Math.abs(a.left-b.left)<1), width:a?.width||0 };
+          sameLeft:!!(a&&b&&Math.abs(a.left-b.left)<1), width:a?.width||0,
+          searchAlign:btns[1]?getComputedStyle(btns[1]).justifyContent:"" };
       })()`).catch(() => null);
-      h.check("⓪ 顶部为整行「新会话」+ 下一行「搜索任务」（上下堆叠、同宽同左，不再并排胶囊）",
+      h.check("⓪ 顶部为整行「新会话」+ 下一行左对齐「搜索任务」（上下堆叠、同宽同左，不再并排胶囊）",
         Boolean(quickLayout && quickLayout.n === 2 && quickLayout.labels[0] === "新会话" && quickLayout.labels[1] === "搜索任务"
-          && quickLayout.stacked && quickLayout.sameWidth && quickLayout.sameLeft && quickLayout.width > 120),
+          && quickLayout.stacked && quickLayout.sameWidth && quickLayout.sameLeft && quickLayout.width > 120
+          && quickLayout.searchAlign === "flex-start"),
         JSON.stringify(quickLayout));
       const base = await h.eval(`(function(){
         const group = document.querySelector(".sidebar-options-top");

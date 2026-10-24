@@ -222,6 +222,8 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
       source: "relay",
       editable: false,
       autoStart: true,
+      /* 10-24 品牌特供款：登录即用 —— 检测完自动全选保存，不人工勾选。 */
+      autoAll: true,
       account: username.trim() || result.active?.email,
       relayActive: result.active,
     });
@@ -267,6 +269,8 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
         apiKey: "",
         source: "cloud",
         autoStart: true,
+        /* 10-24 品牌特供款：登录即用（与中转站同口径）。 */
+        autoAll: true,
         account: cloudAccount.trim() || username.trim() || undefined,
       });
     } catch (error: any) {

@@ -56,8 +56,8 @@ export async function resolveRelayCandidate(candidate: RelayCandidate, overview?
   let hostLabel = "中转站";
   try { hostLabel = new URL(baseUrl).host.replace(/^api\./i, "").split(".")[0] || hostLabel; } catch { /* 保底 */ }
   const provider = `relay-${hostLabel.toLowerCase()}`;
-  const what = candidate.groupName || "余额";
-  const displayName = `${hostLabel.toUpperCase()} · ${what}${ov?.email ? " · " + ov.email : ""}`;
+  // 10-24 品牌特供款：卡片名恒为 PPToken（⛔ 不再拼邮箱/套餐 —— 任何账号登录都更新同一张卡，不另起）。
+  const displayName = "PPToken";
   return {
     overview: ov,
     gateway: `${baseUrl}/v1`,
@@ -108,7 +108,8 @@ export async function resolveRelayKeyTarget(keyRow: { id: any; name: any; key: s
   try { hostLabel = new URL(baseUrl).host.replace(/^api\./i, "").split(".")[0] || hostLabel; } catch { /* 保底 */ }
   const provider = `relay-${hostLabel.toLowerCase()}`;
   const mode: "balance" | "plan" = keyRow.group_id != null ? "plan" : "balance";
-  const displayName = `${hostLabel.toUpperCase()} · ${keyRow.name || (mode === "plan" ? "套餐" : "余额")}${overview?.email ? " · " + overview.email : ""}`;
+  // 10-24 品牌特供款：卡片名恒为 PPToken（同上）。
+  const displayName = "PPToken";
   await window.codex.relaySelect({ mode, groupId: keyRow.group_id ?? null, keyId: keyRow.id, keyName: keyRow.name });
   return {
     overview,

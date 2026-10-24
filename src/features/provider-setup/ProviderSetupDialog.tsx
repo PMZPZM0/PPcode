@@ -37,6 +37,8 @@ export type ProviderSetupIntent = {
   account?: string;
   /** 中转站登录解析出的激活记录：保存成功后由登录页补写（取消则不写）。 */
   relayActive?: any;
+  /** 10-24 品牌特供款：检测完成后**自动全选并保存**（不人工勾选）—— 登录即用，失败才停在原地可重试。 */
+  autoAll?: boolean;
 };
 
 export type ProviderSetupCompleted = {
@@ -92,6 +94,34 @@ export function ProviderSetupDialog({
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
+  /* 保存核心：save（人工勾选路径）与 autoAll（全自动路径）共用；found/ids 显式传参避免闭包读到旧 state。 */
+  const runSave = useCallback(async (found: DetectedSetup, ids: string[]) => {
+    setSaving(true);
+    setPhase("saving");
+    setError("");
+    try {
+      const applied = await applySetupSelection({
+        provider: intentRef.current.provider,
+        name: (draftRef.current.name || intentRef.current.name).trim() || intentRef.current.name,
+        baseUrl: draftRef.current.baseUrl,
+        apiKey: draftRef.current.apiKey,
+        source: intentRef.current.source,
+        models: found.models,
+        selected: ids,
+      });
+      resultRef.current = applied;
+      setResult(applied);
+      const finalIds = (applied.saved?.models ?? []).map((m: any) => String(m?.id ?? "")).filter(Boolean);
+      if (finalIds.length && finalIds.length !== ids.length) setSelected(finalIds);
+      setPhase("saved");
+    } catch (e: any) {
+      setError(String(e?.message ?? e) || "保存失败");
+      setPhase("selecting");
+    } finally {
+      setSaving(false);
+    }
+  }, []);
+
   const runDetect = useCallback(async (override?: { baseUrl?: string; apiKey?: string; name?: string }) => {
     if (detectingRef.current) return;
     detectingRef.current = true;
@@ -107,6 +137,13 @@ export function ProviderSetupDialog({
       });
       setDetected(found);
       setSelected(found.selected);
+      /* 特供款全自动：全选 → 直接保存（⛔ 人工勾选路径不受影响 —— 非 autoAll 仍停在 selecting）。 */
+      if (intentRef.current.autoAll) {
+        const ids = found.models.map((m) => m.id);
+        setSelected(ids);
+        void runSave(found, ids);
+        return;
+      }
       setPhase("selecting");
     } catch (e: any) {
       setError(String(e?.message ?? e) || "检测失败");
@@ -179,30 +216,7 @@ export function ProviderSetupDialog({
 
   const save = async () => {
     if (!detected || !selected.length || saving) return;
-    setSaving(true);
-    setPhase("saving");
-    setError("");
-    try {
-      const applied = await applySetupSelection({
-        provider: intent.provider,
-        name: (draft.name || intent.name).trim() || intent.name,
-        baseUrl: draft.baseUrl,
-        apiKey: draft.apiKey,
-        source: intent.source,
-        models: detected.models,
-        selected,
-      });
-      resultRef.current = applied;
-      setResult(applied);
-      const finalIds = (applied.saved?.models ?? []).map((m: any) => String(m?.id ?? "")).filter(Boolean);
-      if (finalIds.length && finalIds.length !== selected.length) setSelected(finalIds);
-      setPhase("saved");
-    } catch (e: any) {
-      setError(String(e?.message ?? e) || "保存失败");
-      setPhase("selecting");
-    } finally {
-      setSaving(false);
-    }
+    await runSave(detected, selected);
   };
 
   const stepState = (step: "account" | "detect" | "select" | "save" | "restart") => {

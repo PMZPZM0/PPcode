@@ -107,14 +107,12 @@ export function FieldHelp({ text }: { text: string }) {
   );
 }
 
-/** 默认网关（sub2api 站点根地址，不带 /v1）。用户改过就记住。 */
+/** 默认网关（sub2api 站点根地址，不带 /v1）。10-24 品牌特供款：恒为 pptoken，⛔ 不再提供改网关入口。 */
 const DEFAULT_GATEWAY = "https://api.pptoken.cc";
-const GATEWAY_KEY = "relay-gateway";
 const LOGO_SRC = `${import.meta.env.BASE_URL}pptoken-logo.png`;
 
 export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => void; onLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string; saved?: any; models?: string[] }) => Promise<boolean>; onCloudReady?: (info: { username?: string }) => Promise<boolean> }) {
   const [tab, setTab] = useState<"login" | "register">("login");
-  const [gateway, setGateway] = useState(() => window.localStorage.getItem(GATEWAY_KEY) || DEFAULT_GATEWAY);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -134,7 +132,6 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
   });
   const [cloudPassword, setCloudPassword] = useState("");
   const [showCloudPw, setShowCloudPw] = useState(false);
-  const [cloudBase, setCloudBase] = useState("");
   const [cloudCenterUrl, setCloudCenterUrl] = useState("");
   /** 本机已保存的中转站会话（同网关 + 同邮箱且有效时，允许不重输密码直接继续）。 */
   const [savedSession, setSavedSession] = useState<{ baseUrl: string; email: string } | null>(null);
@@ -190,7 +187,7 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
   /* 中转站账户登录：登录 → 自动选计费（有套餐用套餐，否则余额）→ 生成供应商进主界面 */
   const relayLogin = async (opts: { skipLogin?: boolean } = {}) => {
     setBusy(true); setStatus(""); setFixNote("");
-    const base = (gateway.trim() || DEFAULT_GATEWAY).replace(/\/$/, "");
+    const base = DEFAULT_GATEWAY;
     /* ⛔ 提交前净化：中文输入法的全角 `＠`、粘贴带进来的尾随空格/换行，肉眼一样、字节不同，
          站点一律回 invalid email or password（10-09 实测：同一套凭据 curl 200、应用里 invalid）。 */
     const cleanEmail = normalizeCredential(email);
@@ -199,7 +196,6 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
     if (cleanEmail !== email) setEmail(cleanEmail);
     if (cleanPw !== password) setPassword(cleanPw);
     if (fix) setFixNote(fix);
-    try { window.localStorage.setItem(GATEWAY_KEY, base); } catch { /* 忽略 */ }
     if (username.trim()) { try { localStorage.setItem("username", username.trim()); } catch { /* 忽略 */ } }
     const result = await performRelayLogin({
       baseUrl: base,
@@ -244,7 +240,6 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
       const api = window.codex as any;
       if (!api.cloudAuthLogin) { setStatus("当前构建未包含云账号接口，请更新后再试"); return; }
       const r = await api.cloudAuthLogin({
-        baseUrl: cloudBase.trim() || undefined,
         username: cloudAccount.trim(),
         password: cloudPassword,
       });
@@ -281,9 +276,9 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
     }
   };
 
-  /** 本机已保存的会话是否正好对应「当前填的网关 + 邮箱」⇒ 才允许跳过登录直接继续。 */
+  /** 本机已保存的会话是否正好对应「当前填的邮箱」（网关恒为 pptoken）⇒ 才允许跳过登录直接继续。 */
   const savedSessionMatches = Boolean(savedSession
-    && savedSession.baseUrl.replace(/\/$/, "") === (gateway.trim() || DEFAULT_GATEWAY).replace(/\/$/, "")
+    && savedSession.baseUrl.replace(/\/$/, "") === DEFAULT_GATEWAY
     && savedSession.email === normalizeCredential(email));
 
   /* ⛔ 邀请归因**不进界面**（10-09 用户令：「不要透出来，默认用我的邀请码注册就行」）：
@@ -332,8 +327,10 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
 
         {tab === "register" ? (
           <RegisterPanel
-            baseUrl={(gateway.trim() || DEFAULT_GATEWAY).replace(/\/$/, "")}
+            baseUrl={DEFAULT_GATEWAY}
             username={username.trim() || undefined}
+            onUsernameChange={(v) => setUsername(v)}
+            cloudCenterUrl={cloudCenterUrl}
             onLogin={onLogin}
             onBack={() => setTab("login")}
           />
@@ -363,23 +360,15 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
               </div>
             </label>
 
-            <details className="authx-adv">
-              <summary>高级设置</summary>
-              <label className="authx-field">
-                <span>网关地址（sub2api 站点根地址，不带 /v1）</span>
-                <div className="authx-input">
-                  <Wallet size={14} />
-                  <input value={gateway} onChange={(e) => setGateway(e.target.value)} placeholder={DEFAULT_GATEWAY} spellCheck={false} />
-                </div>
-              </label>
-              <label className="authx-field">
-                <span>界面昵称（选填）</span>
-                <div className="authx-input">
-                  <UserRound size={14} />
-                  <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="登录后显示在左上角" />
-                </div>
-              </label>
-            </details>
+            {/* 10-24 品牌特供款：用户名（界面昵称）从「高级设置」提为正常字段；
+                网关恒为 pptoken（⛔ 不再提供改网关的入口 —— 只保留 pptoken 中转站登录）。 */}
+            <label className="authx-field">
+              <span>用户名（选填）</span>
+              <div className="authx-input">
+                <UserRound size={14} />
+                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="登录后显示在左上角" />
+              </div>
+            </label>
 
             {status && <div className="authx-error">{status}</div>}
             {fixNote && <div className="authx-ok">{fixNote}</div>}
@@ -425,16 +414,7 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
               </div>
             </label>
 
-            <details className="authx-adv">
-              <summary>服务地址（可选）</summary>
-              <label className="authx-field">
-                <span>云端账号服务地址</span>
-                <div className="authx-input">
-                  <Cloud size={14} />
-                  <input value={cloudBase} onChange={(e) => setCloudBase(e.target.value)} placeholder="留空用默认云端；自建部署才需要填" spellCheck={false} />
-                </div>
-              </label>
-            </details>
+            {/* 10-24 品牌特供款：云端服务地址折叠已隐藏 —— 云端基址由账号服务派生，特供款用户不需要也不该改。 */}
 
             {status && <div className="authx-error">{status}</div>}
 

@@ -2711,8 +2711,9 @@ w.postMessage({id:1,op:"list",root});
     "【180】菜单有「登录管理」入口，且动作真打开弹窗（不是死按钮）"
   );
   const loginMgrSrc = readFileSync(join(ROOT, "src", "features", "app-view", "AppView", "LoginManagerModal.tsx"), "utf8");
-  (["openai", "relay", "cloud"].every((page) => new RegExp(`page: "${page}"`).test(loginMgrSrc)) ? ok : fail)(
-    "【180】登录管理弹窗列全三处账户（GPT 订阅 / 中转站 / 云账号）"
+    /* 10-24 品牌特供款：PPcode 删掉 OpenAI 官方订阅整页 ⇒ 登录管理只列两处（⛔ 与主仓分叉，同步时保留本仓值）。 */
+  (["relay", "cloud"].every((page) => new RegExp(`page: "${page}"`).test(loginMgrSrc)) && !/page: "openai"/.test(loginMgrSrc) ? ok : fail)(
+    "【180】登录管理弹窗列全两处账户（中转站 / 云账号；特供款无 GPT 订阅）"
   );
   (/onNavigate\(account\.page\)/.test(loginMgrSrc) ? ok : fail)(
     "【180】每行把自己那个 page 交出去（⛔ 三行都跳同一页 = 假入口）"

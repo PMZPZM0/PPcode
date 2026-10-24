@@ -12,10 +12,11 @@
  * ⛔ 本组件自包含：只收 props，不进 bag；关闭三路（✕ / 遮罩 / Esc）并归还焦点。
  */
 import { useEffect, useRef, type ComponentType } from "react";
-import { ChevronRight, CircleGauge, Cloud, LogIn, Wallet, X } from "lucide-react";
+import { ChevronRight, Cloud, LogIn, Wallet, X } from "lucide-react";
 
-/** 直达的设置页 id（与 settings-registry / catalogs.ts 的「账户与模型」组一致）。 */
-export type LoginManagerTarget = "openai" | "relay" | "cloud";
+/** 直达的设置页 id（与 settings-registry / catalogs.ts 的「账户与模型」组一致）。
+ *  10-24 品牌特供款：⛔ 不含 "openai" —— PPcode 删掉了 OpenAI 官方订阅整页（守卫【180】同轮改）。 */
+export type LoginManagerTarget = "relay" | "cloud";
 
 type AccountRow = {
   page: LoginManagerTarget;
@@ -28,13 +29,6 @@ type AccountRow = {
 };
 
 const ACCOUNTS: AccountRow[] = [
-  {
-    page: "openai",
-    label: "GPT 订阅",
-    desc: "官方 ChatGPT 订阅额度：登录后同步用量与可用模型",
-    icon: CircleGauge,
-    tone: "ic-green",
-  },
   {
     page: "relay",
     label: "中转站账户",

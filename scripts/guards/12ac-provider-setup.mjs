@@ -121,9 +121,9 @@ ok(/provisionCloud\(api, \{ activate: true, onlyIfEmpty: true, restartIfActive: 
 ok(/选择模型并启用/.test(cloudPage) && /ProviderSetupDialog/.test(cloudPage) && /relaunchApp/.test(cloudPage), "云账号页有「选择模型并启用」入口 + 弹窗 + 重启");
 ok(/openOfficialSetup/.test(openaiPage) && /ProviderSetupDialog/.test(openaiPage) && /relaunchApp/.test(openaiPage), "OpenAI 页登录/启用订阅走同一弹窗");
 ok(!/onActivate\(OFFICIAL_MODELS\)/.test(openaiPage), "⛔ OpenAI 页不再绕过选模型直接 activate");
-ok((/refreshActive=\{app\.refreshActive\}/.test(registry) || /refreshActive=\{refreshActive\}/.test(registry))
-  && (/onRefreshActive=\{app\.refreshActive\}/.test(registry) || /onRefreshActive=\{\(\) => refreshActive\(\)\}/.test(registry)),
-  "设置注册表把 refreshActive 接进模型页与 OpenAI 页");
+/* 10-24 品牌特供款：OpenAI 订阅整页已删 ⇒ 只锚模型页的 refreshActive（⛔ 同步主仓时保留本仓值）。 */
+ok(/refreshActive=\{app\.refreshActive\}/.test(registry) || /refreshActive=\{refreshActive\}/.test(registry),
+  "设置注册表把 refreshActive 接进模型页（特供款无 OpenAI 页）");
 ok(/provider-activated/.test(providerEvent) && /getCustomModel/.test(providerEvent) && /applyGlobalModelChoice/.test(providerEvent), "provider-activated 后当前会话模型跟到新供应商（⛔ 旧 model id 会发不出去）");
 ok(/activateCloudProvider/.test(cloudProvider) && /sendToWindow\("harness:event", \{ type: "provider-activated"/.test(cloudProvider), "云端 activate 也广播 provider-activated（与 custom-model 同一事件，⛔ 不另开一套）");
 

@@ -510,7 +510,7 @@ export function settingsPagesOf(app: HarnessAppApi): Partial<Record<SettingsPage
     /> },
     browser: { back: { to: "automation", label: "返回自动化" }, render: () => <BrowserSettingsSection browserHome={browserHome} setBrowserHome={setBrowserHome} setBrowserDraft={setBrowserDraft} setNotice={setNotice} toolsStatus={toolsStatus} ToolCard={ToolCard} /> },
     appearance: { render: () => <AppearanceSettingsSection theme={theme} setTheme={setTheme} uiFont={uiFont} setUiFont={setUiFont} onNotice={setNotice} /> },
-    personalization: { render: () => <>{<PersonalizationPage personality={personality} onPersonalityChange={changePersonality} onNotice={setNotice} />}{<PersonalizationSettingsSection adaptiveTone={adaptiveTone} changeAdaptiveTone={changeAdaptiveTone} thread={thread} readMood={readMood} />}</> },
+    personalization: { render: () => <PersonalizationPage personality={personality} onPersonalityChange={changePersonality} onNotice={setNotice} adaptiveToneSlot={<PersonalizationSettingsSection adaptiveTone={adaptiveTone} changeAdaptiveTone={changeAdaptiveTone} thread={thread} readMood={readMood} />} /> },
     voice: { render: () => <VoiceSettingsSection onNotice={setNotice} /> },
     relay: { render: () => <RelayCenterPage busy={relayBusy} activeProvider={customModel?.provider} onActivate={relayActivate} onNotice={setNotice} onOpenModelSettings={() => { setSettingsPage("model"); }} openAppConfirm={openAppConfirm} /> },
     cloud: { render: () => <CloudAccountSection /> },

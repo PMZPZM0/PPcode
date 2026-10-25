@@ -209,6 +209,8 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     }
   }, [currentThreadId]);
   const {
+    registerKnownProject,
+    unregisterKnownProject,
     setWorkspace,
     workspaceRef,
     chooseWorkspace,
@@ -348,6 +350,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const applyNewProject = (dir: string) => {
     setNewProjectOpen(false);
+    registerKnownProject(dir);
     setWorkspace(dir);
     workspaceRef.current = dir;
     try { localStorage.setItem("workspace", dir); } catch { /* 隐私模式 */ }
@@ -603,7 +606,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                           <button className="project-item-new-btn" title={"在 " + basename(cwd) + " 新建任务"} onClick={(event) => { event.stopPropagation(); bagSetWorkspaceForProject(cwd); }}><CirclePlus size={13} /></button>
                           <button className="project-item-menu-btn" title="项目操作" aria-expanded={projectMenu === cwd} onClick={(event) => { event.stopPropagation(); setProjectMenu(projectMenu === cwd ? null : cwd); }}><MoreHorizontal size={14} /></button>
                           {projectMenu === cwd && <div className="project-menu">
-                            <button className="danger" onClick={() => { setProjectMenu(null); void deleteThreadsByCwd(cwd); }}><Trash2 size={14} />移除（删除全部对话）</button>
+                            <button className="danger" onClick={() => { setProjectMenu(null); unregisterKnownProject(cwd); void deleteThreadsByCwd(cwd); }}><Trash2 size={14} />删除项目（含全部会话）</button>
                           </div>}
                         </div>
                         {expanded && <div className="project-item-body">{items.length ? renderDispatchedList(

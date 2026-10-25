@@ -6,6 +6,8 @@ import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from "rea
 import { BossProjectDirDialog, bossShortcutLabel, closeBossDirDialog, getBossDirDialogState, getBossThreads, setBossDirChosen, setBossHomeThreadId, setBossPending, subscribeBossDirDialog, subscribeBossThreads } from "../../boss-group-view";
 import { FunctionMenu, FunctionMenuEditorHost, FunctionMenuTourHost, maybeShowFunctionMenuTour, setFunctionMenuActionHandler, useFunctionMenuConfig } from "../../function-menu";
 import { hk } from "../../../lib/hk";
+import { getEntityTagState, openTagEditor, subscribeEntityTags } from "../../../lib/entity-tags.mjs";
+import { EntityTagEditorHost } from "../../../components/EntityTagEditor";
 import { isMacPlatform } from "../../../lib/is-mac-platform";
 import {
   AlertTriangle,
@@ -170,6 +172,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
      ⇒ 还没建群时用 localStorage 里的 `homeId` 当锚点：**同一个指挥中枢一直走**，
         ⛔ 不每点一次就多一个「未命名任务」（用户 10-25 第二点）。 */
   const bossThreads = useSyncExternalStore(subscribeBossThreads, getBossThreads);
+  const entityTags = useSyncExternalStore(subscribeEntityTags, getEntityTagState, getEntityTagState);
   /* 10-25 用户令：新建指挥中枢时弹**应用内**对话框选项目地址（两个选项），
      ⛔ 不用系统 messageBox、⛔ 不用 toast 内联提示。
      ⛔ 开关走**全局 store**（boss-dir-dialog-store）：点侧栏「指挥中枢」先落进欢迎界面，
@@ -658,6 +661,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                 <div className="project-list">
                   {projectGroups.length ? projectGroups.map(([cwd, items]) => {
                     const expanded = expandedProjects.has(cwd);
+                    const projectTag = entityTags.projects[cwd];
                     return (
                       <div key={cwd} className={`project-item ${expanded ? "expanded" : "collapsed"} ${projectMenu === cwd ? "menu-open" : ""} ${items.length ? "" : "is-empty"}`}>
                         <div className="project-item-head" onMouseLeave={() => setProjectMenu((current) => current === cwd ? null : current)}>
@@ -673,6 +677,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                           <button className="project-item-menu-btn" title="项目操作" aria-expanded={projectMenu === cwd} onClick={(event) => { event.stopPropagation(); setProjectMenu(projectMenu === cwd ? null : cwd); }}><MoreHorizontal size={14} /></button>
                           {projectMenu === cwd && <div className="project-menu">
                             <button onClick={() => { setProjectMenu(null); void app.openAppPrompt("修改项目名称", projectNameOf(cwd)).then((next) => { if (next != null) renameProject(cwd, next); }); }}><PenLine size={14} />编辑项目名称</button>
+                            <button onClick={() => { setProjectMenu(null); openTagEditor({ kind: "project", id: cwd, title: projectNameOf(cwd), value: projectTag ?? null }); }}><Tag size={14} />{projectTag ? "编辑标签" : "添加标签"}</button>
                             <button onClick={() => { setProjectMenu(null); void window.codex.shellReveal(cwd).catch(() => undefined); }}><FolderOpen size={14} />打开项目文件</button>
                             <button className="danger" onClick={() => { setProjectMenu(null); unregisterKnownProject(cwd); void deleteThreadsByCwd(cwd); }}><Trash2 size={14} />删除项目（含全部会话）</button>
                           </div>}
@@ -833,6 +838,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     <CloseConfirmDialog />
     {/* 工作区外文件预览的授权确认（10-18，应用内模态；⛔ 不用系统弹窗） */}
     <FileTrustDialog />
+    <EntityTagEditorHost />
     </>
   );
 }

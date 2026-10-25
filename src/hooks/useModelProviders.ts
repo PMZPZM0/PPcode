@@ -196,6 +196,13 @@ export function useModelProviders({ onAutoSelect, onSelect, onNotice, onProbeSuc
     void window.codex.getCustomModel().then((result) => { setCustomModel(result); }).catch(() => undefined);
   }, []);
 
+  /* 启动后补读一次：主进程启动时会先同步云目录（source/倍率），
+     首帧读到的可能是同步前的旧档案 → 3s 后重读，免得第一次打开下拉看不到倍率。 */
+  useEffect(() => {
+    const timer = setTimeout(refreshActive, 3000);
+    return () => clearTimeout(timer);
+  }, [refreshActive]);
+
   /* 云端模型列表来自账号服务端目录；列表刷新后把当前编辑的云端行同步进草稿。 */
   useEffect(() => {
     if (editingProvider !== "cloud" || savingSettings) return;

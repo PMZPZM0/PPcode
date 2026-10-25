@@ -57,8 +57,10 @@ ok(card.includes("与本项目开发者无关") && /DISCLAIMER_SHORT = "第三�
   "推荐卡/弹窗带免责声明（「与本项目开发者无关」，文案常量在卡片文件）");
 ok(guide.includes("与本项目开发者无关") && guide.includes("免费模型网关"),
   "新手引导的推荐步骤带免责声明");
-ok(modelPage.includes("免费模型网关") && modelPage.includes("../free-gateway"),
-  "模型页接入了推荐卡（经 free-gateway barrel，禁深链内部文件）");
+  /* 10-24 品牌特供款：模型页不再挂免费网关入口卡（⛔ 与主仓分叉——主仓正向断言，本仓防复活）。 */
+  const modelPageCode = codeOnly(modelPage);
+  ok(!modelPageCode.includes("免费模型网关") && !modelPageCode.includes("../free-gateway"),
+  "模型页不再挂免费网关推荐卡（特供款防复活：barrel import 与文案都不许回来）");
 
 /* ── 三、单一真相源边界：供应商注册走 custom-model:save ────────────────── */
 {

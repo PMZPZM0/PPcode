@@ -319,7 +319,7 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
             <button type="button" role="tab" aria-selected={method === "relay"} className={method === "relay" ? "on" : ""}
               onClick={() => { setMethod("relay"); setStatus(""); setFixNote(""); }}>
               <Wallet size={16} />
-              <span><b>中转站账号</b><small>sub2api · 余额 / 套餐</small></span>
+              <span><b>中转站账号</b><small>仅支持 pptoken · 余额 / 套餐</small></span>
             </button>
             <button type="button" role="tab" aria-selected={method === "cloud"} className={method === "cloud" ? "on" : ""}
               onClick={() => { setMethod("cloud"); setStatus(""); setFixNote(""); }}>

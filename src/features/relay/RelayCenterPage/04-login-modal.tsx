@@ -28,7 +28,7 @@ export function RelayCenterPageLoginModal({ authTab, draft, login, loginModalOpe
               <div className="relay-manage-modal relay-login-modal">
                 <div className="relay-keys-head">
                   <strong className="relay-modal-title"><Wallet size={15} />{authTab === "login" ? "登录中转站" : "注册中转站账号"}</strong>
-                  <small>{authTab === "login" ? "sub2api 站点账号密码，余额与套餐一键接入" : "注册后自动登录，直接进入套餐选购"}</small>
+                  <small>{authTab === "login" ? "仅支持 pptoken 中转站账户登录，余额与套餐一键接入" : "注册 pptoken 中转站账号，注册后自动登录"}</small>
                   <button className="icon-button relay-modal-close" title="关闭" onClick={() => setLoginModalOpen(false)}><X size={15} /></button>
                 </div>
                 <div className="relay-auth-tabs" role="tablist">

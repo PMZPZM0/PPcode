@@ -35,6 +35,7 @@
 
 | 日期 | 功能名称 | 类型 | 影响范围 | 简要描述 | 提交 |
 |---|---|---|---|---|---|
+| 2026-10-26 | 应用锁未开启时不再闪启动检查页 | 修复 | `src/features/app-lock/AppLockGate.tsx`、`src/features/settings-app-lock/AppLockSettingsSection.tsx` | 同步主仓 2552f526e：用本地开关缓存做首帧判断，未开启直接进主界面，后台静默核对；设置页同步缓存。 | 8e3080f7 |
 | 2026-10-26 | 新人登录后配置引导（称呼/头像/职业/Codex 人格/兴趣） | 新增 | `src/features/profile-onboarding/ProfileOnboardingWizard.tsx`、`src/styles/49-profile-guide.css`、`AppView.tsx`、`electron/personalization.ts` | 同步主仓 6f878e851：5 步卡片引导，角色联动用户人格库，Codex 人格 6 套，头像用现有预设；保存后立即写个性化与 AGENTS.md；`profileGuideSeen` 保证只弹一次，「稍后配置」不写资料。 | 3009e845 |
 | 2026-10-26 | 侧栏项目/任务工具图标改为悬停滑出 | 改动 | `src/styles/15-queued-messages.css` | 同步主仓 08526785e：四个图标默认隐藏，悬停项目/任务或图标区从右向左滑出，移开隐藏；绝对定位不挤动列表；focus 也可唤出。 | 1c65046b |
 | 2026-10-26 | 应用锁设置页排版重做 | 改动 | `src/features/settings-app-lock/AppLockSettingsSection.tsx`、`src/styles/48-app-lock.css` | 同步主仓 60a8f6250：规则区改图标双列卡片、10 次错误红色强调、末条通栏；开关卡加前置备份提示；窄屏单列。 | d4232533 |

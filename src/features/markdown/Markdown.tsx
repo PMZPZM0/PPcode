@@ -231,9 +231,9 @@ export const MD_COMPONENTS: Components = {
       {children}
     </a>
   ),
-  img: ({ src, alt }) => (
-    <img className="message-image" src={src} alt={alt ?? ""} onClick={() => src && openImageLightbox(src, alt ?? "")} />
-  ),
+  img: ({ src, alt }) => {
+    return <img className="message-image" src={src} alt={alt ?? ""} onClick={() => src && openImageLightbox(src, alt ?? "")} />;
+  },
   code: MdCode,
   table: ({ children }) => <MdTable>{children}</MdTable>,
 };

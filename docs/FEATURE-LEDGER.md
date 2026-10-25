@@ -35,6 +35,7 @@
 
 | 日期 | 功能名称 | 类型 | 影响范围 | 简要描述 | 提交 |
 |---|---|---|---|---|---|
+| 2026-10-26 | 侧栏项目/任务工具图标改为悬停滑出 | 改动 | `src/styles/15-queued-messages.css` | 同步主仓 08526785e：四个图标默认隐藏，悬停项目/任务或图标区从右向左滑出，移开隐藏；绝对定位不挤动列表；focus 也可唤出。 | 1c65046b |
 | 2026-10-26 | 应用锁设置页排版重做 | 改动 | `src/features/settings-app-lock/AppLockSettingsSection.tsx`、`src/styles/48-app-lock.css` | 同步主仓 60a8f6250：规则区改图标双列卡片、10 次错误红色强调、末条通栏；开关卡加前置备份提示；窄屏单列。 | d4232533 |
 | 2026-10-26 | 勘误/加固：应用锁重置只清理目标 profile | 修复 | `electron/app-lock.ts`、`tests/app-lock.test.mjs` | 同步主仓 63f018a32：env/自定义目录没有 data-dir.json 时，重置只删当前 userData，不再把默认锚点一起删；单测补跨 profile 与 env 目录真值表。 | 09cbaba7 |
 | 2026-10-26 | 应用密码锁（锁屏门禁 / 一次性密码 / 10 次错误重置） | 新增 | `electron/app-lock.ts`、`electron/features/app-lock-ipc.ts`、`electron/main.ts`、`src/features/app-lock/`、`src/features/settings-app-lock/`、设置注册表/导航/总览、`src/styles/48-app-lock.css`、`tests/app-lock.test.mjs` | 同步主仓 9298dece6：数据分组新增「应用锁」，默认关；随机 16 位 / 自定义≥6 位，密码只展示一次，磁盘只存 scrypt 盐哈希；启动先锁屏（App 不挂载）、隐藏 >30 秒回来重新上锁、解锁后跳过开机动画；失败次数落盘、第 10 次写**绑定目标 userData** 的重置标记并重启，启动早期清应用数据（默认锚点 + 经 data-dir.json 确认的自定义目录，不动项目文件）。单测 9/9；PPcode 构建通过；守卫 11x 45/45、总览 32 页/7 组通过。 | bf4299dc |

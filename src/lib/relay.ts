@@ -53,11 +53,10 @@ export async function resolveRelayCandidate(candidate: RelayCandidate, overview?
   if (!key?.key) throw new Error("中转站未返回密钥明文");
   await window.codex.relaySelect({ mode: candidate.mode, groupId: candidate.groupId, keyId: key.id, keyName: key.name });
   const baseUrl: string = ov.baseUrl;
-  let hostLabel = "中转站";
-  try { hostLabel = new URL(baseUrl).host.replace(/^api\./i, "").split(".")[0] || hostLabel; } catch { /* 保底 */ }
-  const provider = `relay-${hostLabel.toLowerCase()}`;
-  // 10-24 品牌特供款：卡片名恒为 PPToken（⛔ 不再拼邮箱/套餐 —— 任何账号登录都更新同一张卡，不另起）。
-  const displayName = "PPToken";
+  // 10-24 品牌特供款：登录目标恒为**内置 PPtoken 卡**（provider: "pptoken"，与模型页合成卡同 id）——
+  // 登录 = 原地更新那张卡（写入 Key/模型/启用），⛔ 不另起 relay-* 卡片。
+  const provider = "pptoken";
+  const displayName = "PPtoken";
   return {
     overview: ov,
     gateway: `${baseUrl}/v1`,
@@ -104,12 +103,11 @@ export async function resolveRelayKeyTarget(keyRow: { id: any; name: any; key: s
 }> {
   const overview = await window.codex.relayOverview();
   const baseUrl: string = overview.baseUrl;
-  let hostLabel = "中转站";
-  try { hostLabel = new URL(baseUrl).host.replace(/^api\./i, "").split(".")[0] || hostLabel; } catch { /* 保底 */ }
-  const provider = `relay-${hostLabel.toLowerCase()}`;
+  // 10-24 品牌特供款：同上 —— 目标恒为内置 PPtoken 卡（"pptoken"），登录/换 Key 都原地更新。
+  const provider = "pptoken";
   const mode: "balance" | "plan" = keyRow.group_id != null ? "plan" : "balance";
-  // 10-24 品牌特供款：卡片名恒为 PPToken（同上）。
-  const displayName = "PPToken";
+  // 10-24 品牌特供款：卡片名恒为 PPtoken（与模型页内置卡同名）。
+  const displayName = "PPtoken";
   await window.codex.relaySelect({ mode, groupId: keyRow.group_id ?? null, keyId: keyRow.id, keyName: keyRow.name });
   return {
     overview,

@@ -9,7 +9,7 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { isCompactionItem } from "../../../../lib/compaction-item.mjs";
-import { BossGroupMembersButton } from "../../../../features/boss-group-view";
+import { BossGroupHelpButton, BossGroupMembersButton, getBossThreads, subscribeBossThreads } from "../../../../features/boss-group-view";
 import "@xterm/xterm/css/xterm.css";
 import { FieldHelp, LoginScreen } from "../../../../features/auth";
 import { DispatchMenu, DispatchBadge } from "../../../../features/dispatch";
@@ -350,6 +350,10 @@ bag.earlyView = earlyView as typeof bag.earlyView;
   // 已挪去标题最前）：右栏关闭时嵌在
   // topbar 右端、开启时嵌在右栏顶条右端——两处都紧贴右上角原生窗口钮，且都是
   // 拖拽容器的【子元素】（no-drag 豁免），fixed 悬浮层会被拖拽区吞掉点击（实测）。
+  /* 10-25 用户令：BOSS 会话有**独立的群编排调度**，顶栏那个手动的「允许本会话调度」开关
+     在这个会话里收起（两套调度并存只会互相打架）。成员图标与「?」也只在 BOSS 会话出现。 */
+  const bossThreads = useSyncExternalStore(subscribeBossThreads, getBossThreads);
+  const isBossThread = Boolean(bag.thread?.id) && bossThreads.bossIds.includes(String(bag.thread?.id));
   const topbarActionsNode = (
     <>
       {bag.popoutThreadId ? (
@@ -358,7 +362,8 @@ bag.earlyView = earlyView as typeof bag.earlyView;
         <>
           {/* 10-24 用户令：群成员图标在「搜索历史」图标**左边**；只有 BOSS 会话（当前线程是某群的 boss 线程）才渲染，
               窄屏由 CSS media query 隐藏。 */}
-          <BossGroupMembersButton threadId={bag.thread?.id ?? ""} />
+          {isBossThread ? <BossGroupMembersButton threadId={bag.thread?.id ?? ""} /> : null}
+          {isBossThread ? <BossGroupHelpButton /> : null}
           {/* 当前会话搜索（09-24）：顶栏 🔍 打开搜索条。只搜当前会话的消息，点结果跳到那条消息。 */}
           <div className="history-search-wrap">
             <button
@@ -440,6 +445,8 @@ bag.earlyView = earlyView as typeof bag.earlyView;
             })(), document.body)}
           </div>
           {/* 调度开关放独立窗口图标左边（09-16 用户要求） */}
+          {/* 10-25：BOSS 会话隐藏（群编排自带独立调度）。 */}
+          {isBossThread ? null : (
           <DispatchMenu
             topbar
             dispatch={bag.activeDispatch}
@@ -451,6 +458,7 @@ bag.earlyView = earlyView as typeof bag.earlyView;
             restrictedLabel={bag.threadRole.restricted ? (bag.threadRole.label ?? "专家 / 专家团") : null}
             onChange={(next, opts) => { void bag.applyDispatch(next, opts); }}
           />
+          )}
           <button className="icon-button popout-open-btn ic-violet" title="独立会话弹窗：把当前会话开到新窗口（可拖出应用外，支持多个同时存在）" disabled={!bag.thread} onClick={() => { if (bag.thread) void bag.popoutCurrentThread(bag.thread.id); }}><Maximize2 size={16} /></button>
         </>
       )}

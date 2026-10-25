@@ -280,11 +280,14 @@ export function ModelSettingsSection(props: ModelSettingsSectionProps) {
                                   <button type="button" className="provider-card-action danger" onClick={(event) => { event.stopPropagation(); void repairProviderCard(p); }}>{p.provider === "cloud" ? "修复密钥" : "更新密钥"}</button>
                                 )}
                                 <button type="button" className="provider-card-action provider-card-test" disabled={health?.state === "testing"} onClick={(event) => { event.stopPropagation(); void testProviderCard(p); }}>{health?.state === "testing" ? <Spinner /> : <Zap size={11} />}测试</button>
+                                {/* 10-25 用户令：内置 pptoken 卡与云端行不显示删除（pptoken 卡由登录原地更新；云端行删了会被云同步重建）。 */}
+                                {p.provider !== "cloud" && p.provider !== "pptoken" && (
                                 <button type="button" className="provider-card-action danger" title="删除该供应商（不可撤销）"
                                   onClick={(event) => { event.stopPropagation(); void (async () => {
                                     if (!(await openAppConfirm("删除供应商", "供应商「" + p.name + "」将被删除，此操作无法撤销。", "删除"))) return;
                                     await removeProvider({ provider: p.provider, name: p.name, model: p.model, baseUrl: p.baseUrl });
                                   })(); }}><Trash2 size={11} />删除</button>
+                                )}
                               </span>
                             </div>
                           </div>

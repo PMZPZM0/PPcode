@@ -13,12 +13,13 @@ import { fileURLToPath } from "node:url";
 import { BrowserWindow, app, dialog, shell } from "electron";
 import { existsSync } from "node:fs";
 import { applyRoundedCorners } from "../window/win-rounded-corners";
+import { sendToWindow } from "./window-bus";
 import { popoutBusWindows, registerBusWindow, unregisterBusWindow } from "../features/window-bus";
 import { flushBootTiming, markBoot } from "../boot-timing";
 import { installContextMenu } from "../main/10-window-menu";
-import { applyThemeToWindow, closeToTrayEnabled, closePromptSeen, closeConfirmBridge, engineActiveTurnIds, notifyPopoutClosed, popoutThreadIds, titleBarOverlayOptions } from "../runtime-refs";
+import { applyThemeToWindow, closeToTrayEnabled, closePromptSeen, closeConfirmBridge, engineActiveTurnIds, notifyPopoutClosed, popoutThreadIds } from "../runtime-refs";
 import { closePetWindow } from "./pet-window";
-import { mutableState } from "../main";
+import { mutableState, titleBarOverlayOptions } from "../main";
 import { isInsideTrustedRoots } from "../runtime-refs";
 export function createWindow() {
   /* ⛔⛔ 防重入（10-22 用户实测「应用还能重复打开」= 两个一模一样的主窗口）：
@@ -62,7 +63,7 @@ export function createWindow() {
     minWidth: 640,
     minHeight: 480,
     backgroundColor: "#ffffff",
-    title: "PPcode",
+    title: "Codex Harness Desktop",
     icon: existsSync(windowIcon) ? windowIcon : undefined,
     autoHideMenuBar: true,
     // 无边框标题栏：系统标题栏隐藏，应用 topbar 顶到窗口边缘（省 ~32px 高度）。
@@ -73,14 +74,7 @@ export function createWindow() {
     ...(process.platform === "win32"
       ? {
         titleBarStyle: "hidden" as const,
-        titleBarOverlay: {
-          // 让 `.topbar { background: var(--bg) }` 自己穿过来——钮不再"浮在自己的色条上"，
-          // 也无需枚举每个主题调色；亮/暗主题都能干净。符号色在 theme:apply 里跟着主题切。
-          color: "#00000000",
-          symbolColor: titleBarOverlayOptions().symbolColor,
-          // 43 而非 44：底下留 1px 给 .topbar::after 分隔线，线可贯通窗口钮下方
-          height: 43,
-        },
+        titleBarOverlay: { color: "#00000000", symbolColor: titleBarOverlayOptions().symbolColor, height: 43 },
       }
       : { titleBarStyle: "hiddenInset" as const }),
     webPreferences: {
@@ -104,6 +98,10 @@ export function createWindow() {
   }
   // Windows 11 原生圆角（仅 win32；其余平台函数内静默跳过）。
   applyRoundedCorners(mutableState.mainWindow);
+  // 无边框窗最大化状态推给渲染层（顶栏自定义按钮 + 圆角边距切换）
+  const pushMax = () => sendToWindow("harness:event", { type: "shell:maximized", maximized: Boolean(mutableState.mainWindow?.isMaximized()) });
+  mutableState.mainWindow.on("maximize", pushMax);
+  mutableState.mainWindow.on("unmaximize", pushMax);
   // 登记进窗口广播总线：主窗口 ⇒ sendToWindow 只发它，broadcast* 发全部窗口（见 features/window-bus）
   registerBusWindow(mutableState.mainWindow, { primary: true });
   // ⛔ 导航与新窗口收敛（09-13 审计 S5）：全仓此前 `will-navigate` / `setWindowOpenHandler`
@@ -260,14 +258,18 @@ export function createPopoutWindow(threadId: string) {
     minWidth: 520,
     minHeight: 420,
     backgroundColor: "#ffffff",
-    title: "PPcode — 独立会话",
+    title: "Codex Harness Desktop — 独立会话",
     icon: existsSync(windowIcon) ? windowIcon : undefined,
     autoHideMenuBar: true,
     // 独立弹窗同款平台分叉（mac hiddenInset / win overlay），理由见 createWindow
     ...(process.platform === "win32"
       ? {
         titleBarStyle: "hidden" as const,
-        titleBarOverlay: titleBarOverlayOptions(),
+        titleBarOverlay: {
+          color: "#00000000",
+          symbolColor: titleBarOverlayOptions().symbolColor,
+          height: 43,
+        },
       }
       : { titleBarStyle: "hiddenInset" as const }),
     webPreferences: {
@@ -300,8 +302,7 @@ export function createPopoutWindow(threadId: string) {
   });
   registerBusWindow(win);
   popoutThreadIds.set(win, threadId);
-  /* ⛔ 弹窗原生外观（暗色下右上角系统钮看不见的真修法）：构造参数里那次
-     titleBarOverlayOptions() 是**读一次**，而 Windows 会在窗口首次显示时做边框延展、
+  /* ⛔ 弹窗原生外观（暗色下右上角系统钮看不见的真修法）：构造参数里那次() 是**读一次**，而 Windows 会在窗口首次显示时做边框延展、
     把构造期设好的属性覆盖回系统值 ⇒ 补设两次（建窗 + show 之后），见 runtime-refs.applyThemeToWindow。 */
   applyThemeToWindow(win);
   win.once("show", () => applyThemeToWindow(win));

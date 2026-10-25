@@ -57,7 +57,7 @@ export function RelayCenterPageSubscriptionBanner({ account, accounts, busy, loa
                   ) : state === "guest" ? (
                     <>
                       <strong>付费订阅 · 开通即用</strong>
-                      <p>登录或注册中转站账号后，可在此选购订阅套餐：付款完成自动生成套餐密钥、自动切换模型供应商，对话直接可用。</p>
+                      <p>登录或注册 pptoken 账号后，可在此选购订阅套餐：付款完成自动生成套餐密钥、自动切换模型供应商，对话直接可用。</p>
                     </>
                   ) : expired ? (
                     <>

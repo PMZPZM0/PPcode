@@ -38,18 +38,18 @@ export function RelayCenterPageLoginModal({ authTab, draft, login, loginModalOpe
                 {authTab === "login" ? (
                   <>
                     {/* 10-24 品牌特供款：站点恒为 pptoken（api.pptoken.cc），⛔ 不提供改站点的入口 —— 站点地址字段已随特供款移除。 */}
-                    <label className="se-field"><span>邮箱</span><input value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} placeholder="你在中转站的账号邮箱" /></label>
+                    <label className="se-field"><span>邮箱</span><input value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} placeholder="你在 pptoken 的账号邮箱" /></label>
                     <label className="se-field"><span>密码</span><input type="password" value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} placeholder="账号密码" onKeyDown={(event) => { if (event.key === "Enter" && draft.email && draft.password) void login(); }} /></label>
                     <button className="primary-setting relay-login-btn" disabled={working === "login" || !draft.email || !draft.password} onClick={() => void login()}>{working === "login" ? <><Spinner />正在登录…</> : <><LogIn size={15} />登录并自动配置</>}</button>
                   </>
                 ) : (
                   <>
                     {/* 10-24 品牌特供款：站点恒为 pptoken（api.pptoken.cc），⛔ 不提供改站点的入口 —— 站点地址字段已随特供款移除。 */}
-                    <label className="se-field"><span>邮箱</span><input value={regDraft.email} onChange={(event) => setRegDraft({ ...regDraft, email: event.target.value })} placeholder="用于登录中转站的邮箱" autoComplete="email" /></label>
+                    <label className="se-field"><span>邮箱</span><input value={regDraft.email} onChange={(event) => setRegDraft({ ...regDraft, email: event.target.value })} placeholder="用于登录 pptoken 的邮箱" autoComplete="email" /></label>
                     <label className="se-field"><span>密码（至少 6 位）</span><input type="password" value={regDraft.password} onChange={(event) => setRegDraft({ ...regDraft, password: event.target.value })} placeholder="设置账号密码" autoComplete="new-password" /></label>
                     <label className="se-field"><span>确认密码</span><input type="password" value={regDraft.confirm} onChange={(event) => setRegDraft({ ...regDraft, confirm: event.target.value })} placeholder="再输入一次" autoComplete="new-password" onKeyDown={(event) => { if (event.key === "Enter" && regDraft.email && regDraft.password) void register(); }} /></label>
                     <button className="primary-setting relay-login-btn" disabled={working === "register" || !regDraft.email || !regDraft.password} onClick={() => void register()}>{working === "register" ? <><Spinner />正在注册…</> : <><Sparkles size={15} />注册并进入套餐选购</>}</button>
-                    <p className="relay-auth-note">注册成功后自动登录并打开套餐市场。站点若要求验证码/邮箱验证，会自动打开站内注册页兜底。</p>
+                    <p className="relay-auth-note">注册成功后自动登录并打开套餐市场。pptoken 若要求验证码/邮箱验证，会自动打开站内注册页兜底。</p>
                   </>
                 )}
               </div>

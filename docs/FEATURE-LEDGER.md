@@ -35,6 +35,7 @@
 
 | 日期 | 功能名称 | 类型 | 影响范围 | 简要描述 | 提交 |
 |---|---|---|---|---|---|
+| 2026-10-26 | 新手教程与设置总览重做（同步主仓 8c51dfb35） | 改动 | `src/features/newbie-guide/*`、`src/components/HelpDialog.tsx`、`src/styles/14-model-onboarding.css`、`src/styles/31-newbie-guide.css`、`src/features/settings-appearance/AppearanceSettingsSection.tsx` | 按主仓同一轮内容同步：教程补「会话整理 / 运行过程 / 更新应用 / 指挥中枢」，重写配置模型（PPcode 按云账号版，去掉不存在的 OpenAI 订阅页）、一次对话运行中规则、语音隐藏注入、办公室分间；左侧搜索 + 上一节/下一节；弹窗 portal 到 body 修语音悬浮球压字。总览 10 条快捷动线 + 31 页说明 + 7 条设置外入口；外观运行过程说明对齐实现。守卫 11x 45/45、07 总览覆盖通过。 | 123eddd6 |
 | 2026-10-25 | 云端积分浮层精简 | 改动 | `src/features/settings-cloud/CloudPointsBadge.tsx` | 与主仓同步：只保留余额 + 最近变动；去掉长 note、未启用闲时提示与设置脚注；仅真正闲时显示「闲时 ×0.5」。 | ab59d45a |
 | 2026-10-25 | 输入框弹层统一：贴触发按钮居中 + 自动关闭 | 改动 | `src/lib/use-centered-popover.ts`、`Composer.tsx`、`EffortPicker.tsx`、`Status.tsx`、`01-balance-badge.tsx`、`02-official-cards.tsx`、`10-settings-providers.css`、`37-cloud-account.css`、验收 model-menu | 与主仓同步：新增共用定位 hook（按实际宽度居中、越界收 8px）；模型/权限菜单、上下文、中转站/OpenAI 余额、思考强度统一贴按钮居中；上下文/余额弹层补 Esc 与鼠标离开关闭。验收 ④⑤ 通过。 | 4244cdd3 |
 | 2026-10-25 | 云模型倍率补齐 + 下拉脚注收口 | 修复 | `electron/cloud-provider.ts`、`cloud-models-ipc.ts`、`useModelProviders.ts`、`01-restart-file-preview.tsx`、`02-composer-form.tsx`、`Composer.tsx`、`19-misc-hints.css` | 与主仓同步：云代理 `/models` 的 credits 按 id 合并进云供应商模型；云账号启动先同步一次、渲染层 3s 补读、打开下拉也刷新。自定义供应商仍不显示，缺失不写。「更多设置…」去掉思考强度注释。PPcode 真机云模型显示 0.08x / 0.17x。 | 26ba34e0 |

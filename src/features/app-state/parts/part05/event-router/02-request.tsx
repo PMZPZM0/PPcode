@@ -13,6 +13,7 @@ import { USER_PERSONAS, userPersonaFields } from "../../../../../lib/user-person
 /* 前端开发（10-05，两轮改名：界面草图 → 手机前端UI → 前端开发）：Codex 读写画布走**对方域的 barrel**（域↔域的唯一接口面）。
    会话单例在 ui-sketch 那边持有（iframe 由弹窗 attach），这里只发请求。 */
 import { applySketchDoc, requestSketchDoc, summarizeDoc, validateSketchDoc, waitSketchReady } from "../../../../ui-sketch";
+import { ensureBossMemoryWorkspace } from "../../../../boss-group-view";
 
 /** ⛔ 同一个 tool call 只执行一次（09-22 实测：一次 subagent_invoke 被渲染层执行 7 次 →
  *  7 个同名会话、每个约 1MB rollout、query 逐字相同 ⇒ 7 倍 token）。重复到达复用首次结果。 */
@@ -77,9 +78,13 @@ export function handleEventRouter2(bag: Bag, event: any): boolean {
                       角色会话的 promote 闸在主进程应答路径（boot.ts），那里才有身份硬闸。 */
                 const cat = String(args.category ?? "临时上下文");
                 const scope = args.scope === "project" ? "project" : "private";
+                /* ⛔⛔ 10-25：BOSS 会话的记忆必须写进它自己的专属目录 ——
+                   用 `bag.workspace`（用户选的项目）会把 BOSS 的记忆写进项目记忆里，
+                   与普通会话混在一起 ⇒ 与普通会话完全拆开的承诺就破了。 */
+                const bossMemWs = await ensureBossMemoryWorkspace(String(event.params?.threadId ?? bag.threadRef.current?.id ?? ""));
                 const result = await window.codex.writeFabricMemory({
                   threadId: String(event.params?.threadId ?? bag.threadRef.current?.id ?? ""),
-                  workspace: bag.workspace || "",
+                  workspace: bossMemWs || bag.workspace || "",
                   scope,
                   category: cat,
                   content: String(args.content ?? ""),
@@ -273,9 +278,12 @@ export function handleEventRouter2(bag: Bag, event: any): boolean {
                     if (!res?.ok) await bad(`加人失败：${res?.error ?? "未知原因"}`);
                     else await ok(`新成员进群：${res.member?.name}（${res.member?.role}${res.member?.source === "cli" ? "，本机 CLI agent" : ""}，id=${res.member?.id}）。TA 第一次被派活时才建执行体；用 group_assign 指派时传这个 id。`);
                   } else if (tool === "group_remove_member") {
-                    const res = await window.codex.bossGroupMember({ groupId: String(args.groupId ?? ""), action: "remove", memberId: String(args.memberId ?? "") });
+                    const res = await window.codex.bossGroupMember({
+                      groupId: String(args.groupId ?? ""), action: "remove",
+                      memberId: String(args.memberId ?? ""),
+                    });
                     if (!res?.ok) await bad(`移人失败：${res?.error ?? "未知原因"}`);
-                    else await ok(`已移出：${res.member?.name}。会话与轨迹保留；在跑任务不打断，未派任务自动换人。`);
+                    else await ok(`已移出：${res.member?.name}。会话与轨迹保留；TA 正在跑的任务不打断（交活后照常审查），未派的任务会自动换人。`);
                   } else {
                     const st = await window.codex.bossBrowserStatus();
                     if (!st?.installed) {
@@ -317,9 +325,9 @@ ${st.hint}`);
                     success: false,
                   });
                 } else {
+                const kindRaw = String(args.kind ?? "");
                 // kind 是联合类型：非法值**不硬塞**（先校验再断言，断言因此可证安全），
                 // 当场回一条可读的拒绝，而不是让 IPC 抛类型错——模型据此立刻改参数。
-                const kindRaw = String(args.kind ?? "");
                 const kindArg = (["expert", "team", "member", "subagent"] as const).includes(kindRaw as any)
                   ? (kindRaw as "expert" | "team" | "member" | "subagent")
                   : null;

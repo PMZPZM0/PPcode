@@ -235,13 +235,13 @@
 
 :root {
   color: #23231f;
+  /* 品牌字流动渐变（10-09）：色序取自**本应用自己的图标母版**（build/icon-a-spark.svg 的
+     蓝色渐变 #4C8DF6 → #2F6BDD → #17439B，末段提亮制造可见的流动），末尾回起始色 ⇒ 循环无缝。
+     ⛔ 侧栏与登录页两处品牌字都引用这一个变量，别再各写一份色标。 */
+  --brand-ink: linear-gradient(100deg, #4c8df6, #2f6bdd, #17439b, #6fa8ff, #4c8df6);
   font-synthesis: none;
   text-rendering: optimizelegibility;
   letter-spacing: 0;
-  /* 品牌字流动渐变（10-09）：色序与**图标母版**（build/icon-a-spark.svg）一致 ——
-     粉 → 品红 → 紫 → 蓝 → 青，末尾回粉色是为了循环无缝。
-     ⛔ 侧栏与登录页两处品牌字都引用这一个变量，别再各写一份色标。 */
-  --brand-ink: linear-gradient(100deg, #f64580, #c12fc4, #7336de, #3436d3, #20a5b4, #f64580);
   --bg: #fff;
   --panel: #f8f8f7;
   --panel-2: #f1f1ef;
@@ -259,6 +259,9 @@
   --accent-soft: #2f6bdd14;
   --orange: #e8830c;
   --amber: #e8a020;
+  /* BOSS 成员头像的色相（⛔ 真定义：内联 style 会覆盖它，但要有定义 ——
+     守卫【160】要求每个 var() 引用都有定义，缺了就红）。 */
+  --boss-avatar-hue: 40;
   --purple: #8b5cf6;
   --mono: "Cascadia Code", Consolas, ui-monospace, monospace;
   --red: #d94f43;
@@ -542,7 +545,7 @@ button.brand-mark.sidebar-toggle:hover {
   /* 10-09：品牌字的流动渐变也要静音 —— `animation` 不是 `transition`，上面那条关不掉它。
      两处品牌字（侧栏 / 登录页）同一条规则，免得只关半边。 */
   html:not([data-motion="force"]) .brand-row .brand-name,
-  html:not([data-motion="force"]) .authx-brand-text strong {
+  html:not([data-motion="force"]) .login-brand strong {
     animation: none !important;
   }
 }
@@ -612,14 +615,14 @@ button.brand-mark.sidebar-toggle:hover {
 }
 
 /* ── 品牌字（10-09 用户令）：删掉「Desktop」副行，字改成与图标同色系的**流动渐变** ─────────
-   ① 仍是真文本节点（可选中 / 无障碍可读 / 缩放不糊），渐变只是染色 —— 不用图片字或 SVG 字；
+   ① 仍是真文本节点（可选中 / 无障碍可读 / 缩放不糊），渐变只是染色；
    ② ⛔ 三件套缺一不可：`background-clip:text` + `-webkit-background-clip:text`
       + `-webkit-text-fill-color:transparent`（少最后一条会只剩一块渐变底、字消失）；
-      `color:transparent` 是非 webkit 前缀的兜底；
-   ③ 盒子高 **30px == `.brand-mark` 的尺寸**（用户要求「与 logo 上下等大」）⇒ 两个平台
+      `color: var(--text)` 是兜底 —— 渐变万一不生效也是实心字，不会"字消失"；
+   ③ 盒子高 **30px == `.brand-mark` 的尺寸**（用户要求「与 logo 上下等大」）⇒ 两平台
       （含 mac 品牌行下移 32px 之后）行高都不变，不会挤动下方导航；
-   ④ 字体族**不写死**、继承全局栈 ⇒ mac 上自然落到系统字体（写死 "Segoe UI" 在 mac 会掉到兜底衬线）；
-   ⑤ `background-size` 拉宽到 220% 才能看出流动；色标首尾同色 ⇒ 循环无缝、看不到"跳一下"。 */
+   ④ 字体族**不写死**、继承全局栈 ⇒ mac 上自然落到系统字体；
+   ⑤ `background-size` 拉宽到 220% 才看得出流动。 */
 .brand-row .brand-name {
   display: inline-flex;
   align-items: center;

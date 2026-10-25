@@ -441,11 +441,13 @@ export function AppView({ app }: { app: HarnessAppApi }) {
     指挥中枢一旦已经有自己的地址，**改不了** —— 引擎是用这个 cwd 起的会话，
      再选一次只会写进 dirByThread[已存在的会话]（没有任何读取方，见 part08/01-seg 的
      `sessionCwd`：它只在**建会话那一次**取值）⇒ 菜单项照旧显示就等于骗人。
-     ⇒ 中枢上下文里：没地址才给「选择项目地址」；已有地址就收起这一项（地址只读回显仍在）。 */
+     ⇒中枢上下文里：没地址才给「选择项目地址」；已有地址就收起这一项（地址只读回显仍在）。 */
   const canPickDir = !bossDirContext || !topbarDir;
   const pickDirLabel = bossDirContext ? "选择项目地址" : topbarDir ? "选择其他目录…" : "选择工作区目录";
-  /* 10-25 修「明明开着，Codex 说关了」：历史里最后一条播报告知可能过期。
-     从最近 40 个回合找出最后一条 ON/OFF 标记，交给告知桥与当前有效状态对账，不一致就补一条。 */
+  /* 10-25 修「明明开着，Codex 说关了」：历史里最后一条播报告知可能已经过期。
+     渲染层从最近 40 个回合里找出最后一条 ON/OFF 标记，交给告知桥与**当前有效状态**对账；
+     不一致就补一条（切会话 / 重启 / 在别的会话里改了总开关都会走到这里）。
+     ⛔ 只扫最近 40 回合：长会话全量扫描会把切会话拖慢，而告知本来就是最近的状态。 */
   const lastAnnounceTagState = useMemo(() => {
     if (!thread) return null;
     const texts = collectMessageTexts({ ...thread, turns: (thread.turns ?? []).slice(-40) } as typeof thread);
@@ -498,7 +500,7 @@ export function AppView({ app }: { app: HarnessAppApi }) {
               截图圈的就是右簇那个 📁）。点击开菜单 = 选择/切换工作区目录；窄屏（≤760px）隐藏规则
               见 09-settings-workspace-memory.css；守卫【250】的覆盖率清单跟着本位置走。 */}
           <div className="ctx-picker">
-            <button ref={ctxBtnRef} className="icon-button tb-workspace ic-amber" title="工作区上下文（当前会话使用的项目目录）" onClick={() => setCtxMenuOpen((current) => !current)}><FolderOpen size={16} /></button>
+            <button ref={ctxBtnRef} className="icon-button tb-workspace ic-amber" disabled={activeThreadRunning} title={activeThreadRunning ? "本轮运行中，项目地址不可切换（结束后恢复）" : "工作区上下文（当前会话使用的项目目录）"} onClick={() => setCtxMenuOpen((current) => !current)}><FolderOpen size={16} /></button>
             {ctxMenuOpen && (
               /* ⛔ 不渲染 menu-backdrop（10-06 夜八轮用户实测「点图标都不会自动消失、其他地方
                  点不了」）：全屏遮罩挂在顶栏拖拽区子树里，真实鼠标点击被 OS 吞成拖窗口 ⇒ 点击

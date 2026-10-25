@@ -1495,10 +1495,10 @@
 .update-card-actions button { position: relative; }
 .update-progress-bar {
   position: absolute;
-  left: 9px;
-  right: 9px;
-  bottom: 2px;
-  height: 2px;
+  left: 8px;
+  right: 8px;
+  bottom: 1px;
+  height: 3px;
   border-radius: 999px;
   background: color-mix(in srgb, currentColor 16%, transparent);
   overflow: hidden;

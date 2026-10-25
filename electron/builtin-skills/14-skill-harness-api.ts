@@ -11,7 +11,7 @@ description: PPcode 宿主的接口清单与可拓展能力。当用户提「做
 
 # 宿主接口清单与可拓展能力（自动生成，勿手改）
 
-数据源：electron/ipc-channels.manifest.json（99 个能力域 / 537 个通道），由 scripts/gen-capability-skill.mjs 生成。
+数据源：electron/ipc-channels.manifest.json（100 个能力域 / 544 个通道），由 scripts/gen-capability-skill.mjs 生成。
 
 ## 怎么用
 
@@ -269,9 +269,9 @@ Bot 会话（Bot 与会话的绑定与消息注入）
 **免费模型网关**（10-12，第三方开源项目 dsh-our-free-model 的本地侧车，MIT）：把它的独立网关（127.0.0.1:18900，OpenAI 兼容）作为可选下载服务接入。⛔ 这些通道是**宿主生命周期管理**（下载/启停/健康/取 Key/管理台/拉模型清单），不是模型工具 —— 模型侧永远不调它们；要用免费模型：模型设置页点推荐卡 → 下载并启动 → 在上游管理台登录渠道账号 → 一键注册为供应商，然后正常选模型。⛔ 免责：上游与本项目开发者无关，渠道合规性与可用性由使用者自担
 通道：free-gateway:download, free-gateway:models, free-gateway:open-admin, free-gateway:start, free-gateway:status, free-gateway:stop, free-gateway:uninstall
 
-### dialog（6 通道）
+### dialog（7 通道）
 文件/目录选择对话框（含跨窗口）
-通道：dialog:directory, dialog:directory-at, dialog:images, dialog:files, dialog:ssh-key, dialog:save-as
+通道：dialog:directory, dialog:directory-at, dialog:images, dialog:files, dialog:ssh-key, dialog:save-as, dialog:project-dir
 
 ### dataDir（2 通道）
 数据目录自定义（userData 重定向 + 启动期自动迁移；改后重启生效）
@@ -308,6 +308,10 @@ MCP 服务器管理（配置/状态）
 ### personalization（6 通道）
 个性化（昵称/自定义指令，落 personalization.json 并写入引擎 AGENTS.md）
 通道：personalization:mark-greeted, personalization:read, personalization:save, personalization:save-identity, personalization:setNickname, personalization:verify
+
+### app-lock（6 通道）
+应用密码锁（设置 → 应用锁，默认关闭）：开启时生成随机或自定义解锁密码，明文只展示一次、磁盘只存 scrypt 盐哈希；启动/重新显示先锁屏。连续 10 次错误会清空应用数据并重置。⛔ 界面门禁，不是磁盘加密；模型侧不调用它
+通道：app-lock:status, app-lock:prepare, app-lock:enable, app-lock:cancel, app-lock:verify, app-lock:disable
 
 ### appSettings（2 通道）
 应用级开关（联网搜索/桌面自动化/下载源等，写 app-settings.json）

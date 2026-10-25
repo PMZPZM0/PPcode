@@ -19,9 +19,15 @@ export function BootIntroGate({ stage, done }: { stage: BootStage; done: boolean
       typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
     const petWindow =
       typeof location !== "undefined" && new URLSearchParams(location.search).get("pet") === "1";
+    let skipForAppLock = false;
+    try {
+      const session = typeof sessionStorage === "undefined" ? null : sessionStorage;
+      skipForAppLock = session?.getItem("app-lock-skip-boot") === "1";
+      if (skipForAppLock) session?.removeItem("app-lock-skip-boot");
+    } catch { /* 忽略 */ }
     const mode = readBootIntroMode(storage);
     return {
-      play: shouldPlayBootIntro(mode, { reducedMotion, petWindow }),
+      play: !skipForAppLock && shouldPlayBootIntro(mode, { reducedMotion, petWindow }),
       mode: bootIntroPlayMode(mode),
       scheme: readBootIntroScheme(storage),
     };

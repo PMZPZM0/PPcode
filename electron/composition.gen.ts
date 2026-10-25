@@ -11,6 +11,7 @@ import { mountFeature } from "./context";
 import { bossGroupsFeature as feat_boss_groups } from "./features/boss-groups-ipc";
 import { agentsFeature as feat_agents } from "./features/agents-ipc";
 import { appFeature as feat_app } from "./features/app-diagnostics";
+import { appLockFeature as feat_app_lock } from "./features/app-lock-ipc";
 import { appSettingsFeature as feat_appSettings } from "./features/app-settings-ipc";
 import { autoUpdateFeature as feat_autoUpdate } from "./features/auto-update-ipc";
 import { awakeFeature as feat_awake } from "./features/awake-ipc";
@@ -122,6 +123,7 @@ export const ENABLED: EnabledDomain[] = [
   { id: "boss-groups", plugin: feat_boss_groups as Plugin<unknown>, config: null },
   { id: "agents", plugin: feat_agents as Plugin<unknown>, config: null },
   { id: "app", plugin: feat_app as Plugin<unknown>, config: null },
+  { id: "app-lock", plugin: feat_app_lock as Plugin<unknown>, config: null },
   { id: "appSettings", plugin: feat_appSettings as Plugin<unknown>, config: null },
   { id: "autoUpdate", plugin: feat_autoUpdate as Plugin<unknown>, config: null },
   { id: "awake", plugin: feat_awake as Plugin<unknown>, config: null },

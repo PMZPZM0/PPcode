@@ -3,7 +3,7 @@
  * ⛔ 收一个 `app`（类型 HarnessAppApi = hook 的返回类型）并按需解构 ⇒ 类型不落快照。
  */
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { getBossThreads, setBossHomeThreadId, setBossPending, subscribeBossThreads } from "../../boss-group-view";
+import { BossProjectDirDialog, getBossThreads, setBossHomeThreadId, setBossPending, subscribeBossThreads } from "../../boss-group-view";
 import { FunctionMenu, FunctionMenuEditorHost, FunctionMenuTourHost, maybeShowFunctionMenuTour, setFunctionMenuActionHandler, useFunctionMenuConfig } from "../../function-menu";
 import { hk } from "../../../lib/hk";
 import {
@@ -157,18 +157,44 @@ import { UpdateReadyToast } from "./UpdateReadyToast";
 import { CloseConfirmDialog } from "../../../components/CloseConfirmDialog";
 import { FileTrustDialog } from "../../../components/FileTrustDialog";
 
-/* ⛔ 品牌差异（本仓 = PPcode）：整套代码复制自主仓，品牌字串必须走这里，
-   ⛔ 别直接写字面量 —— 从主仓同步本文件时这一行会冲突，届时**保留本仓值**（别整份套）。 */
-const BRAND_NAME = "PPcode";
-
 export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppApi; onOpenSettings?: (page: string) => void }) {
   /* ── BOSS 会话 = **一个普通会话**（10-25 用户令，推翻覆盖层）──────────────────
      用户原话：「一个正常对话框不会做嘛，新建一个会话，常驻成 BOSS 会话，不就好了嘛」。
      ⇒ 点按钮就是 `openThread(群.bossThreadId)`：正常时间线、正常输入框、正常消息渲染，
         不再有任何覆盖层/专属界面。
      ⇒ 「选中效果」是**派生量**（当前会话 id 命中某个群的 boss 线程），⛔ 不再用 store 的
-        stage 布尔值 —— 那个布尔值和真实会话状态会对不上（用户实测：切走了按钮还亮着）。 */
+        stage 布尔值 —— 那个布尔值和真实会话状态会对不上（用户实测：切走了按钮还亮着）。
+     ⇒ 还没建群时用 localStorage 里的 `homeId` 当锚点：**同一个 BOSS 会话一直走**，
+        ⛔ 不每点一次就多一个「未命名任务」（用户 10-25 第二点）。 */
   const bossThreads = useSyncExternalStore(subscribeBossThreads, getBossThreads);
+  /* 10-25 用户令：新建 BOSS 会话时弹**应用内**对话框选项目地址（两个选项），
+     ⛔ 不用系统 messageBox、⛔ 不用 toast 内联提示。 */
+  const [bossDirDialog, setBossDirDialog] = useState(false);
+  const [bossDirBusy, setBossDirBusy] = useState(false);
+
+  /* 新建 BOSS 会话的项目地址对话框（应用内模态，两个选项） */
+  const onBossProjectDir = async (choice: "pick" | "auto" | "cancel") => {
+    if (choice === "cancel") { setBossDirDialog(false); return; }
+    setBossDirBusy(true);
+    try {
+      let dir = "";
+      if (choice === "pick") {
+        const picked = await window.codex.chooseDirectory();
+        if (!picked) return;                       // 在系统目录选择器里取消 ⇒ 对话框继续开着，让他重选
+        dir = String(picked);
+      } else {
+        dir = String(await window.codex.createBossProjectDir());
+      }
+      /* ⛔ 不写全局 localStorage("workspace")：普通会话的项目不能被 BOSS 带走。 */
+      app.setWorkspace(dir);
+      app.workspaceRef.current = dir;              // send 读 ref，必须同步
+      setBossDirDialog(false);
+      setBossPending(true);                        // 空态显示 BOSS 引导卡
+      bossHomePending.current = true;              // 这个新会话登记为 BOSS 会话（拿到 id 后）
+      startNewThread();                            // ⛔ 每次都是全新会话
+    } catch { /* 目录没选成：对话框继续开着 */ }
+    finally { setBossDirBusy(false); }
+  };
   const currentThreadId = app.thread?.id ?? "";
   /* 选中态：群 boss 线程 **或** 还没建群时的 home 锚点会话（否则点进去按钮不亮、看着像没进）。 */
   const bossOn = Boolean(currentThreadId)
@@ -301,8 +327,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     try { localStorage.setItem("sidebar-options-collapsed", String(next)); } catch { /* 隐私模式写不进属正常，别拦切换 */ }
     try { void window.codex?.saveAppSettings?.({ sidebarOptionsCollapsed: next })?.catch(() => undefined); } catch { /* 桥不可用 */ }
   };
-  /* 功能入口（10-22）：可配置排序 / 更多分组 / 两种展示位置。菜单本身是共享组件，
-     动作统一经总线回到这里（侧栏壳一直挂着，所以对话框上方的菜单也能打开同一套弹窗/设置页）。 */
+  /* 功能入口（10-24）：可配置排序 / 更多分组 / 两种展示位置；动作经总线回到侧栏壳。 */
   const functionMenu = useFunctionMenuConfig();
   useEffect(() => {
     setFunctionMenuActionHandler((id) => {
@@ -319,6 +344,8 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
       折叠态共用一个持久值（本地记录），高度过渡由 `.sidebar-options-body` 的 grid 动画完成。 */
   const renderOptionsGroup = (menuLocation: "top" | "bottom") => (
     <div className={`sidebar-options ${menuLocation === "top" ? "sidebar-options-top" : ""}`}>
+      {/* 新建 BOSS 会话：项目地址对话框（应用内模态；⛔ 不用系统弹窗 / 内联 toast） */}
+      <BossProjectDirDialog open={bossDirDialog} busy={bossDirBusy} onChoose={(choice) => void onBossProjectDir(choice)} />
       <button
         type="button"
         className="sidebar-options-toggle"
@@ -330,7 +357,6 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
       >
         <LayoutGrid size={15} />
         <span>功能入口</span>
-        {/* 行在折叠头**下方** ⇒ 与全站其它折叠组同向：收起=⌄、展开时翻转=⌃ */}
         <ChevronDown size={13} className={`sidebar-options-chevron ${optionsCollapsed ? "" : "open"}`} />
       </button>
       <div className={`sidebar-options-body ${optionsCollapsed ? "is-collapsed" : ""}`}>
@@ -456,11 +482,11 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     <>
     {!popoutThreadId ? (
       <aside className={`sidebar ${mobileNav ? "mobile-open" : ""} ${sidebarFlyout ? "flyout-open" : ""}`} onMouseEnter={() => sidebarCollapsed && setSidebarFlyout(true)} onMouseLeave={() => sidebarCollapsed && setSidebarFlyout(false)}>        <div className="brand-row">
-              <button className={`brand-mark sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : "is-expanded"}`} aria-label={narrow ? BRAND_NAME : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} title={narrow ? BRAND_NAME : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} onClick={() => { if (narrow) return; const next = !sidebarCollapsed; setSidebarCollapsed(next); localStorage.setItem("sidebar-collapsed", String(next)); }}>
+              <button className={`brand-mark sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : "is-expanded"}`} aria-label={narrow ? "Codex Harness" : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} title={narrow ? "Codex Harness" : sidebarCollapsed ? "展开侧栏" : "收起侧栏"} onClick={() => { if (narrow) return; const next = !sidebarCollapsed; setSidebarCollapsed(next); localStorage.setItem("sidebar-collapsed", String(next)); }}>
                 <img className="ch-logo ch-logo-img" src={`${import.meta.env.BASE_URL}icon.png`} alt="" aria-hidden="true" />
                 <span className="sidebar-toggle-arrow"><ArrowLeft size={13} strokeWidth={2.4} /></span>
               </button>
-              {!sidebarCollapsed && <div><strong className="brand-name">{BRAND_NAME}</strong></div>}
+              {!sidebarCollapsed && <div><strong className="brand-name">Codex Harness</strong></div>}
             </div>
             <div className="sidebar-tabs" role="navigation" aria-label="导航">
               {/* 10-24 用户对照截图：改成整行「新会话」主按钮 + 下面一行「搜索任务」，不再并排胶囊。 */}
@@ -480,30 +506,16 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                   aria-pressed={bossOn}
                   onClick={async () => {
                     if (bossOn) return;                                   // 已在这个会话里，再点无动作
-                    /* 已经是「刚点开、还没发消息」的 BOSS 空会话（还没有 thread id）⇒ 别再新建一个。 */
+                    /* 已经是「刚点开、还没发消息」的 BOSS 空会话（还没有 thread id）⇒ 别再新建一个
+                       （否则连点两次就多两个「未命名任务」）。 */
                     if (bossThreads.pending && !currentThreadId) return;
                     const groupBoss = bossThreads.bossIds[0];
                     if (groupBoss) { void app.openThread(groupBoss); return; }   // 有群 ⇒ 打开它的 boss 线程
-                    const home = bossThreads.homeId;                       // 还没群 ⇒ 回到固定的那个 BOSS 会话
-                    if (home && (app.threads ?? []).some((t: any) => t.id === home)) { void app.openThread(home); return; }
-                    /* 10-25 用户令：BOSS 会话**完全独立** —— 项目记忆 / 技能 / logs 都不跟任何项目共享。
-                       它跑在自己的目录 `<userData>/boss-home`；「进去要选择」的那个目录是
-                       **群干活的项目**（成员会话在那里跑），存 boss-workspace。 */
-                    let projectDir = "";
-                    try { projectDir = localStorage.getItem("boss-workspace") ?? ""; } catch { /* 隐私模式 */ }
-                    if (!projectDir) {
-                      const picked = await window.codex.chooseDirectory();
-                      if (!picked) return;                                  // 用户取消 ⇒ 什么都不做
-                      projectDir = String(picked);
-                      try { localStorage.setItem("boss-workspace", projectDir); } catch { /* ignore */ }
-                    }
-                    const sessionDir = bossThreads.homeDir || projectDir;
-                    app.setWorkspace(sessionDir);
-                    app.workspaceRef.current = sessionDir;                  // send 读 ref，必须同步
-                    /* ⛔ 不写全局 localStorage("workspace")：普通会话的项目不能被 BOSS 带走。 */
-                    bossHomePending.current = true;                         // 全新：新建并记成 home
-                    setBossPending(true);                                   // 空态显示 BOSS 引导卡
-                    startNewThread();
+                    /* ⛔ 10-25 用户令：「我每次新建，就是全新的，跟旧的不要有任何关系」⇒
+                       不再回到上一次的 BOSS 会话（home 只当身份标记）。 */
+                    /* 10-25 用户令：BOSS 会话**完全独立** —— 项目记忆 / 技能 / logs 都不跟任何项目                    /* ⛔ 10-25 用户令：BOSS 会话的项目地址**不自动同步其他会话**，每次新建都要定
+                       ⇒ 弹应用内对话框（选目录 / 在软件所在盘自动新建），⛔ 不沿用上一次的。 */
+                    setBossDirDialog(true);startNewThread();
                   }}
                 >
                   <Crown size={15} /><span>BOSS 会话</span>
@@ -722,7 +734,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     {/* ⛔ 10-13 关闭确认弹窗（应用内卡片，替代原生系统框）：自包含组件（自己订阅
         close-confirm:ask / 自己回包），主进程关窗守卫 preventDefault 后推事件到这里。 */}
     <CloseConfirmDialog />
-    {/* 工作区外文件预览的授权确认（10-18，应用内模态） */}
+    {/* 工作区外文件预览的授权确认（10-18，应用内模态；⛔ 不用系统弹窗） */}
     <FileTrustDialog />
     </>
   );

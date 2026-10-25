@@ -257,11 +257,7 @@ bag.saveInlineRename = saveInlineRename as typeof bag.saveInlineRename;
 
 
   const earlyView = bag.showLogin ? (
-      <LoginScreen
-        onSkip={() => void bag.handleSkip()}
-        onLogin={(info) => bag.handleLogin(info)}
-        onCloudReady={(info) => bag.handleCloudReady(info)}
-      />
+      <LoginScreen onSkip={() => void bag.handleSkip()} onLogin={(info) => bag.handleLogin(info)} />
     ) : null;
 bag.earlyView = earlyView as typeof bag.earlyView;
 
@@ -350,20 +346,23 @@ bag.earlyView = earlyView as typeof bag.earlyView;
   // 已挪去标题最前）：右栏关闭时嵌在
   // topbar 右端、开启时嵌在右栏顶条右端——两处都紧贴右上角原生窗口钮，且都是
   // 拖拽容器的【子元素】（no-drag 豁免），fixed 悬浮层会被拖拽区吞掉点击（实测）。
+  // ⛔ 10-11：🔍 与调度**独立弹窗里也渲染**（此前弹窗分支把整簇换成只剩「返回主应用」，
+  //    用户报「弹窗里少了两个图标」）—— 所以它们在这条三元之外，别再加回分支里。
   /* 10-25 用户令：BOSS 会话有**独立的群编排调度**，顶栏那个手动的「允许本会话调度」开关
      在这个会话里收起（两套调度并存只会互相打架）。成员图标与「?」也只在 BOSS 会话出现。 */
   const bossThreads = useSyncExternalStore(subscribeBossThreads, getBossThreads);
-  /* ⛔ 只认 bossIds 会让「还没建群时的 home 锚点会话」顶栏缺成员图标与「?」（主窗口/弹窗共用
-     同一个 topbarActionsNode ⇒ 两处一起缺）。三种入口都要认。 */
+  /* ⛔ 10-25 实测缺图标：只认 bossIds 会漏掉「还没建群时的 home 锚点会话」——
+     那种会话是普通会话、不在群账本里，于是顶栏的成员图标与「?」都不渲染（用户截图红框）。
+     三种入口都要认（与 timeline 的 isBossEmpty 同一口径）。 */
   const isBossThread = Boolean(bag.thread?.id)
-    && (bossThreads.bossIds.includes(String(bag.thread?.id)) || String(bag.thread?.id) === bossThreads.homeId);
+    && (bossThreads.bossIds.includes(String(bag.thread?.id)) || (bossThreads.sessionIds ?? []).includes(String(bag.thread?.id)));
   const topbarActionsNode = (
     <>
-      {bag.popoutThreadId ? (
-        <button className="icon-button popout-return-btn" title="返回主应用（关闭本独立窗口）" onClick={() => void window.codex.popoutClose(bag.thread?.id ?? null)}><Minimize2 size={16} /></button>
-      ) : (
-        <>
-          {/* 10-24 用户令：群成员图标在「搜索历史」图标**左边**；只有 BOSS 会话（当前线程是某群的 boss 线程）才渲染，
+      {/* ⛔ 顶栏操作簇顺序：🔍 搜索 → 调度开关 → 「独立弹窗 / 返回主应用」→ ⋯ 任务菜单 → 右栏开关。
+          🔍 与调度 **主窗口与独立弹窗都渲染**（10-11 用户报「独立弹窗里少了两个图标」）；
+          只有最右那个按钮按窗口类型二选一（弹窗里是「返回主应用」）。 */}
+          {/* 10-24 用户令：群成员图标在「搜索历史」图标**左边**。
+              10-25 用户令：成员图标与「?」都是 **BOSS 会话独有**（普通会话没有群可看，留着只是噪音）。
               窄屏由 CSS media query 隐藏。 */}
           {isBossThread ? <BossGroupMembersButton threadId={bag.thread?.id ?? ""} /> : null}
           {isBossThread ? <BossGroupHelpButton /> : null}
@@ -447,8 +446,8 @@ bag.earlyView = earlyView as typeof bag.earlyView;
               );
             })(), document.body)}
           </div>
-          {/* 调度开关放独立窗口图标左边（09-16 用户要求） */}
-          {/* 10-25：BOSS 会话隐藏（群编排自带独立调度）。 */}
+          {/* 调度开关放独立窗口图标左边（09-16 用户要求）。
+              10-25：BOSS 会话隐藏 —— 群编排自带独立调度（谁做什么/进度/审查都在群里走）。 */}
           {isBossThread ? null : (
           <DispatchMenu
             topbar
@@ -462,9 +461,11 @@ bag.earlyView = earlyView as typeof bag.earlyView;
             onChange={(next, opts) => { void bag.applyDispatch(next, opts); }}
           />
           )}
-          <button className="icon-button popout-open-btn ic-violet" title="独立会话弹窗：把当前会话开到新窗口（可拖出应用外，支持多个同时存在）" disabled={!bag.thread} onClick={() => { if (bag.thread) void bag.popoutCurrentThread(bag.thread.id); }}><Maximize2 size={16} /></button>
-        </>
-      )}
+          {bag.popoutThreadId ? (
+            <button className="icon-button popout-return-btn" title="返回主应用（关闭本独立窗口）" onClick={() => void window.codex.popoutClose(bag.thread?.id ?? null)}><Minimize2 size={16} /></button>
+          ) : (
+            <button className="icon-button popout-open-btn ic-violet" title="独立会话弹窗：把当前会话开到新窗口（可拖出应用外，支持多个同时存在）" disabled={!bag.thread} onClick={() => { if (bag.thread) void bag.popoutCurrentThread(bag.thread.id); }}><Maximize2 size={16} /></button>
+          )}
         {/* ⛔ 工作区 📁（.ctx-picker）10-06 夜七轮已挪去**标题最前**（AppView.tsx 的 .task-title）——
             用户令「把文件图标放到最前面」。挪走后：窄屏隐藏规则与守卫【250】覆盖率清单都跟着改到
             .task-title 前缀；不许再加回这个操作簇（会与标题前的那个重复）。 */}

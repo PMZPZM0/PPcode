@@ -257,7 +257,7 @@ export const EXTENSIBILITY_ENTRIES = [
     name: "个性化与指令注入（双轨）",
     purpose: "把用户偏好注入到模型上下文：应用侧与助手侧是两套，互不同步。",
     where: [
-      "%APPDATA%/Codex Harness Desktop/personalization.json → codex-home/AGENTS.md",
+      "%APPDATA%/PPcode/personalization.json → codex-home/AGENTS.md",
       "~/.workbuddy/app/app-config.json 的 personalization.customPrompt（助手侧）",
     ],
     steps: [

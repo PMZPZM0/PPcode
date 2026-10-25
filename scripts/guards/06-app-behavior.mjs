@@ -3816,6 +3816,41 @@ w.postMessage({id:1,op:"list",root});
       && !persSrc235.includes("你是 **Codex Harness Desktop**")) ? ok : fail)(
       "【235】身份基线自称 PPcode（不是 Codex Harness / Codex Harness Desktop）"
     );
+    /* ⛔⛔ 10-25 用户截图：「codexharness logo 和 PPcode logo 不要串了」——
+       身份基线之外，**界面品牌面**也必须独立：侧栏品牌名 / 窗口标题 / AUMID /
+       接入群文案 / 拓展页数据目录示例。⛔ 都是从主仓同步 UI 文件时最容易被覆盖的点。 */
+    const sidebarBrandSrc235 = readFileSync(join(ROOT, "src", "features", "app-view", "AppView", "01-sidebar-shell.tsx"), "utf8");
+    (sidebarBrandSrc235.includes('const BRAND_NAME = "PPcode"')
+      && sidebarBrandSrc235.includes("{BRAND_NAME}")
+      && !sidebarBrandSrc235.includes('<strong className="brand-name">Codex Harness</strong>')
+      && /import\.meta\.env\.BASE_URL\}\s*icon\.png/.test(sidebarBrandSrc235) ? ok : fail)(
+      "【235】侧栏品牌 = PPcode（单一常量 + PP 图标；⛔ 不许再写死 Codex Harness）"
+    );
+    const winFactorySrc235 = readFileSync(join(ROOT, "electron", "features", "window-factory.ts"), "utf8");
+    (winFactorySrc235.includes('title: "PPcode"')
+      && winFactorySrc235.includes('title: "PPcode — 独立会话"')
+      && !winFactorySrc235.includes("Codex Harness Desktop") ? ok : fail)(
+      "【235】窗口标题 = PPcode（主窗口 / 独立会话；⛔ 同步主仓时不许把 Codex Harness Desktop 带回来）"
+    );
+    const mainBrandSrc235 = readFileSync(join(ROOT, "electron", "main.ts"), "utf8");
+    (mainBrandSrc235.includes('app.setName("PPcode")')
+      && mainBrandSrc235.includes('app.setAppUserModelId("com.ppcode.desktop")')
+      && !mainBrandSrc235.includes('setAppUserModelId("com.codexharness.desktop")') ? ok : fail)(
+      "【235】进程身份 = PPcode（setName + AUMID com.ppcode.desktop）"
+    );
+    const wecomSrc235 = readFileSync(join(ROOT, "electron", "im-gateway", "wecom-webhook-gateway.ts"), "utf8");
+    (wecomSrc235.includes("**PPcode** 已接入本群") && !wecomSrc235.includes("**Codex Harness** 已接入本群") ? ok : fail)(
+      "【235】企业微信接入文案 = PPcode（别把 Codex Harness 发给客户群里）"
+    );
+    const catalogSrc235 = readFileSync(join(ROOT, "src", "lib", "extensibility-catalog.mjs"), "utf8");
+    (catalogSrc235.includes("%APPDATA%/PPcode/personalization.json")
+      && !catalogSrc235.includes("%APPDATA%/Codex Harness Desktop/personalization.json") ? ok : fail)(
+      "【235】拓展页数据目录示例 = %APPDATA%/PPcode（本仓真实 userData 路径）"
+    );
+    const indexHtmlSrc235 = readFileSync(join(ROOT, "index.html"), "utf8");
+    (indexHtmlSrc235.includes("<title>PPcode</title>") && !indexHtmlSrc235.includes("<title>Codex Harness Desktop</title>") ? ok : fail)(
+      "【235】页面标题 = PPcode"
+    );
     /* 10-22：能力清单是生成物，⛔ 手改会被 gen:ipc 回滚 ⇒ 品牌必须写在生成器里，
        成品也复查一次（生成器 + 产物双锚）。 */
     const genCapSrc235 = readFileSync(join(ROOT, "scripts", "gen-capability-skill.mjs"), "utf8");

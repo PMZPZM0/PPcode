@@ -153,6 +153,7 @@ import { Slot } from "../../../runtime/registry";
 import { NewbieGuide } from "../../newbie-guide";
 import { SidebarGuideModal, type SidebarGuideKey, type SidebarGuideTarget } from "./SidebarGuideModal";
 import { LoginManagerModal, type LoginManagerTarget } from "./LoginManagerModal";
+import { NewProjectDialog } from "./NewProjectDialog";
 import { UpdateReadyToast } from "./UpdateReadyToast";
 import { CloseConfirmDialog } from "../../../components/CloseConfirmDialog";
 import { FileTrustDialog } from "../../../components/FileTrustDialog";
@@ -300,6 +301,9 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     viewTab,
   } = app;
 
+  /* 分类视图已撤（10-25）：旧偏好 "source" 落到 projects（⛔ 副作用走 effect，不写在 JSX 里）。 */
+  useEffect(() => { if (viewTab === "source") setViewTab("projects"); }, [viewTab]);
+
   // ⛔ 10-21 用户要求：侧栏能力入口按用途分行（前端 UI / 技能插件 MCP / 智能体 / 人格记忆知识库），
   //   点击弹窗看教程；纯局部 UI 状态，不跨组件共享、不进 bag。
   const [guideKey, setGuideKey] = useState<SidebarGuideKey | null>(null);
@@ -330,8 +334,16 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     try { localStorage.setItem("sidebar-options-collapsed", String(next)); } catch { /* 隐私模式写不进属正常，别拦切换 */ }
     try { void window.codex?.saveAppSettings?.({ sidebarOptionsCollapsed: next })?.catch(() => undefined); } catch { /* 桥不可用 */ }
   };
-  /* 10-25 分类视图入口撤下：本地存过 "source" 的旧偏好一次性回落 projects。 */
-  useEffect(() => { if (viewTab === "source") setViewTab("projects"); }, [viewTab, setViewTab]);
+  /* 10-25：新建项目弹窗（ZCode 式三选一）。选完目录后与 chooseWorkspace 同款落地：
+     workspace 三处同步（state/ref/localStorage）—— 不只改 state，侧栏项目分组才认。 */
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const applyNewProject = (dir: string) => {
+    setNewProjectOpen(false);
+    setWorkspace(dir);
+    workspaceRef.current = dir;
+    try { localStorage.setItem("workspace", dir); } catch { /* 隐私模式 */ }
+  };
+
   /* 10-25：项目行的「+」= 在该项目下开新会话。先切 workspace（三处同步：state/ref/localStorage，
      与 chooseWorkspace 同口径），再 startNewThread —— 新会话首条消息的 cwd 取 workspace。 */
   const bagSetWorkspaceForProject = (cwd: string) => {
@@ -365,16 +377,16 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
         className="sidebar-options-toggle"
         aria-expanded={!optionsCollapsed}
         aria-controls="sidebar-options-body"
-        title={optionsCollapsed ? "展开拓展功能" : "收起拓展功能"}
+        title={optionsCollapsed ? "展开功能入口" : "收起功能入口"}
         onMouseEnter={(event) => maybeShowFunctionMenuTour(menuLocation, event.currentTarget)}
         onClick={toggleOptions}
       >
-        <LayoutGrid size={15} />
-        <span>拓展功能</span>
+        <LayoutGrid size={15} className="ic-violet" />
+        <span>功能入口</span>
         <ChevronDown size={13} className={`sidebar-options-chevron ${optionsCollapsed ? "" : "open"}`} />
       </button>
       <div className={`sidebar-options-body ${optionsCollapsed ? "is-collapsed" : ""}`}>
-        <div className="sidebar-nav sidebar-nav-bottom" id="sidebar-options-body" role="group" aria-label="拓展功能" aria-hidden={optionsCollapsed}>
+        <div className="sidebar-nav sidebar-nav-bottom" id="sidebar-options-body" role="group" aria-label="功能入口" aria-hidden={optionsCollapsed}>
           <FunctionMenu location={menuLocation} />
         </div>
       </div>
@@ -538,9 +550,9 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                 </button>
               </div>
             </div>
-            {/* 分类视图入口已撤（10-25）：旧偏好 "source" 由 useEffect 一次性回落 projects（见上方）。 */}
             {functionMenu.location === "top" && renderOptionsGroup("top")}
             {guideKey && <SidebarGuideModal guideKey={guideKey} onNavigate={navigateGuideTarget} onClose={() => setGuideKey(null)} />}
+            <NewProjectDialog open={newProjectOpen} onClose={() => setNewProjectOpen(false)} onCreate={applyNewProject} />
             {/* 直达：关弹窗 + 直接开对应设置页（⛔ 不再经「设置 → 账户与模型」多一层） */}
             {loginMgrOpen && (
               <LoginManagerModal
@@ -553,16 +565,16 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                 onClose={() => setLoginMgrOpen(false)}
               />
             )}
-            {/* ⛔ 只给前缀文件夹染色：这个 chip 里还有个"关闭 ×"，它是**动作**不是分类。 */}
-            {/* 10-25 用户令重排（对照其图二）：视图行 = 「项目」tab + 🔍搜索任务 + 筛选（展开/折叠全部）。
-                分类视图（09-25）随本轮收口：入口撤下，口径与渲染仍保留在 lib/thread-source.mjs。 */}
+            {/* 10-25 用户令（对照其图二）：视图行 = 「项目」tab + 🔍搜索任务 + 筛选（展开/折叠全部）+ 新建项目。
+                ⛔ 分类视图（09-25）入口撤下：本地存过 "source" 的旧偏好由 useEffect 一次性回落 projects，
+                口径与渲染仍保留在 lib/thread-source.mjs（守卫【156】仍在用其数据）。 */}
             <div className="view-tabs" role="toolbar" aria-label="会话视图工具">
               <button className={`view-tab ${viewTab === "projects" ? "active" : ""}`} onClick={() => setViewTab("projects")} title="按项目分组查看"><FolderOpen size={14} className="ic-amber" /><span>项目</span></button>
               <button className={`view-tab ${viewTab === "tasks" ? "active" : ""}`} onClick={() => setViewTab("tasks")} title="平铺全部任务（不分组）"><ListChecks size={14} className="ic-blue" /><span>任务</span></button>
               <div className="view-toolbar">
                 <button className="view-toolbar-btn ic-cyan" title="搜索任务" onClick={() => { setPaletteOpen(true); setPaletteQuery(""); setPaletteTab("all"); }}><Search size={14} /></button>
                 <button className="view-toolbar-btn ic-violet" title={sidebarAllCollapsed ? "展开全部项目" : "折叠全部项目"} onClick={toggleAllSidebarSections} disabled={!projectGroups.length}>{sidebarAllCollapsed ? <Maximize2 size={14} /> : <Minimize2 size={14} />}</button>
-                <button className="view-toolbar-btn ic-green" title="新建项目（选择一个目录作为项目地址）" onClick={() => void chooseWorkspace()}><FolderPlus size={14} /></button>
+                <button className="view-toolbar-btn ic-green" title="新建项目（选择 / 创建 / 输入路径）" onClick={() => setNewProjectOpen(true)}><FolderPlus size={14} /></button>
               </div>
             </div>
             {/* 10-04 渲染层插槽：侧栏顶部（在会话列表之上）。插件放这里 = 常驻可见的入口

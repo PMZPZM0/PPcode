@@ -194,7 +194,7 @@ process.nextTick(mountEnabledDomains);
    失效后不是"没有图标"而是"被 exe 图标顶掉 + 窗口图标失效"—— 这就是图标反复掉的真根因。
    ⇒ 打包版由 electron-builder NSIS 写入规范快捷方式（AUMID 可解析），保留设置；
      dev 不设，让 Windows 走窗口图标那条路（window-factory 已把 icon 锚在 app.getAppPath()/build/icon.ico）。 */
-if (app.isPackaged) app.setAppUserModelId("com.codexharness.desktop");
+if (app.isPackaged) app.setAppUserModelId("com.ppcode.desktop");
 
 if (process.env.CODEX_HARNESS_DEBUG_PORT) app.commandLine.appendSwitch("remote-debugging-port", process.env.CODEX_HARNESS_DEBUG_PORT);
 

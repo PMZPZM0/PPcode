@@ -34,7 +34,7 @@ export class WecomWebhookGateway {
     const res = await fetch(clean, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ msgtype: "markdown", markdown: { content: `**Codex Harness** 已接入本群（${new Date().toLocaleString("zh-CN")}）\n自动化任务结果与通知将推送到这里。` } }),
+      body: JSON.stringify({ msgtype: "markdown", markdown: { content: `**PPcode** 已接入本群（${new Date().toLocaleString("zh-CN")}）\n自动化任务结果与通知将推送到这里。` } }),
       signal: AbortSignal.timeout(10_000),
     }).then((r) => r.json()) as any;
     if (res.errcode !== 0) throw new Error(`Webhook 无效：${res.errmsg ?? JSON.stringify(res).slice(0, 120)}`);

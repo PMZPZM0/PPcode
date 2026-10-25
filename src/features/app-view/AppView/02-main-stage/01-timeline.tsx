@@ -410,15 +410,16 @@ export function MainStageTimeline({ app }: { app: HarnessAppApi }) {
   /* 还有第三种：**还没建群、但已经有 home 锚点**的那个 BOSS 会话（它是普通会话、不在群账本里，
      只看 bossIds 会漏 ⇒ 进去看到的是普通欢迎页/空白）。用户 10-25：「就算没有创建会话，
      进 BOSS 会话也要直接进去会话界面，不要在欢迎界面加载」。 */
-  const isBossHome = Boolean(thread?.id) && String(thread?.id) === bossThreads.homeId;
+  const isBossHome = Boolean(thread?.id) && (bossThreads.sessionIds ?? []).includes(String(thread?.id));
   const isBossEmpty = (bossThreads.pending || isBossThreadNow || isBossHome) && noTurns;
 
   return (
     <div className="timeline-wrap" ref={timelineWrapRef}>
                   {thread && <MemoMessageRuler turns={thread.turns} scrollRef={scrollRef} containerRef={timelineWrapRef} onJump={jumpToTurnInWindow} compactionTurnId={compactionMark.turnId} compactionAtEnd={compactionMark.atEnd} />}
                   {/* BOSS 会话的空白态：与 timeline 同级（绝对定位相对 .timeline-wrap），
-                     不进滚动内容流 —— 普通会话完全不受影响。 */}
-                  {isBossEmpty ? <BossThreadIntro onPick={(text) => { app.setPrompt(text); app.composerInputRef?.current?.focus(); }} /> : null}
+                     不进滚动内容流 —— 普通会话完全不受影响。
+                     ⛔ 传入**本会话自己的 cwd** ⇒ 多个 BOSS 会话各显示各的项目地址（不串项）。 */}
+                  {isBossEmpty ? <BossThreadIntro cwd={thread?.cwd ?? ""} /> : null}
                   <div className={`timeline ${isEmpty ? "empty-state" : ""}`} ref={scrollRef} onScroll={onTimelineScroll} data-history-hidden={historyPlan.hiddenCount} data-history-below={historyPlan.hiddenBelow} data-history-total={historyPlan.hiddenStubs + timelineWindow.ordered.length}>
                   {/* BOSS 会话的空白态是**它自己的一套**（10-25 用户令：跟欢迎界面没关系）——
                      普通会话仍走 welcome-state，这里两者互不影响。 */}
@@ -445,7 +446,7 @@ export function MainStageTimeline({ app }: { app: HarnessAppApi }) {
                   )}
                   {/* ⛔ 空会话不显示「加载更早」（10-25 用户令：没有消息的时候可以隐藏掉）——
                       空会话里那条按钮既没有可加载的内容，又把欢迎语顶下去。 */}
-                  {thread && !isEmpty && (historyPlan.hiddenCount > 0 || hasEarlierCursor) && (
+                  {thread && !isEmpty && !noTurns && (historyPlan.hiddenCount > 0 || hasEarlierCursor) && (
                     <button type="button" className="load-earlier-turns" aria-busy={earlierLoadingId === thread.id} onClick={() => void loadEarlierTurns(thread.id)}>
                       <ChevronDown size={13} style={{ transform: "rotate(180deg)" }} />
                       {earlierLoadingId === thread.id

@@ -441,7 +441,7 @@
 [data-os="darwin"] .app-shell.popout-shell .topbar {
   padding-left: 80px;
 }
-/* ⛔⛔ mac 适配（10-07 用户实测指定）：「把 PPcode 和 logo 放到**系统按键那一排下面**，
+/* ⛔⛔ mac 适配（10-07 用户实测指定）：「把 Codex Harness 和 logo 放到**系统按键那一排下面**，
    下面自适应往下挪一点点」。原做法是 `padding-left: 68px` 把品牌行推到红绿灯**右边**、与它们
    **并排**——用户要的是**上下分层**：红绿灯独占窗口顶部那一排，品牌行整体落到它下方，
    侧栏其余内容（侧栏 tabs / 会话列表）随 flex 列自然下移。
@@ -1526,8 +1526,26 @@ html[data-ui-font="large"] .action-content pre {
 /* BOSS 会话自身的徽标（10-25 用户令：自动新建的 BOSS 会话要打标签）：
    用琥珀金，与「调度」橙 / 专家蓝绿都区分开。 */
 .thread-source-badge.tone-boss {
-  color: var(--amber, #d29922);
-  border-color: color-mix(in srgb, var(--amber, #d29922) 50%, var(--line-soft));
-  background: color-mix(in srgb, var(--amber, #d29922) 14%, transparent);
+  color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 50%, var(--line-soft));
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
   font-weight: 600;
 }
+
+/* 无边框大圆角窗方案暂缓：等设计定稿后再上（当前恢复原生窗口） */
+
+/* ── 10-25 项目行「新建会话」图标（··· 之前，对照 ZCode）── */
+.project-item-new-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex: none;
+}
+.project-item-new-btn:hover { background: var(--panel-2); color: var(--accent); }

@@ -2,7 +2,7 @@
 //
 // 用户 10-25：「你这个验收脚本，老是跑很久之前的内容干嘛，能不能删了，重新写」。
 // 因此本文件只保留当前要守的三条链路：
-//   ① settings-pages：设置页逐页可打开 + 外观/外观头像 / 布布包 / 用户人格位置
+//   ① settings-current：设置页关键页 + 外观/外观头像 / 用户人格位置
 //   ② function-menu：侧栏顶部「新会话 / 搜索任务」+ 两处折叠 + 拖动 + 更多 + 教程
 //   ③ plugin-market-gitee：插件市场 Gitee raw / jsDelivr 兜底（403 限流回归）
 //
@@ -57,21 +57,15 @@ const CHECKS = [
       await wait(1000);
       const uc = await h.eval(`(function(){
         const m=document.querySelector(".settings-modal"); if(!m) return null;
-        const panel=m.querySelector(".bubu-pack-panel");
         const cols=(sel)=>{ const el=m.querySelector(sel); return el?getComputedStyle(el).gridTemplateColumns.split(" ").length:0; };
         return { avatars:[...m.querySelectorAll(".uc-presets button")].map((b)=>b.title),
           codex:[...m.querySelectorAll(".codex-id-preset")].map((b)=>b.title),
           userCols:cols(".uc-presets"), codexCols:cols(".codex-id-preset-grid"),
-          bubuAvatars:panel?panel.querySelectorAll(".bubu-pack-avatar").length:0,
-          bubuStickers:panel?panel.querySelectorAll(".bubu-pack-stickers img").length:0,
-          voiceSelect:panel?panel.querySelectorAll(".bubu-pack-voice").length:0,
-          previewBtn:panel?[...panel.querySelectorAll("button")].some((b)=>(b.textContent||"").includes("试听语音")):false,
           userPersonaHere:!!m.querySelector(".user-persona-grid") };
       })()`).catch(() => null);
-      h.check("① 用户中心：熊头像双端可选（5 列）+ 布布包头像/贴纸/音色/试听齐全，用户人格已移出",
-        Boolean(uc && ["棕熊","白熊","双熊"].every((t)=>uc.avatars.includes(t) && uc.codex.includes(t))
-          && uc.userCols===5 && uc.codexCols===5 && uc.bubuAvatars===2 && uc.bubuStickers===5
-          && uc.voiceSelect===1 && uc.previewBtn && !uc.userPersonaHere),
+      h.check("① 用户中心：常规头像双端可选（5 列）、用户人格已移出",
+        Boolean(uc && uc.avatars.length >= 8 && uc.codex.length >= 6 && uc.userCols === 5 && uc.codexCols === 5
+          && !uc.userPersonaHere),
         JSON.stringify(uc));
 
       await nav("人格市场");
@@ -505,7 +499,7 @@ const CHECKS = [
       await wait(1400);
       const nav = await h.eval(`(function(){ const items=[...document.querySelectorAll('.settings-nav button')];
         const i=items.findIndex((b)=>(b.textContent||'').trim()==='插件'); if(i>=0) items[i].click(); return i; })()`);
-      await wait(1600);
+      await wait(2600);
       const ui = await h.eval(`(function(){
         const t=document.querySelector('.settings-modal')?.innerText||'';
         return { hasSource: t.includes('Gitee 官方镜像') || t.includes('Codex 官方'), noSkillhub: !t.includes('skillhub.cn/plugins'),

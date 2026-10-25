@@ -8,6 +8,8 @@ import { admitThreadRuntimeRef, applyThreadEvent, armSendAnimationClaim, builtin
 import type { Bag } from "../../bag-types";
 import { createToolCallDedupe } from "../../../../../lib/tool-call-dedupe.mjs";
 import { readStoredCodexAvatar, setCodexIdentity } from "../../../../../lib/codex-identity.mjs";
+/* 用户人格库（行业身份预设）：与任何第三方 IP 无关。 */
+import { USER_PERSONAS, userPersonaFields } from "../../../../../lib/user-personas.mjs";
 /* 前端开发（10-05，两轮改名：界面草图 → 手机前端UI → 前端开发）：Codex 读写画布走**对方域的 barrel**（域↔域的唯一接口面）。
    会话单例在 ui-sketch 那边持有（iframe 由弹窗 attach），这里只发请求。 */
 import { applySketchDoc, requestSketchDoc, summarizeDoc, validateSketchDoc, waitSketchReady } from "../../../../ui-sketch";
@@ -141,6 +143,31 @@ export function handleEventRouter2(bag: Bag, event: any): boolean {
                   });
                 } catch (error: any) {
                   await toolCallRespond.send(event.id!, { contentItems: [{ type: "inputText", text: `保存失败：${error.message}` }], success: false });
+                }
+              } else if (event.params?.tool === "persona_apply") {
+                /* 用户人格切换通道：Codex 按行业身份库改用户的 occupation / userContext。
+                   与 identity_update 同一套落点（personalization:save-identity → AGENTS.md），
+                   ⛔ 本会话已注入的旧背景不会热替换，新会话才完整生效 —— 回执里必须写明。 */
+                try {
+                  const target = String(args.target ?? "");
+                  const personaId = String(args.personaId ?? "").trim();
+                  if (target === "user") {
+                    const fields = personaId === "default" ? { occupation: "", userContext: "" } : userPersonaFields(personaId);
+                    if (!fields) {
+                      await toolCallRespond.send(event.id!, { contentItems: [{ type: "inputText", text: `未知用户人格 id：${personaId}。可选：${USER_PERSONAS.map((p) => p.id).join(" / ")}，或 default 恢复空白。` }], success: false });
+                      return;
+                    }
+                    await window.codex.saveIdentity(fields);
+                    const hit = USER_PERSONAS.find((p) => p.id === personaId);
+                    bag.showToast("用户人格已更新", hit ? hit.label : "已恢复空白");
+                    await toolCallRespond.send(event.id!, { contentItems: [{ type: "inputText", text: hit
+                      ? `已应用用户人格「${hit.label}」：职业与背景写进档案（${fields.occupation}）。配套工具建议：${hit.tools.join("、")}（未自动开启，需要时按需安装）。`
+                      : "已恢复空白用户人格（职业与背景已清空）。" }], success: true });
+                    return;
+                  }
+                  await toolCallRespond.send(event.id!, { contentItems: [{ type: "inputText", text: "target 必须是 \"user\"。" }], success: false });
+                } catch (error: any) {
+                  await toolCallRespond.send(event.id!, { contentItems: [{ type: "inputText", text: `人格切换失败：${error.message}` }], success: false });
                 }
               } else if (["group_create", "group_assign", "group_status", "group_review", "group_escalate", "group_add_member", "group_remove_member", "group_browser_setup"].includes(String(event.params?.tool))) {
                 /* 创世 boss 的群编排（10-24）：六个工具共用一条分支。

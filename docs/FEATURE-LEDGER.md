@@ -35,6 +35,7 @@
 
 | 日期 | 功能名称 | 类型 | 影响范围 | 简要描述 | 提交 |
 |---|---|---|---|---|---|
+| 2026-10-25 | 云端积分浮层精简 | 改动 | `src/features/settings-cloud/CloudPointsBadge.tsx` | 与主仓同步：只保留余额 + 最近变动；去掉长 note、未启用闲时提示与设置脚注；仅真正闲时显示「闲时 ×0.5」。 | ab59d45a |
 | 2026-10-25 | 输入框弹层统一：贴触发按钮居中 + 自动关闭 | 改动 | `src/lib/use-centered-popover.ts`、`Composer.tsx`、`EffortPicker.tsx`、`Status.tsx`、`01-balance-badge.tsx`、`02-official-cards.tsx`、`10-settings-providers.css`、`37-cloud-account.css`、验收 model-menu | 与主仓同步：新增共用定位 hook（按实际宽度居中、越界收 8px）；模型/权限菜单、上下文、中转站/OpenAI 余额、思考强度统一贴按钮居中；上下文/余额弹层补 Esc 与鼠标离开关闭。验收 ④⑤ 通过。 | 4244cdd3 |
 | 2026-10-25 | 云模型倍率补齐 + 下拉脚注收口 | 修复 | `electron/cloud-provider.ts`、`cloud-models-ipc.ts`、`useModelProviders.ts`、`01-restart-file-preview.tsx`、`02-composer-form.tsx`、`Composer.tsx`、`19-misc-hints.css` | 与主仓同步：云代理 `/models` 的 credits 按 id 合并进云供应商模型；云账号启动先同步一次、渲染层 3s 补读、打开下拉也刷新。自定义供应商仍不显示，缺失不写。「更多设置…」去掉思考强度注释。PPcode 真机云模型显示 0.08x / 0.17x。 | 26ba34e0 |
 | 2026-10-25 | 模型下拉重做：贴按钮居中 + 账户来源倍率 | 改动 | `src/features/composer/Composer.tsx`、`02-composer-form.tsx`、`10-settings-providers.css`、`19-misc-hints.css`、`src/lib/relay.ts`、`electron/cloud-provider.ts`、`custom-model-types.ts`、`custom-model-ipc.ts`、`01-restart-file-preview.tsx`、验收 model-menu、守卫 07/09 | 与主仓同步：下拉贴着「模型」按钮水平居中，名称/参数/倍率分列，当前项只用底色。倍率只给云账号与中转站登录自动生成的供应商（`source=cloud/relay`）：云取 credits，中转站取 sub2api 分组 rate_multiplier；PPcode 的 pptoken 品牌供应商也靠 source 标签识别，不靠 provider id。自定义供应商不显示，缺失值不写。构建与 model-menu 验收通过。 | 39b24e1e |

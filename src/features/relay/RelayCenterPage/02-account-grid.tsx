@@ -53,7 +53,6 @@ export function RelayCenterPageAccountGrid({ accounts, activeProvider, isActiveP
             <button className="relay-plan-card relay-add-card" onClick={() => setLoginModalOpen(true)}>
               <Plus size={18} />
               <strong>添加中转站账号</strong>
-              <small>登录 pptoken 账户即可，余额与套餐一键接入</small>
             </button>
           </div>
   );

@@ -1090,20 +1090,6 @@ interface Window {
     pollConfigSave(input: { intervalMs?: number; timeoutMs?: number; maxRetry?: number }): Promise<{ intervalMs: number; timeoutMs: number; maxRetry: number }>;
     /* 10-09 用户在界面上按「中止」→ 主进程的 wait 循环停下（任务本身不会被撤销） */
     pollAbort(input: { taskId: string }): Promise<{ ok: boolean; aborted: boolean }>;
-    /* 免费模型网关（free-gateway 域，10-12）：第三方开源侧车服务的状态。⛔ 免责：上游与本项目开发者无关，渠道合规性与可用性由使用者自担 */
-    freeGatewayStatus(): Promise<{ downloaded: boolean; version: string; running: boolean; port: number; forwardKey: string; hasForwardKey: boolean; adminUrl: string; bundled: boolean; stage: string | null; stageError: string | null; lastStartError: string | null; dlBytes: number; dlTotal: number }>;
-    /* 免费模型网关：从 gh 镜像下载上游仓库 zip 并用随包 7za 解压到 userData/free-gateway/app */
-    freeGatewayDownload(input: { force?: boolean }): Promise<{ ok: boolean; version: string; already?: boolean }>;
-    /* 免费模型网关：用随包 node 启动 standalone 网关（OFM_HOME 指向 userData/free-gateway/data），等 /health 就绪 */
-    freeGatewayStart(): Promise<{ ok: boolean; port: number; hasForwardKey: boolean }>;
-    /* 免费模型网关：停掉本应用拉起的侧车进程 */
-    freeGatewayStop(): Promise<{ ok: boolean }>;
-    /* 免费模型网关：返回管理台地址（启动期捕获的一次性登录链接优先） */
-    freeGatewayOpenAdmin(): Promise<{ url: string; port: number }>;
-    /* 免费模型网关：主进程带 forwardKey 拉 /v1/models（⛔ 渲染层 fetch 会被 CORS 拦） */
-    freeGatewayModels(): Promise<{ models: string[] }>;
-    /* 免费模型网关：卸载（停侧车 + 删本体 + 删数据目录） */
-    freeGatewayUninstall(): Promise<{ ok: boolean }>;
     /* 10-13 改动备份（与 WorkBuddy 同构） */
     backupConfigGet(): Promise<{ ok: boolean; error?: string; config?: any }>;
     /* 10-13 改动备份（与 WorkBuddy 同构） */

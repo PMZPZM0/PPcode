@@ -299,7 +299,7 @@ export function ProfileOnboardingWizard({ onApplied, onNotice, onUserAvatar }: {
     <div className="profile-guide-backdrop" role="dialog" aria-modal="true" aria-label="用户配置引导">
       <div className="profile-guide-card">
         <aside className="profile-guide-rail">
-          <div className="profile-guide-brand"><Sparkles size={16} /><strong>Codex Harness</strong></div>
+          <div className="profile-guide-brand"><Sparkles size={16} /><strong>PPcode</strong></div>
           <h2>用一分钟，把 Codex 调成你的样子</h2>
           <p>只保存在本机；随时能在「设置 → 个性化」里改。</p>
           <ol className="profile-guide-steps">

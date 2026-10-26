@@ -46,7 +46,7 @@ import { egoBrowserPath, egoBrowserVersion, runEgoUpgrade } from "../toolchain";
 import { componentSpec, visibleSpecs, type ComponentSpec, type DownloadSourceSetting } from "../update-registry";
 import { scanRows, updateComponent, type ComponentRow, type UpdateOutcome } from "../update-backends";
 import { sendToWindow } from "./window-bus";
-import { codexHome } from "../runtime-refs";
+import { codexHome, mainWindow } from "../runtime-refs";
 import { defineFeature } from "../context";
 import type { IpcHost } from "../ipc-host";
 
@@ -134,6 +134,14 @@ function notifyUpdated(title: string, body: string): void {
   try {
     if (!Notification.isSupported()) return;
     const notice = new Notification({ title, body, silent: true });
+    /* ⛔⛔ 10-26 用户实测：点通知不打开应用 —— 这里原来连 click 都没接。 */
+    notice.on("click", () => {
+      const win = mainWindow;
+      if (!win || win.isDestroyed()) return;
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    });
     notice.show();
   } catch { /* 通知失败不影响更新结果 */ }
 }

@@ -883,6 +883,23 @@ contextBridge.exposeInMainWorld("codex", {
   workLogsRead: (input: { path: string }) => __ipc("work-logs:read", 1, [input]),
   /* 扫各项目的**工作日志与项目记忆**（<项目>/.ppcode-harness/memory/**：长期记忆 / 坑与纪律 / logs 日报 / archive / project）。项目清单来自 rollout 扫出的 cwd 集合。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事 */
   workLogsScan: () => __ipc("work-logs:scan", 0, []),
+  /* 密码本列表（不含明文，只有 hasSecret） */
+  vaultList: () => __ipc("vault:list", 0, []),
+  /* 保存/更新一条；password 省略=保留原密码 */
+  vaultSave: (input: Record<string, unknown>) => __ipc("vault:save", 1, [input]),
+  vaultRemove: (id: string) => __ipc("vault:remove", 1, [id]),
+  /* 主进程解密后直写剪贴板（明文不返回渲染层） */
+  vaultCopy: (id: string) => __ipc("vault:copy", 1, [id]),
+  journalList: () => __ipc("journal:list", 0, []),
+  journalRead: (date: string) => __ipc("journal:read", 1, [date]),
+  /* 整篇覆盖 */
+  journalSave: (date: string, content: string) => __ipc("journal:save", 2, [date, content]),
+  /* 追加一条 */
+  journalAppend: (date: string, title: string, body: string) => __ipc("journal:append", 3, [date, title, body]),
+  journalRemove: (date: string) => __ipc("journal:remove", 1, [date]),
+  journalSearch: (query: string) => __ipc("journal:search", 1, [query]),
+  /* 竖条 + 功能入口菜单的可扩展目录 */
+  extensionsCatalog: () => __ipc("extensions:catalog", 0, []),
   /* ═══ gen:end ═══ */
 
   /* 桌面宠物：主进程归约好的九态推送（浮窗订阅它驱动动画；首帧另用 petState() 补水）。

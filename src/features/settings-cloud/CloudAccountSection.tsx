@@ -13,7 +13,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { BookOpen, Bot, Brain, CheckCircle2, Cloud, Coins, Database, ExternalLink, ListChecks, LogIn, LogOut, RefreshCw, RotateCcw, TriangleAlert } from "lucide-react";
 import { provisionCloud, provisionSummary, type CloudProvisionReport } from "../../lib/cloud-provision.mjs";
-import { PageInfo } from "../../components/SettingsHead";
 import { Spinner } from "../../components/CardShell";
 import { cloudUserCenterUrl } from "../../lib/cloud-links.mjs";
 import { ProviderSetupDialog, type ProviderSetupCompleted, type ProviderSetupIntent } from "../provider-setup";
@@ -489,13 +488,13 @@ export function CloudAccountSection() {
     }
   });
 
-  const doLogout = (id?: string) => {
-    if (!confirmLogout) {
-      setConfirmLogout(true);
-      confirmTimer.current = window.setTimeout(() => setConfirmLogout(false), 4000);
-      return;
-    }
-    setConfirmLogout(false);
+  /* 10-26 三轮用户令：「退出登录没有调弹窗」⇒ 真的弹窗（不再用「再点一次确认」的两击式）。
+     ⛔ 不用 bag.openAppConfirm：守卫 12q 钉死「设置页板块自包含、不吃 props / 不动 bag」，
+        本页复用页内已有的 ResultDialog（阻断式弹窗，与连通测试同一套皮肤）。 */
+  const [logoutAsk, setLogoutAsk] = useState<{ id?: string; title: string } | null>(null);
+  const doLogout = (id?: string, confirmTitle = "退出云账号") => setLogoutAsk({ id, title: confirmTitle });
+  const runLogout = (id?: string) => {
+    setLogoutAsk(null);
     void run("logout", async () => {
       const api = cloudApi();
       if (!api.cloudAuthLogout) return;
@@ -552,26 +551,22 @@ export function CloudAccountSection() {
           onClose={(result) => { setSessionDialog(null); if (result) { setMsg(result); void refresh(); } }}
         />
       )}
-      <div className="settings-copy channel-heading">
-        <div>
-          <h2>
-            云账号
-            <PageInfo
-              text={<>登录云账号后<b>自动配好</b>：云端勾选的模型同步到本机下拉框，<b>云端知识库与记忆</b>一并接通；没开通的会写明原因。云端管理里改了勾选 / 权益，本机最多 10 分钟自动跟上。<br />⛔ 这与「中转站」是两条独立的登录线，互不影响。</>}
-            />
-          </h2>
-          <p className="muted">
-            新手只需登录一次，剩下交给下面的一键配置；重签密钥 / 连通测试 / 上传下载会话等手动操作都收在「高级设置」里。
-          </p>
-        </div>
-        {/* 10-26 用户令：页头加「保存并重启」—— 复用连通测试成功时那颗按钮的同一套动作
-            （非强制同步把配置落定 → 重启应用，引擎只在启动时读 Key）。 */}
-        <div className="settings-heading-actions">
-          <button className="secondary-setting" disabled={!!busy} onClick={doSaveRestart} title="保存云端配置并重启应用，让引擎用上最新密钥与模型">
-            <RotateCcw size={14} />{busy === "save-restart" ? "保存中…" : "保存并重启"}
-          </button>
-        </div>
-      </div>
+      {/* 退出 / 移除云账号的确认弹窗（10-26 用户令：点了要有弹窗）。⛔ 与「再点一次」互斥，只走这一条。 */}
+      {logoutAsk && (
+        <ResultDialog
+          title={logoutAsk.title}
+          tone="info"
+          message="云端模型会从下拉框收起；本机配置保留，重新登录即恢复。"
+          actions={[
+            { label: "取消", onClick: () => setLogoutAsk(null) },
+            { label: "确定", primary: true, onClick: () => runLogout(logoutAsk.id) },
+          ]}
+          onClose={() => setLogoutAsk(null)}
+        />
+      )}
+      {/* 10-26 二轮用户令：「保存重启放一键修复嘴边，小文字简洁表达，右上角问号删除」
+         ⇒ 页头整块（大字 + 副标题 + ?）连 20px 空行一起去掉；「保存并重启」并进就绪卡的操作行，
+         紧挨「一键同步 / 修复」。⛔ 这页现在没有 ? 说明入口，是用户明确要求删的。 */}
 
       {msg && <div className={`cloud-acct-msg ${msg.kind}`}>{msg.text}</div>}
 

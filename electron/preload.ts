@@ -490,6 +490,12 @@ contextBridge.exposeInMainWorld("codex", {
   openaiSetProxy: (proxy: string) => __ipc("openai:set-proxy", 1, [proxy]),
   openaiToggleAccount: (input: { id: string; disabled: boolean }) => __ipc("openai:toggle-account", 1, [input]),
   openaiUsage: (input?: { email?: string }) => __ipc("openai:usage", 0, [input ?? {}]),
+  /* 下载并校验官方安装包（走 updates.downloadUpdate：镜像候选 + 302 + 强制 https + asset.digest 的 sha256）。进度事件 {type:openfilm, phase:desktop} */
+  openfilmDesktopDownload: () => __ipc("openfilm:desktop-download", 0, []),
+  /* 桌面端状态：能不能装 / 已装在哪 / 上游最新版 / 本地安装包。⛔ 不代跑它的 electron-updater（App 更新归 App） */
+  openfilmDesktopInfo: () => __ipc("openfilm:desktop-info", 0, []),
+  /* 运行安装器（Win 带界面 / /S 静默；macOS hdiutil + cp + xattr 清 quarantine）/ 打开安装包目录 / 卸载引导（⛔ 绝不代删 /Applications 或 Program Files） */
+  openfilmDesktopRun: (action?: unknown) => __ipc("openfilm:desktop-run", 0, [action]),
   /* 按需安装（三步可单步重试；npm 走 npmmirror、chromium 走 cdn.npmmirror，失败回官方） */
   openfilmInstall: (step?: unknown) => __ipc("openfilm:install", 0, [step]),
   /* 单步重试（缺省 verify） */

@@ -238,6 +238,32 @@ const CHECKS = [
           && voice.helpInHead && voice.subInBody && voice.pathInBody
           && voice.gapToTop >= 0 && voice.gapToTop < 40 && voice.headRows === "row"),
         JSON.stringify(voice));
+      /* 10-27 用户（子智能体页截图）：「不要内置子智能体…这个卡片删除；返智能体团队按键，
+         跟新建子智能体放一排，靠左」⇒ 横幅卡没了、返回键并进页头操作行且靠左、
+         壳层不再单独占一行。⛔ 内置评审"删了又回来"的根治在启动链（不再种入），
+         这里只量界面；回归验证见提交说明。 */
+      await nav("专家/专家团");
+      await wait(1000);
+      await h.eval(`(function(){ const b=[...document.querySelectorAll(".settings-modal .hub-card")].find((x)=>(x.textContent||"").includes("子智能体")); if (b) b.click(); return 1; })()`);
+      await wait(1200);
+      const agentsPg = await h.eval(`(function(){
+        const m=document.querySelector(".settings-modal"); if(!m) return null;
+        const page=m.querySelector(".subagent-center"); if(!page) return null;
+        const back=page.querySelector(".subagent-back");
+        const neu=[...page.querySelectorAll(".subagent-head-actions button")].find((b)=>(b.textContent||"").includes("新建子智能体"));
+        const r=(el)=>el?el.getBoundingClientRect():null;
+        const br=r(back), nr=r(neu);
+        return { hasBanner:!!page.querySelector(".subagent-banner"),
+          shellBackRow:!!m.querySelector(".settings-back-row"),
+          hasBack:!!back,
+          sameRow: br&&nr ? Math.abs((br.top+br.bottom)/2-(nr.top+nr.bottom)/2) <= 8 : false,
+          backLeft: br&&nr ? br.left < nr.left - 40 : false };
+      })()`).catch(() => null);
+      h.check("⑬ 子智能体页：横幅卡已删；返回键与「新建」同一排且靠左（壳层不再单独占一行）",
+        Boolean(agentsPg && !agentsPg.hasBanner && agentsPg.hasBack && !agentsPg.shellBackRow
+          && agentsPg.sameRow && agentsPg.backLeft),
+        JSON.stringify(agentsPg));
+
       await nav("技能");
       await wait(1000);
       const skillsBar = await h.eval(`(function(){
@@ -377,6 +403,28 @@ const CHECKS = [
           && ["导入", "导出", "新建连接"].every((label)=>sshBar.buttons.some((x)=>x.includes(label)))
           && sshBar.heights.every((h)=>h <= 30)),
         JSON.stringify(sshBar));
+      await nav("专家/专家团");
+      await wait(800);
+      await h.eval(`(function(){ const b=[...document.querySelectorAll(".settings-modal .hub-card")].find((x)=>(x.querySelector("strong")?.textContent||"").trim()==="专家中心"); b?.click(); return b?1:0; })()`);
+      await h.waitFor(`!!document.querySelector(".expert-center-head")`, { label: "专家中心页头", timeoutMs: 5000 }).catch(() => undefined);
+      await wait(400);
+      const expertHead = await h.eval(`(function(){
+        const m=document.querySelector(".settings-modal"); if(!m) return null;
+        const page=m.querySelector(".expert-center-page"); if(!page) return null;
+        const head=page.querySelector(".expert-center-head");
+        const back=head?head.querySelector(".settings-back-row"):null;
+        const market=head?head.querySelector(".settings-heading-actions button"):null;
+        if(!head||!back||!market) return null;
+        const br=back.getBoundingClientRect(), mr=market.getBoundingClientRect();
+        return { page:(m.querySelector(".settings-nav button.active")?.textContent||"").trim(),
+          sameRow:Math.abs((br.top+br.bottom)/2-(mr.top+mr.bottom)/2) <= 10,
+          backLeft:br.left < mr.left,
+          backs:page.querySelectorAll(".settings-back-row").length,
+          pageInfo:!!page.querySelector(".page-info") };
+      })()`).catch(() => null);
+      h.check("⑮ 专家中心：返回与专家市场同一排（返回靠左），问号已删",
+        Boolean(expertHead && expertHead.sameRow && expertHead.backLeft && expertHead.backs === 1 && !expertHead.pageInfo),
+        JSON.stringify(expertHead));
       await h.pressKey("Escape");
       await wait(300);
       await h.pressKey("Escape");

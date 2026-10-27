@@ -8,7 +8,6 @@ import "./ipc-host";
 import "./runtime/seams";
 import type { Plugin } from "./context";
 import { mountFeature } from "./context";
-import { bossGroupsFeature as feat_boss_groups } from "./features/boss-groups-ipc";
 import { agentsFeature as feat_agents } from "./features/agents-ipc";
 import { appFeature as feat_app } from "./features/app-diagnostics";
 import { appLockFeature as feat_app_lock } from "./features/app-lock-ipc";
@@ -16,6 +15,7 @@ import { appSettingsFeature as feat_appSettings } from "./features/app-settings-
 import { autoUpdateFeature as feat_autoUpdate } from "./features/auto-update-ipc";
 import { awakeFeature as feat_awake } from "./features/awake-ipc";
 import { backupFeature as feat_backup } from "./features/change-backup-ipc";
+import { bossGroupsFeature as feat_boss_groups } from "./features/boss-groups-ipc";
 import { botFeature as feat_bot } from "./features/bot-ipc";
 import { botBindingFeature as feat_bot_binding } from "./features/bot-binding-ipc";
 import { botStreamFeature as feat_bot_stream } from "./features/bot-stream-ipc";
@@ -53,9 +53,9 @@ import { fsFeature as feat_fs } from "./features/fs-ipc";
 import { gitFeature as feat_git } from "./features/git-ipc";
 import { historySearchFeature as feat_history } from "./features/history-search-ipc";
 import { hooksFeature as feat_hooks } from "./features/hooks-ipc";
+import { htmlPreviewFeature as feat_html_preview } from "./features/html-preview-ipc";
 import { imageLabFeature as feat_image_lab } from "./features/image-lab";
 import { knowledgeBaseFeature as feat_kb } from "./features/knowledge-base-ipc";
-import { htmlPreviewFeature as feat_html_preview } from "./features/html-preview-ipc";
 import { layaFeature as feat_laya } from "./features/laya-service";
 import { mcpServersFeature as feat_mcp_servers } from "./features/mcp-servers-ipc";
 import { memoryFeature as feat_memory } from "./features/memory-ipc";
@@ -63,6 +63,7 @@ import { modelSpecsFeature as feat_model_specs } from "./features/model-specs-ip
 import { modelViewerFeature as feat_model_viewer } from "./features/model-viewer-ipc";
 import { notifyFeature as feat_notify } from "./features/notify-ipc";
 import { openaiFeature as feat_openai } from "./features/openai-ipc";
+import { openfilmFeature as feat_openfilm } from "./features/openfilm-ipc";
 import { pastedTextFeature as feat_pasted_text } from "./features/pasted-text-ipc";
 import { personalizationFeature as feat_personalization } from "./features/personalization-ipc";
 import { petFeature as feat_pet } from "./features/pet-ipc";
@@ -119,7 +120,6 @@ export type EnabledDomain = { id: string; plugin: Plugin<unknown>; config: unkno
  *     调用 mountEnabledDomains()。原因见该函数注释（10-07 设置缓存被写坏事故）。
  *  ⛔⛔ 本函数体是**模板字符串**：里面**绝不能出现反引号**（会把模板提前闭合 ⇒ 生成器语法错误）。 */
 export const ENABLED: EnabledDomain[] = [
-  { id: "boss-groups", plugin: feat_boss_groups as Plugin<unknown>, config: null },
   { id: "agents", plugin: feat_agents as Plugin<unknown>, config: null },
   { id: "app", plugin: feat_app as Plugin<unknown>, config: null },
   { id: "app-lock", plugin: feat_app_lock as Plugin<unknown>, config: null },
@@ -127,6 +127,7 @@ export const ENABLED: EnabledDomain[] = [
   { id: "autoUpdate", plugin: feat_autoUpdate as Plugin<unknown>, config: null },
   { id: "awake", plugin: feat_awake as Plugin<unknown>, config: null },
   { id: "backup", plugin: feat_backup as Plugin<unknown>, config: null },
+  { id: "boss-groups", plugin: feat_boss_groups as Plugin<unknown>, config: null },
   { id: "bot", plugin: feat_bot as Plugin<unknown>, config: null },
   { id: "bot-binding", plugin: feat_bot_binding as Plugin<unknown>, config: null },
   { id: "bot-stream", plugin: feat_bot_stream as Plugin<unknown>, config: null },
@@ -164,9 +165,9 @@ export const ENABLED: EnabledDomain[] = [
   { id: "git", plugin: feat_git as Plugin<unknown>, config: null },
   { id: "history", plugin: feat_history as Plugin<unknown>, config: null },
   { id: "hooks", plugin: feat_hooks as Plugin<unknown>, config: null },
+  { id: "html-preview", plugin: feat_html_preview as Plugin<unknown>, config: null },
   { id: "image-lab", plugin: feat_image_lab as Plugin<unknown>, config: null },
   { id: "kb", plugin: feat_kb as Plugin<unknown>, config: null },
-  { id: "html-preview", plugin: feat_html_preview as Plugin<unknown>, config: null },
   { id: "laya", plugin: feat_laya as Plugin<unknown>, config: null },
   { id: "mcp-servers", plugin: feat_mcp_servers as Plugin<unknown>, config: null },
   { id: "memory", plugin: feat_memory as Plugin<unknown>, config: null },
@@ -174,6 +175,7 @@ export const ENABLED: EnabledDomain[] = [
   { id: "model-viewer", plugin: feat_model_viewer as Plugin<unknown>, config: null },
   { id: "notify", plugin: feat_notify as Plugin<unknown>, config: null },
   { id: "openai", plugin: feat_openai as Plugin<unknown>, config: null },
+  { id: "openfilm", plugin: feat_openfilm as Plugin<unknown>, config: null },
   { id: "pasted-text", plugin: feat_pasted_text as Plugin<unknown>, config: null },
   { id: "personalization", plugin: feat_personalization as Plugin<unknown>, config: null },
   { id: "pet", plugin: feat_pet as Plugin<unknown>, config: null },

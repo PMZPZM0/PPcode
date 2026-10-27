@@ -286,9 +286,9 @@
   /* ⛔⛔ 10-04 用户纠正：**搜索（会话历史）与调度（目标）是两个完全不同的功能**，
      不该归到同一档自适应隐藏。此前把它们一起收进 980px 是错的 ——
      `.history-search-wrap` = 搜当前会话的消息（高频、无替代入口）；目标/调度 = 低频。
-     搜索另有 Ctrl+Shift+F 快捷键，但快捷键不等于可发现性，顶栏图标必须**无条件显示**。
-     ⇒ 这条渠道只留「搜索不进任何断点」的反向纪律（10-06 夜三轮：目标按钮与面板已整体
-     撤掉，任务清单改由输入框上方的回合状态胶囊承载）。 */
+     ⛔ **10-11 再次改判**：用户要求「这一排图标按窗口大小自适应隐藏」，追问后明确
+     **搜索也一起收**（进最窄档 ≤640）⇒ 上面那段"搜索永不隐藏"**已作废**；此处只保留
+     "搜索与调度不是同一档"这条仍然成立的口径（搜索留到最窄档、调度在 ≤860 收）。 */
   /* ⛔ .task-menu-wrap 是上面那个 📋 按钮的**容器**（与 .ctx-picker 同构问题）：
      藏按钮但留容器 ⇒ 已打开的浮层 .task-menu 照样渲染、压住窗口钮。 */
   .topbar-actions .task-menu-wrap {
@@ -296,6 +296,11 @@
   }
 @media (width<=860px) {
   .topbar-actions .tb-task-menu {
+    display: none;
+  }
+  /* 10-11：调度开关（👥）此前**任何断点里都没有**（09-13 那套只列了当时存在的按钮，它一直漏在档外）
+     —— 用户报「窄了也不隐藏」。它属低频（10-04 已判定「调度/目标 = 低频」），与 ⋯ 同档收。 */
+  .topbar-actions .dispatch-topbar-btn {
     display: none;
   }
   /* ⛔⛔ 10-04 用户截图「搜索/调度压在最小化-最大化-关闭底下」——
@@ -388,7 +393,17 @@
     gap: 6px;
     padding: 0 10px;
   }
-  /* ⛔ 10-26：图标是缩档后唯一还能显示的内容，⛔ 不能连 svg 一起藏（藏了就变成 0 宽的空气）。 */
+  /* ⛔⛔ 10-11 用户**改判**：🔍 搜索也进最窄档（原话「这一排图标要根据窗口大小自适应隐藏，
+     主界面上面这一排和独立弹窗这一排都要自适应隐藏」，追问后明确「搜索也一起收」）。
+     ⇒ 上面那条 10-04 的「搜索（.history-search-wrap）**不进任何断点**、顶栏图标必须无条件显示」
+       **就此作废**（当时理由是「无替代入口」；快捷键 Ctrl+Shift+F 仍在，用户接受）。
+     ⛔ 隐藏按钮时必须连**浮层**一起收：`.history-search-panel` 是 portal 到 body 的，
+       父容器 display:none 藏不住它；状态位由 part04 的 matchMedia 逻辑兜底关掉（同 .ctx-menu 范式）。 */
+  .topbar-actions .history-search-wrap,
+  .history-search-panel {
+    display: none;
+  }
+  /* ⛔ 10-26 同上：图标是缩档后唯一还能显示的内容，⛔ 不能连 svg 一起藏（藏了就变成 0 宽的空气）。 */
   .task-title span {
     display: none;
   }
@@ -901,6 +916,16 @@
   margin: 6px 0 8px;
   font-size: 13px;
 }
+/* 10-27 用户令：「新增定时任务放到闲时模板那一排字，这行靠右」⇒ 标题行左右分置。 */
+.auto-templates-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px 0 8px;
+}
+.auto-templates-head h3 { margin: 0; }
+.auto-templates-head > button { flex: none; }
 .template-grid {
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 10px;
@@ -1186,9 +1211,12 @@
   flex-direction: column;
   justify-content: center;
   align-items: flex-start;
-  /* ⛔ 10-26 用户：「刻度线中间那么小一个缝隙，鼠标上下滑动都会断」——
-     2px 线 + 上下 4px padding + 4px gap ⇒ 每格之间 4px 死区，指针穿过被判 mouseleave。
-     改零 gap + 上下 6px：单槽仍 14px（线间距与外观不变），命中区首尾相接。 */
+  /* ⛔⛔ 10-26 用户：「刻度线中间那么小一个缝隙，鼠标上下滑动都会断」——
+     原来是 2px 线 + 上下各 4px padding + **4px gap** ⇒ 每格之间有 4px 死区，
+     指针穿过就被判成 mouseleave（tip 闪断、波浪跳、声音漏）。
+     改成 **零 gap**：把上下 padding 4→6px，单槽仍是 14px（2+12），
+     线间距与整条尺子的外观**一模一样**，但命中区首尾相接、没有死区。
+     ⛔ 槽高仍是 14px ⇒ visibleCount = h/14 不用动。 */
   gap: 0;
   display: flex;
   position: absolute;
@@ -1206,7 +1234,7 @@
   width: 12px;
   height: 2px;
   margin-left: 12px;
-  /* 2px 线 + 上下 6px = 14px 命中区（配 gap:0 ⇒ 相邻刻度相接） */
+  /* 2px 线 + 上下 6px = 14px 命中区（与轨道 gap:0 配合 ⇒ 相邻刻度命中区相接） */
   padding: 6px 0;
   transition:
     width 0.26s cubic-bezier(0.22, 0.61, 0.36, 1),

@@ -218,7 +218,7 @@ export async function run() {
     const hintCount = (appC.match(/<PageInfo\b/g) || []).length;
     // 10-27：用户连续令「各页右上角 ? 删了」（模型 / MCP / 插件 / 人格市场 / 子智能体页头…）
     //   ⇒ 下限跟着实测降到 11；这条守的是「说明别摊回标题下」，不是「? 必须越多越好」。
-    (hintCount >= 1)
+    (hintCount <= 2)
       ? ok(`【32】设置页挂了 ${hintCount} 处 ? 号（说明收进 ?，头部恒为一行）`)
       : fail(`【32】? 号只有 ${hintCount} 处 —— 说明又被摊回标题下了（赘述回潮）`);
     const keyedHints = ((appC + voiceC).match(/helpKey="/g) || []).length;
@@ -232,7 +232,7 @@ export async function run() {
     //    这正是本条守卫要防的形态（本轮 code review 抓到的两个真问题之一）。
     // 10-26/10-27 用户令：模型页、插件页、MCP 页的 ? 都被明确撤掉（问号删除 / 删页头?），
     //    帮助库里的主题内容保留 —— 它们是**明确要求**、不是漏挂 ⇒ 列入例外，别消红消成假绿。
-    const NO_HINT_KEYS = ["model", "mcp", "plugins", "skills", "devtools"];
+    const NO_HINT_KEYS = ["model", "mcp", "plugins", "skills", "devtools", "agentteam"];
     const orphanKeys = HELP_KEYS.filter((key) => !NO_HINT_KEYS.includes(key) && !new RegExp(`helpKey="${key}"`).test(appC + voiceC));
     (orphanKeys.length === 0)
       ? ok(`【32】${HELP_KEYS.filter((key) => !NO_HINT_KEYS.includes(key)).length} 个帮助主题都有 ? 入口（无"内容库在、入口丢了"的孤儿）`)

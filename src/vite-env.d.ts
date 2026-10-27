@@ -837,6 +837,12 @@ interface Window {
     openaiSetProxy(proxy: string): Promise<{ ok: boolean }>;
     openaiToggleAccount(input: { id: string; disabled: boolean }): Promise<{ ok: boolean; disabled: boolean; deactivated?: boolean }>;
     openaiUsage(input?: { email?: string }): Promise<any>;
+    /* 下载并校验官方安装包（走 updates.downloadUpdate：镜像候选 + 302 + 强制 https + asset.digest 的 sha256）。进度事件 {type:openfilm, phase:desktop} */
+    openfilmDesktopDownload(): Promise<{ ok: boolean; path?: string; error?: string; version?: string }>;
+    /* 桌面端状态：能不能装 / 已装在哪 / 上游最新版 / 本地安装包。⛔ 不代跑它的 electron-updater（App 更新归 App） */
+    openfilmDesktopInfo(): Promise<{ supported: boolean; reason: string; platform: string; installed: { installed: boolean; path: string; version: string }; version: string; error: string; asset: { name: string; size: number } | null; local: { path: string; size: number } | null; localOutdated: boolean; runningApp: boolean }>;
+    /* 运行安装器（Win 带界面 / /S 静默；macOS hdiutil + cp + xattr 清 quarantine）/ 打开安装包目录 / 卸载引导（⛔ 绝不代删 /Applications 或 Program Files） */
+    openfilmDesktopRun(action?: "install" | "silent" | "reveal" | "uninstall"): Promise<{ ok: boolean; action: string; error?: string; note?: string }>;
     /* 按需安装（三步可单步重试；npm 走 npmmirror、chromium 走 cdn.npmmirror，失败回官方） */
     openfilmInstall(step?: "cli" | "chromium" | "verify"): Promise<{ ok: boolean; code?: string; error?: string; status: OpenfilmStatus }>;
     /* 单步重试（缺省 verify） */

@@ -1,7 +1,7 @@
 {
   "_comment": "IPC 桥的单一真相源。加/改接口只改这里，然后跑 `npm run gen:ipc`。字段：paramsImpl=preload 实现参数（含默认值），paramsDecl=d.ts 声明参数，returns=返回类型，cast=invoke 后的 as 尾转换（没有则 null），note=显示在生成物里的备注。事件订阅等非 invoke 成员不在这里（仍在 preload.ts 手写）。",
   "generatedAt": "2026-10-09",
-  "count": 551,
+  "count": 554,
   "channels": [
     {
       "name": "archiveDelegates",
@@ -2722,6 +2722,36 @@
       "invokeArgs": "input ?? {}",
       "cast": null,
       "note": null
+    },
+    {
+      "name": "openfilmDesktopDownload",
+      "channel": "openfilm:desktop-download",
+      "paramsImpl": "",
+      "paramsDecl": "",
+      "returns": "Promise<{ ok: boolean; path?: string; error?: string; version?: string }>",
+      "invokeArgs": "",
+      "cast": null,
+      "note": "下载并校验官方安装包（走 updates.downloadUpdate：镜像候选 + 302 + 强制 https + asset.digest 的 sha256）。进度事件 {type:openfilm, phase:desktop}"
+    },
+    {
+      "name": "openfilmDesktopInfo",
+      "channel": "openfilm:desktop-info",
+      "paramsImpl": "",
+      "paramsDecl": "",
+      "returns": "Promise<{ supported: boolean; reason: string; platform: string; installed: { installed: boolean; path: string; version: string }; version: string; error: string; asset: { name: string; size: number } | null; local: { path: string; size: number } | null; localOutdated: boolean; runningApp: boolean }>",
+      "invokeArgs": "",
+      "cast": null,
+      "note": "桌面端状态：能不能装 / 已装在哪 / 上游最新版 / 本地安装包。⛔ 不代跑它的 electron-updater（App 更新归 App）"
+    },
+    {
+      "name": "openfilmDesktopRun",
+      "channel": "openfilm:desktop-run",
+      "paramsImpl": "action?: unknown",
+      "paramsDecl": "action?: \"install\" | \"silent\" | \"reveal\" | \"uninstall\"",
+      "returns": "Promise<{ ok: boolean; action: string; error?: string; note?: string }>",
+      "invokeArgs": "action",
+      "cast": null,
+      "note": "运行安装器（Win 带界面 / /S 静默；macOS hdiutil + cp + xattr 清 quarantine）/ 打开安装包目录 / 卸载引导（⛔ 绝不代删 /Applications 或 Program Files）"
     },
     {
       "name": "openfilmInstall",

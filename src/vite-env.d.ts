@@ -372,6 +372,24 @@ type FavoriteItem = {
   lastUsedAt?: string;
 };
 type FavoriteDeleteResult = { items: FavoriteItem[]; removed: number };
+
+/* ── 输入框左侧竖条的两个本地库（10-27）────────────────────────────────────
+   vault   = 密码本（safeStorage 加密；渲染层只拿 hasSecret，永远没有明文）
+   journal = 开发日记（userData/dev-journal/YYYY-MM-DD.md，按天一个文件） */
+type VaultItem = {
+  id: string;
+  title: string;
+  username?: string;
+  url?: string;
+  note?: string;
+  hasSecret: boolean;
+  updatedAt: string;
+};
+type JournalDay = { date: string; title: string; bytes: number; updatedAt: string };
+type ExtAction = { type: "url"; target: string } | { type: "settings"; target: string } | { type: "text"; body: string };
+type RailPanelSpec = { id: string; label: string; icon?: string; kind: "builtin" | "external"; action?: ExtAction; order?: number };
+type MenuEntrySpec = { id: string; label: string; icon?: string; action: ExtAction; order?: number };
+
 /** 写入记忆金字塔的层：user=L0 用户档案 · project=L1 项目记忆 · background=L3 项目背景 · lessons=L2 纪律 */
 type MemoryLayerScope = "user" | "project" | "background" | "lessons";
 type FavoritesToMemoryResult = { ok: boolean; written: number; error?: string };
@@ -1230,6 +1248,23 @@ interface Window {
     workLogsRead(input: { path: string }): Promise<{ path: string; text: string; bytes: number; mtime: number }>;
     /* 扫各项目的**工作日志与项目记忆**（<项目>/.ppcode-harness/memory/**：长期记忆 / 坑与纪律 / logs 日报 / archive / project）。项目清单来自 rollout 扫出的 cwd 集合。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事 */
     workLogsScan(): Promise<{ projects: Array<{ cwd: string; name: string; memoryDir: string; exists: boolean; bytes: number; files: Array<{ path: string; rel: string; kind: string; bytes: number; mtime: number }> }> }>;
+    /* 密码本列表（不含明文，只有 hasSecret） */
+    vaultList(): Promise<{ items: VaultItem[]; encrypted: boolean }>;
+    /* 保存/更新一条；password 省略=保留原密码 */
+    vaultSave(input: { id?: string; title?: string; username?: string; url?: string; note?: string; password?: string }): Promise<{ items: VaultItem[] }>;
+    vaultRemove(id: string): Promise<{ items: VaultItem[] }>;
+    /* 主进程解密后直写剪贴板（明文不返回渲染层） */
+    vaultCopy(id: string): Promise<{ ok: boolean; reason?: string }>;
+    journalList(): Promise<{ days: JournalDay[]; dir: string; today: string }>;
+    journalRead(date: string): Promise<{ date: string; content: string }>;
+    /* 整篇覆盖 */
+    journalSave(date: string, content: string): Promise<{ days: JournalDay[]; date: string }>;
+    /* 追加一条 */
+    journalAppend(date: string, title: string, body: string): Promise<{ days: JournalDay[]; date: string }>;
+    journalRemove(date: string): Promise<{ days: JournalDay[] }>;
+    journalSearch(query: string): Promise<{ hits: { date: string; lines: string[] }[] }>;
+    /* 竖条 + 功能入口菜单的可扩展目录 */
+    extensionsCatalog(): Promise<{ rail: RailPanelSpec[]; menu: MenuEntrySpec[]; file: string }>;
 /* ═══ gen:end ═══ */
 
     /** 桌面宠物状态推送（主进程归约九态 → 浮窗；浮窗首帧另用 petState() 补水） */

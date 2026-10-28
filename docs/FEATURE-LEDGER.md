@@ -35,6 +35,7 @@
 
 | 日期 | 功能名称 | 类型 | 影响范围 | 简要描述 | 提交 |
 |---|---|---|---|---|---|
+| 2026-10-28 | 悬浮球任务姿态 + 安静陪伴（同步主仓） | 改动 | `VoiceCallFloat`（组件 / 状态 hook / 新增 `use-voice-task-mood`）、`VoiceSettingsSection`、`18-openai-dialog.css`、`electron/voice/voice-settings.ts`、`11z`、`accept` | 与主仓同轮（dec5eba9b）：悬浮球接引擎回合状态（在想 / 在干活 / 等你确认 / 干完 6s / 出错 4s 垂眼），事件按会话过滤、waiting 优先；安静陪伴（设置页 + 右键菜单，落盘 ball.quiet）；自适应降噪（连续 3 条没人理当天静音，交互解除）；prefers-reduced-motion 降级。11z +13 条；验收 `voice-ball-task` 3/3。 | 待提交 |
 | 2026-10-28 | 钩子页工具栏（同步主仓） | 改动 | `src/features/settings-hooks/HooksSettingsSection.tsx`、`src/styles/06-market-icons.css` | 与主仓同轮：钩子页加搜索（事件 / 命令 / 来源）+ 状态 / 来源筛选 + 刷新工具栏，匹配计数与清除筛选空态；只影响显示，不改启用 / 信任 / 联动语义。12ad / 11u 全绿。 | 待提交 |
 | 2026-10-28 | 引擎安装自愈（同步主仓） | 修复 | `electron/engine-install-heal.ts`、`electron/features/boot.ts`、`electron/engine-updater.ts`、`src/features/app-state/parts/part04/03-seg/02-browser-queue-settings.tsx`、`scripts/guards/12l-component-update.mjs` | 与主仓同轮：在线更新落位/回滚失败会让 `bin/codex.exe` 消失（技能/钩子/插件一起报 spawn ENOENT），且下次更新会删掉唯一备份。启动前自愈 + 删备份前确认 live 在位 + 落位失败保留解压产物 + 回滚留日志；守卫 12l +6 条（53/53）。 | 待提交 |
 | 2026-10-28 | AppSelect 定位改用统一浮层原语（同步主仓） | 改动 | `src/components/AppSelect.tsx` | 与主仓同轮：下拉框不再自写贴边/翻转，改调 AnchorPopover 的 placePopover()；向上开仍以按钮底边为锚。 | 待提交 |
@@ -345,3 +346,4 @@
 | 2026-10-28 | 手机端运行过程补齐：整轮思考兜底 + 命令输出 | 改动 | `electron/features/boot.ts`、`electron/remote/web-page.ts`、守卫 04/09 | 同步主仓 cbd046501：turn.items 兜底思考（done 前）、命令输出挂到对应步骤、标题带「含思考」。守卫【139b】+2。 | 本轮 |
 | 2026-10-28 | 手机端 Markdown 渲染 | 新增 | `src/lib/mobile-markdown.mjs`（+ `.d.mts`）、`electron/remote/web-page.ts`、守卫 04 | 同步主仓 adc878e23：纯函数渲染器（先转义后排版），页面内联同一份源码。守卫【139b】+2（含真值表）。 | 本轮 |
 | 2026-10-28 | 手机运行过程显示文件变更 +N −M | 改动 | `electron/features/boot.ts`、`electron/remote/web-page.ts`、`electron/turn-file-watch.ts`、守卫 04/09 | 同步主仓 c1ef55364：追踪器 live 报告带 threadId 转发到手机，页面一行原地更新。守卫【139b】+1。 | 本轮 |
+| 2026-10-28 | 运行步骤对齐：工具参数 + 逐文件 +N −M | 改动 | `electron/features/boot.ts`、`electron/remote/web-page.ts`、守卫 04/09 | 同步主仓 078190bef：工具步骤带 server 前缀与参数摘要；文件变更逐文件一行（≤5）。守卫【139b】+1。 | 本轮 |

@@ -8,7 +8,6 @@ import { compactionRecordFor, compactionVersion, subscribeCompactions } from "..
 import { resolveCompactionAnchor } from "../../../../lib/compaction-anchor.mjs";
 import { Fragment, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { BossThreadIntro, getBossThreads, subscribeBossThreads } from "../../../boss-group-view";
-import { HomeView } from "../../../home";
 import { avatarToneOf, AVATAR_GRADIENTS, registerThreadTeam, unregisterThreadTeam, resolveTeamMember } from "../../../../lib/entity-avatar";
 import {
   AlertTriangle,
@@ -476,11 +475,6 @@ export function MainStageTimeline({ app }: { app: HarnessAppApi }) {
                       （普通 / 中枢两种，可切换；发消息才建会话 —— 用户令「不会一进去就是对话」）。
                       ⛔ 中枢引导卡（isBossEmpty）仍优先：刚点「指挥中枢/新建中枢会话」那一刻要看引导，
                         不是首页；首页只在「没选中会话且不是中枢待发」时出现。 */}
-                  {isEmpty && !isBossEmpty ? (
-                    <div className="home-state">
-                      <HomeView app={app} />
-                    </div>
-                  ) : null}
                   {/* 导入会话记录后、尚未发送首条消息：记录预览卡常驻消息区顶部；发送后转为消息内的导入卡 */}
                   {thread && (thread.turns ?? []).length === 0 && pendingImportThreads[thread.id] ? <PendingImportSlot key={thread.id} threadId={thread.id} onDiscard={() => forgetPendingImport(thread.id)} /> : null}
                   {/* 长会话窗口化 + 虚拟滚动条（10-21）：

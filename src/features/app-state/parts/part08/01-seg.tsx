@@ -13,7 +13,6 @@ import { removeBossSessionId } from "../../../boss-group-view";
 import { BOSS_ROLE_PROMPT, bossDirFor, getBossThreads, setBossDirChosen } from "../../../boss-group-view";
 import { BOSS_SEED_VERSION, markSeeded } from "../../../../lib/prompt-seeds.mjs";
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import "@xterm/xterm/css/xterm.css";
 import { composeScopeInstructions, sessionScopeBlock, sessionScopeSignature } from "../../../../lib/session-scope.mjs";
 import { parseUserRefs, userDisplayText, userMessageMatchesInput, firstUserTextInTurn, cleanThreadDisplayTitle, extractThreadReferenceIds, stripThreadReferenceIds, formatThreadReferenceBlock, buildThreadReferencePayload, type ParsedUserRefs, type ThreadReferencePayload } from "../../../../lib/user-refs";
 import { basename } from "../../../../lib/basename";

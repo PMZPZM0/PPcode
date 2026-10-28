@@ -342,3 +342,4 @@
 | 2026-10-28 | 手机端思考内容兜底：供应商不流式时用完整摘要 | 修复 | `electron/features/boot.ts`、守卫 04/09 | 同步主仓 14564e92e：思考开始给空块；无增量时在 item/completed 用 summary/content 全文补发，已流式过的回合不重复。守卫【139b】+1。 | 本轮 |
 | 2026-10-28 | 审查修复：思考去重按条目 + delta/text 双字段 + 清空壳 | 修复 | `electron/features/boot.ts`、`electron/remote/web-page.ts`、守卫 04/09 | 同步主仓 2cc4cd904：去重键到条目粒度、增量取 delta ?? text、回合结束清空思考块。守卫【139b】+1。 | 本轮 |
 | 2026-10-28 | 手机端历史也展示思考 | 改动 | `electron/main.ts`、`electron/remote.ts`、`electron/remote/web-page.ts`、守卫 04/09 | 同步主仓 12333831d：历史接口增加 role:think，手机端折叠展示。守卫【139b】+1。 | 本轮 |
+| 2026-10-28 | 手机端运行过程补齐：整轮思考兜底 + 命令输出 | 改动 | `electron/features/boot.ts`、`electron/remote/web-page.ts`、守卫 04/09 | 同步主仓 cbd046501：turn.items 兜底思考（done 前）、命令输出挂到对应步骤、标题带「含思考」。守卫【139b】+2。 | 本轮 |

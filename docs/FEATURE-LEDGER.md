@@ -35,6 +35,7 @@
 
 | 日期 | 功能名称 | 类型 | 影响范围 | 简要描述 | 提交 |
 |---|---|---|---|---|---|
+| 2026-10-28 | 本机测试端口自动展开右栏浏览器（同步主仓） | 改动 | `src/features/dev-port/`（新板块）、`AppView.tsx`、`12ag-dev-port.mjs`、`accept` | 与主仓同轮（13c670ed2）：当前会话命令输出出现带端口的 localhost ⇒ 自动开右栏浏览器 + 加宽到 560；只认正在跑的回合、每 URL 只开一次、0.0.0.0 归一。守卫 12ag 11 条（真值表真跑）；验收 `dev-port` 3/3（秒级）。 | 待提交 |
 | 2026-10-28 | 悬浮球任务姿态 + 安静陪伴（同步主仓） | 改动 | `VoiceCallFloat`（组件 / 状态 hook / 新增 `use-voice-task-mood`）、`VoiceSettingsSection`、`18-openai-dialog.css`、`electron/voice/voice-settings.ts`、`11z`、`accept` | 与主仓同轮（dec5eba9b）：悬浮球接引擎回合状态（在想 / 在干活 / 等你确认 / 干完 6s / 出错 4s 垂眼），事件按会话过滤、waiting 优先；安静陪伴（设置页 + 右键菜单，落盘 ball.quiet）；自适应降噪（连续 3 条没人理当天静音，交互解除）；prefers-reduced-motion 降级。11z +13 条；验收 `voice-ball-task` 3/3。 | 待提交 |
 | 2026-10-28 | 钩子页工具栏（同步主仓） | 改动 | `src/features/settings-hooks/HooksSettingsSection.tsx`、`src/styles/06-market-icons.css` | 与主仓同轮：钩子页加搜索（事件 / 命令 / 来源）+ 状态 / 来源筛选 + 刷新工具栏，匹配计数与清除筛选空态；只影响显示，不改启用 / 信任 / 联动语义。12ad / 11u 全绿。 | 待提交 |
 | 2026-10-28 | 引擎安装自愈（同步主仓） | 修复 | `electron/engine-install-heal.ts`、`electron/features/boot.ts`、`electron/engine-updater.ts`、`src/features/app-state/parts/part04/03-seg/02-browser-queue-settings.tsx`、`scripts/guards/12l-component-update.mjs` | 与主仓同轮：在线更新落位/回滚失败会让 `bin/codex.exe` 消失（技能/钩子/插件一起报 spawn ENOENT），且下次更新会删掉唯一备份。启动前自愈 + 删备份前确认 live 在位 + 落位失败保留解压产物 + 回滚留日志；守卫 12l +6 条（53/53）。 | 待提交 |

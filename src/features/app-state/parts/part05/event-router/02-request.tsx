@@ -91,7 +91,7 @@ export function handleEventRouter2(bag: Bag, event: any): boolean {
                 const cat = String(args.category ?? "临时上下文");
                 const scope = args.scope === "project" ? "project" : "private";
                 /* ⛔⛔ 10-25：指挥中枢的记忆必须写进它自己的专属目录 ——
-                   用 `bag.workspace`（用户选的项目）会把 中枢的记忆写进项目记忆里，
+                   用 `bag.workspace`（用户选的项目）会把中枢的记忆写进项目记忆里，
                    与普通会话混在一起 ⇒ 与普通会话完全拆开的承诺就破了。 */
                 const bossMemWs = await ensureBossMemoryWorkspace(String(event.params?.threadId ?? bag.threadRef.current?.id ?? ""));
                 const result = await window.codex.writeFabricMemory({
@@ -318,7 +318,8 @@ export function handleEventRouter2(bag: Bag, event: any): boolean {
                     });
                     if (!res?.ok) await bad(`删群失败：${res?.error ?? "未知原因"}`);
                     else await ok(`群「${res?.deleted?.name ?? ""}」已删除：清掉 ${res?.deleted?.tasks ?? 0} 条任务与 ${res?.deleted?.events ?? 0} 条事件`
-                      + `${res?.deleted?.running ? `，${res.deleted.running} 条未完成的活已终止` : ""}。`
+                      + `${res?.deleted?.running ? `，${res.deleted.running} 条未完成的活已终止` : ""}`
+                      + `${res?.deleted?.notified === false ? "（注意：中枢回投没成功，这条结果就是通知）" : ""}。`
                       + `成员会话与产出文件保留；要接着干就重新 group_create。`);
                   } else {
                     const st = await window.codex.bossBrowserStatus();
@@ -347,7 +348,7 @@ ${st.hint}`);
               //    已整体删除（它与调度开关脱钩、还让专家/专家团永远被绕过），⛔ 不许加回来。
               else if (event.params?.tool === "agent_invoke") {
                 const dispatchOrigin = String(event.params?.threadId ?? bag.threadRef.current?.id ?? "");
-                /* ⛔ 中枢群会话不用调度工具（10-25 用户令）：群里的派遣只有 group_assign 一条路，
+                /* ⛔中枢群会话不用调度工具（10-25 用户令）：群里的派遣只有 group_assign 一条路，
                    否则两套派遣并行会把账本撕裂。拒绝时告诉模型正确工具。 */
                 const bossHit = await (async () => {
                   try {
@@ -357,7 +358,7 @@ ${st.hint}`);
                 })();
                 if (bossHit) {
                   await toolCallRespond.send(event.id!, {
-                    contentItems: [{ type: "inputText", text: "你是群里的 中枢：不用 agent_invoke 调度，改用 group_assign 派活（验收标准 criteria 必填）。" }],
+                    contentItems: [{ type: "inputText", text: "你是这个群的指挥中枢：不用 agent_invoke 调度，改用 group_assign 派活（验收标准 criteria 必填）。" }],
                     success: false,
                   });
                 } else {
@@ -664,6 +665,7 @@ ${st.hint}`);
                   success: info?.ok === true,
                 });
               } else if (event.params?.tool === "image_view") {
+                /* 10-29：主进程图像工坊已放开可信根（任意图片可直接看），这里不再需要授权重试。 */
                 const viewed: any = await window.codex.imageView({
                   path: String(args.path ?? ""),
                   title: args.title ? String(args.title) : undefined,

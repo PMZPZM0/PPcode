@@ -26,6 +26,7 @@ import {
   CircleStop,
   Cloud,
   CloudOff,
+  Code2,
   Copy,
   Eye,
   EyeOff,
@@ -194,14 +195,11 @@ import { ImagePreview, ImageLightbox, SearchPreviewModal, PastedTextEditor, type
 import { decodeText } from "../../../../hooks/useFilePreview";
 
 /** 会话工作区文件的弹窗编辑读写通道（pastedText.kind==="file" 时用）：读 = fs:read（base64→
- *  与右栏预览同一 decodeText 口径，GBK 兜底）；写 = fs:write（可信根校验在主进程，root 参数不参与判定）。 */
-/** ⛔ 10-18 预览修复：路径在会话工作区之外时，主进程返回 OUTSIDE_TRUST:<dir>（机器可读）。
- *  这里弹一次确认，用户同意后调 fs:allow 放行**该目录**（主进程持久化，重启仍有效），再重试一次。
- *  ⛔ 只在用户点击打开文件这条路径上发生 —— 不是模型能触发的放行。 */
+ *  与右栏预览同一 decodeText 口径，GBK 兜底）；写 = fs:write。
+ *  ★ 10-29 用户令：预览 / 编辑不再有授权环节（主进程 fs 通道已放开可信根，任意文件可读可写）
+ *  ⇒ 这里就是直读直写，不再有 OUTSIDE_TRUST / fs:allow 的重试逻辑（那套已整体删除）。 */
 const fileEditTransport: TextEditorTransport = {
   read: async (path: string) => {
-    /* ⛔ 越界（OUTSIDE_TRUST:<dir>）不在这一层处理：⛔ 原生 confirm 被守卫【191】禁（吞焦点）。
-       授权 UI 在编辑器里（PastedTextEditor 内联按钮），这里原样抛出让 UI 识别前缀。 */
     const result = await window.codex.readFile(path);
     const binary = atob(result.dataBase64 ?? "");
     return decodeText(Uint8Array.from(binary, (value) => value.charCodeAt(0)));
@@ -217,7 +215,7 @@ import { RequestCard, ToolCard, VoiceSettingsBridge, admitThreadRuntimeRef, ago,
 import type { HarnessAppApi } from "../../../app-state/useHarnessApp";
 
 export function MainStageTimeline({ app }: { app: HarnessAppApi }) {
-  /* 10-25 用户令：指挥中枢的空态要有自己的引导语（「你好 中枢…」），发送后自然消失。
+  /* 10-25 用户令：指挥中枢的空态要有自己的引导语（「你好中枢…」），发送后自然消失。
      ⛔ 用共享 store 判断，别在这里再拉一次 listBossGroups。 */
   const bossThreads = useSyncExternalStore(subscribeBossThreads, getBossThreads);
   const {
@@ -424,9 +422,12 @@ export function MainStageTimeline({ app }: { app: HarnessAppApi }) {
     const win = { ordered: timelineWindow.ordered, visible: historyPlan.visible };
     const cs = compactionStateOf(win.ordered, threadCompactToast?.state);
     const record = compactionRecordFor(thread.id);
-    /* ⛔⛔ 10-26 用户：「都没压缩过，好多绿线」「绿线跟着滚轮跑，压根不是压缩线的位置」——
-       没有压缩证据时也照画（纯函数兜底 = visible 最后一回合）⇒ 凭空一条线且跟着滚。
-       ⇒ 没证据不画；有证据但定不了位置也不画。 */
+    /* ⛔⛔ 10-26 用户两条实测：「都没压缩过，好多绿线」「绿线跟着滚轮跑，压根不是压缩线的位置」。
+       根因：**没有任何压缩证据时也照调 resolveCompactionAnchor("", {at:0})**，而它的兜底是
+       「visible 的最后一回合」⇒ 每个没压缩过的会话都会凭空长出一条绿线，窗口一滚它就跟着跑。
+       ⇒ 两道闸：
+         ① 没有压缩证据（渲染层窗口里没有压缩项 / 该会话没有压缩记录 / 没有该会话的 toast）⇒ 不画；
+         ② 有证据但**定不了位置**（既没有回合 id，也没有毫秒时间）⇒ 也不画（宁可不画，不画错位置）。 */
     const hasEvidence = cs.state === "done" || cs.state === "compacting" || Boolean(record);
     if (!hasEvidence) return { turnId: "", atEnd: false };
     const boundary = cs.turnId || String(record?.turnId ?? "");
@@ -473,10 +474,13 @@ export function MainStageTimeline({ app }: { app: HarnessAppApi }) {
                   <div className={`timeline ${isEmpty ? "empty-state" : ""}`} ref={scrollRef} onScroll={onTimelineScroll} data-history-hidden={historyPlan.hiddenCount} data-history-below={historyPlan.hiddenBelow} data-history-total={historyPlan.hiddenStubs + timelineWindow.ordered.length}>
                   {/*指挥中枢的空白态是**它自己的一套**（10-25 用户令：跟欢迎界面没关系）——
                      普通会话仍走 welcome-state，这里两者互不影响。 */}
-                  {/* 10-28 首页：没有选中会话时**不再直接给一段空对话**，而是落到首页
-                      （普通 / 中枢两种，可切换；发消息才建会话 —— 用户令「不会一进去就是对话」）。
-                      ⛔ 中枢引导卡（isBossEmpty）仍优先：刚点「指挥中枢/新建中枢会话」那一刻要看引导，
-                        不是首页；首页只在「没选中会话且不是中枢待发」时出现。 */}
+                  {isEmpty && !isBossEmpty ? (
+                    <div className="welcome-state">
+                      <div className="welcome-mark"><Code2 strokeWidth={0.5} size={96} /></div>
+                      <h1 className="welcome-greet">{greeting}</h1>
+                      <p className="welcome-sub">{greetSub}</p>
+                    </div>
+                  ) : null}
                   {/* 导入会话记录后、尚未发送首条消息：记录预览卡常驻消息区顶部；发送后转为消息内的导入卡 */}
                   {thread && (thread.turns ?? []).length === 0 && pendingImportThreads[thread.id] ? <PendingImportSlot key={thread.id} threadId={thread.id} onDiscard={() => forgetPendingImport(thread.id)} /> : null}
                   {/* 长会话窗口化 + 虚拟滚动条（10-21）：

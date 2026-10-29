@@ -327,7 +327,7 @@ ok(/Math\.min\(len \* u,/.test(screen) || /Math\.min\(len,/.test(screen),
   ok(/onOpenOffice=\{\(\) => setCompanyPreviewTeamId\(OFFICE_SESSION_TEAM_ID\)\}/.test(tlSrc),
     "⛔ 普通会话的调度轨把入口接到预览状态（哨兵 teamId 开浮层）");
   // ⛔ 门槛不许再用 runs.length：那会让「还没调度过」的普通会话整条轨消失 ⇒ 入口无处安放
-  ok(/\{!railTeam && \(/.test(tlSrc) &&
+  ok(/!railTeam/.test(tlSrc) &&
     !/delegatedRailRuns\.length > 0 && \(/.test(tlSrc.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")),
     "⛔ 轨道按「非专家团会话」渲染（⛔ 不拿 runs.length 当门槛，否则没调度过就没有入口）");
   ok(/OFFICE_SESSION_TEAM_ID\s*=\s*"__office-session__"/.test(

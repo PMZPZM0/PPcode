@@ -89,14 +89,13 @@ function dispatchMcpTools(): unknown[] {
       name: "agent_invoke",
       description:
         "调度专家 / 专家团 / 子智能体 执行一个独立子任务并拿回产出。"
-        + "⛔ 可用范围**按会话**：**专家与子智能体默认可用**（不需要用户开启）；"
-        + "**专家团默认关闭**，需用户在顶栏「调度」面板显式开启后才能派。"
-        + "未开启的类别**即使参数能拼出名字，调用也会被拒绝**（别反复试，白烧回合）。"
-        + "本会话当前实际可派哪几类、各有哪些对象，以会话里那条「调度范围已更新」的告知为准。",
+        + "⛔ **专家与子智能体随时可以直接派，不需要用户开任何开关**（别让用户去调度面板勾选）；"
+        + "**专家团默认关闭**，team / member 未开启时会被拒绝 —— 要团请用户打开「专家团」，别反复试。"
+        + "本会话当前可派哪几类、各有哪些对象，以会话里那条「调度范围已更新」的告知为准。",
       inputSchema: {
         type: "object",
         properties: {
-          kind: { type: "string", enum: ["expert", "team", "member", "subagent"], description: "expert=单个专家, team=专家团(主理人按SOP调度), member=专家团某成员, subagent=子智能体。⛔ 专家/子智能体默认可派；专家团需用户显式开启" },
+          kind: { type: "string", enum: ["expert", "team", "member", "subagent"], description: "expert=单个专家, team=专家团(主理人按SOP调度), member=专家团某成员, subagent=子智能体。⛔ 专家/子智能体随时可派；专家团需用户开启" },
           name: { type: "string", description: "对象名称（专家名 / 团名 / 子智能体名）" },
           member: { type: "string", description: "kind=member 时的成员名" },
           query: { type: "string", description: "交给它的任务描述（要自包含：对方看不到本会话上下文）" },
@@ -234,7 +233,6 @@ function dispatchMcpTools(): unknown[] {
         required: ["path"],
       },
     },
-
     /* ── 影视源检索（10-20）：用户给的 LibreTV/TVBox 苹果CMS源（内置 5 个，userData 可覆盖）。
        三件套：search（并发搜）→ detail（拿剧集地址）→ open（直链 m3u8/mp4 应用内播，网页页走浏览器）。
        ⛔ 只做检索与打开，不下载/不缓存/不代理第三方流；结果可用性由源站决定。 */
@@ -357,6 +355,24 @@ function dispatchMcpTools(): unknown[] {
           title: { type: "string", description: "预览标题（可省略，默认取文件名）" },
         },
         required: ["path"],
+      },
+    },
+    /* ── 本地 HTML/CSS → MP4（10-11，P1）：把工作区里的 HTML 动画成品化。
+       ⛔ 零 ffmpeg 依赖（Chromium 抓帧 + 运行时自带 MP4 编码器）；源与输出都过可信根闸。 */
+    {
+      name: "video_render_html",
+      description: "把一段 HTML/CSS 动画在**本地**渲成 MP4（不联网、不花厂商额度、不需要 ffmpeg）。传一个 .html 文件的绝对路径（须在工作区或应用数据目录内）或 http(s) URL，指定时长与帧率，产出 mp4 并返回路径。适合把工作区里做好的界面 / 动画 / 分镜 HTML 成品化成视频。",
+      inputSchema: {
+        type: "object",
+        properties: {
+          source: { type: "string", description: "本地 .html 文件绝对路径（须在会话工作目录或应用数据目录内）或 http(s) URL" },
+          seconds: { type: "number", description: "渲染时长秒数（0.5~120，默认 3）" },
+          fps: { type: "number", description: "帧率（5~60，默认 30）" },
+          width: { type: "number", description: "画布宽（默认 1280）" },
+          height: { type: "number", description: "画布高（默认 720）" },
+          outPath: { type: "string", description: "输出 mp4 路径（可选；须在可信目录内，不传则落 <userData>/renders/）" },
+        },
+        required: ["source"],
       },
     },
     /* ── 壁纸设置（10-06 用户：「Codex 自己也能给自己做壁纸」）──

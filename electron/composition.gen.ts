@@ -57,6 +57,7 @@ import { hooksFeature as feat_hooks } from "./features/hooks-ipc";
 import { htmlPreviewFeature as feat_html_preview } from "./features/html-preview-ipc";
 import { imageLabFeature as feat_image_lab } from "./features/image-lab";
 import { journalFeature as feat_journal } from "./features/journal-ipc";
+import { dataAccessFeature as feat_dataaccess } from "./features/data-access-ipc";
 import { knowledgeBaseFeature as feat_kb } from "./features/knowledge-base-ipc";
 import { layaFeature as feat_laya } from "./features/laya-service";
 import { mcpServersFeature as feat_mcp_servers } from "./features/mcp-servers-ipc";
@@ -173,6 +174,7 @@ export const ENABLED: EnabledDomain[] = [
   { id: "html-preview", plugin: feat_html_preview as Plugin<unknown>, config: null },
   { id: "image-lab", plugin: feat_image_lab as Plugin<unknown>, config: null },
   { id: "journal", plugin: feat_journal as Plugin<unknown>, config: null },
+  { id: "dataaccess", plugin: feat_dataaccess as Plugin<unknown>, config: null },
   { id: "kb", plugin: feat_kb as Plugin<unknown>, config: null },
   { id: "laya", plugin: feat_laya as Plugin<unknown>, config: null },
   { id: "mcp-servers", plugin: feat_mcp_servers as Plugin<unknown>, config: null },

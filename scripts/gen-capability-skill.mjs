@@ -25,6 +25,7 @@ const OUT = path.join(ROOT, "electron", "builtin-skills", "14-skill-harness-api.
 /* ── 每域的「用户可感知能力」描述（人工维护；新域必须补，缺了生成器报错）──
    口径：写给引擎看 —— 用户提什么需求时该想到这个域、能力边界在哪。一句话。 */
 const DOMAIN_DESCRIPTIONS = {
+  "feishu-cli": "飞书官方 CLI（@larksuite/cli）：安装（约 51MB，npm 国内镜像）、飞书应用配置（config init）、用户登录授权（device flow）与命令执行；安装/登录在「设置 → 开发工具 → 飞书 CLI」完成，Codex 通过 feishu_cli 工具调用",
   "extensions": "竖条与功能入口菜单的**可扩展目录**（extensions:catalog）：内置四项面板 + userData/extensions.json 里用户自建项，渲染层据此渲染，不改代码就能多一个入口。⛔ 扩展项只能声明封闭动作集（http(s) 链接 / 跳到某个设置页 / 纯说明文字）—— 没有「执行命令」这类动作",
   "journal": "**开发日记**（竖条 → 开发日记）：按天一个 Markdown 文件（userData/dev-journal/YYYY-MM-DD.md）—— list 列日期与摘要 / read 看当天全文 / save 整篇覆盖 / append 追加一条「## HH:mm 标题 + 正文」/ remove 删当天 / search 全文检索。⛔ 与会话归档、项目工作日志是三件不同的事",
   "vault": "本机**密码本**（输入框左侧竖条 → 密码本）：list 列条目 / save 新增或改（password 省略即保留原密码）/ remove 删除 / copy 把某条密码写入系统剪贴板（30 秒后若还是这条就自动清空）。⛔ 密码用系统 safeStorage 加密落 userData/vault.json，**明文永不落盘、渲染层与模型侧都拿不到**；加密不可用时拒绝保存。模型侧用不到它",

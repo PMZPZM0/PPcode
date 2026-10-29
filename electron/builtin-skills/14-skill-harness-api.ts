@@ -11,7 +11,7 @@ description: PPcode 宿主的接口清单与可拓展能力。当用户提「做
 
 # 宿主接口清单与可拓展能力（自动生成，勿手改）
 
-数据源：electron/ipc-channels.manifest.json（100 个能力域 / 552 个通道），由 scripts/gen-capability-skill.mjs 生成。
+数据源：electron/ipc-channels.manifest.json（106 个能力域 / 584 个通道），由 scripts/gen-capability-skill.mjs 生成。
 
 ## 怎么用
 
@@ -249,9 +249,9 @@ Bot 会话（Bot 与会话的绑定与消息注入）
 随包运行时管理（node/python 等的安装/卸载/列表）
 通道：runtime:health, runtime:install, runtime:list, runtime:uninstall, runtime:cancel, runtime:update-check, runtime:update
 
-### browser（6 通道）
+### browser（7 通道）
 浏览器自动化（Ego Lite 检测/安装/打开/升级/回收 Space + 内置预览弹窗）
-通道：browser:ego-status, browser:ego-install, browser:ego-open, browser:ego-upgrade, browser:ego-cleanup, browser:popout
+通道：browser:ego-status, browser:ego-install, browser:ego-open, browser:ego-upgrade, browser:ego-cleanup, browser:popout, browser:clear-data
 
 ### git（1 通道）
 仓库 diff 读取
@@ -312,6 +312,26 @@ MCP 服务器管理（配置/状态）
 ### app-lock（6 通道）
 应用密码锁（设置 → 应用锁，默认关闭）：开启时生成随机或自定义解锁密码，明文只展示一次、磁盘只存 scrypt 盐哈希；启动/重新显示先锁屏。连续 10 次错误会清空应用数据并重置。⛔ 界面门禁，不是磁盘加密；模型侧不调用它
 通道：app-lock:status, app-lock:prepare, app-lock:enable, app-lock:cancel, app-lock:verify, app-lock:disable
+
+### vault（4 通道）
+本机**密码本**（输入框左侧竖条 → 密码本）：list 列条目 / save 新增或改（password 省略即保留原密码）/ remove 删除 / copy 把某条密码写入系统剪贴板（30 秒后若还是这条就自动清空）。⛔ 密码用系统 safeStorage 加密落 userData/vault.json，**明文永不落盘、渲染层与模型侧都拿不到**；加密不可用时拒绝保存。模型侧用不到它
+通道：vault:copy, vault:list, vault:remove, vault:save
+
+### journal（6 通道）
+**开发日记**（竖条 → 开发日记）：按天一个 Markdown 文件（userData/dev-journal/YYYY-MM-DD.md）—— list 列日期与摘要 / read 看当天全文 / save 整篇覆盖 / append 追加一条「## HH:mm 标题 + 正文」/ remove 删当天 / search 全文检索。⛔ 与会话归档、项目工作日志是三件不同的事
+通道：journal:append, journal:list, journal:read, journal:remove, journal:save, journal:search
+
+### dataaccess（11 通道）
+收藏夹 / 开发日记 / 密码本**对模型开放**的授权闸（10-29）：按「会话 + 模块 + 读/写」三元组授权，默认全关、只存在内存（应用退出即失效）。收藏与日记只允许 read + append（不能删/改历史）；密码本只允许存在性查询与「复制到剪贴板」（明文永不出主进程），写入必须先经用户一次性确认；没有删除类通道
+通道：dataaccess:state, dataaccess:grant, dataaccess:revoke-all, dataaccess:favorites-list, dataaccess:favorites-append, dataaccess:journal-read, dataaccess:journal-search, dataaccess:journal-append, dataaccess:vault-find, dataaccess:vault-copy, dataaccess:vault-save
+
+### shortcuts（3 通道）
+键盘快捷键统一读口（10-28）：应用内快捷键存 userData/shortcuts.json，弹窗与「设置 → 控制台 → 键盘快捷键」读写同一份；截图/语音的全局键仍存各自设置文件，本域只读来聚合展示。⛔ 模型侧不调用它——改键是用户界面动作，不是工具能力
+通道：shortcuts:read, shortcuts:reset, shortcuts:save
+
+### extensions（1 通道）
+竖条与功能入口菜单的**可扩展目录**（extensions:catalog）：内置四项面板 + userData/extensions.json 里用户自建项，渲染层据此渲染，不改代码就能多一个入口。⛔ 扩展项只能声明封闭动作集（http(s) 链接 / 跳到某个设置页 / 纯说明文字）—— 没有「执行命令」这类动作
+通道：extensions:catalog
 
 ### appSettings（2 通道）
 应用级开关（联网搜索/桌面自动化/下载源等，写 app-settings.json）
@@ -376,6 +396,10 @@ SkillHub **人格市场**（skillhub.cn/soul，16 套现成人格）：list 浏�
 ### scratch（1 通道）
 临时便签（快速记一条）
 通道：scratch:create
+
+### sessionspace（6 通道）
+会话专属工作区（10-29）：每个会话在项目地址下有一个 \`<project>/.codex-harness/sessions/<threadId>/\`，作为本会话的产物与临时落点。生命周期：新建即建、归档保留（可恢复）、永久删除时目录一并清理、启动时收口孤儿。⛔ 它不是记忆 workspace —— 项目记忆仍按项目根寻址（跨会话共享），会话私有走 private 层
+通道：sessionspace:ensure, sessionspace:state, sessionspace:list, sessionspace:set-state, sessionspace:remove, sessionspace:gc
 
 ### custom-model（12 通道）
 自定义模型供应商（接入任意 OpenAI 兼容端点：CRUD/探测/测活）

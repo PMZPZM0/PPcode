@@ -1280,6 +1280,8 @@ interface Window {
     journalSearch(query: string): Promise<{ hits: { date: string; lines: string[] }[] }>;
     /* 竖条 + 功能入口菜单的可扩展目录 */
     extensionsCatalog(): Promise<{ rail: RailPanelSpec[]; menu: MenuEntrySpec[]; file: string }>;
+    /* 10-29 保存功能入口的自定义设置页条目（整表覆盖 menu 字段，rail 保留；url/settings 白名单，40 条上限） */
+    extensionsMenuSet(input: { entries: MenuEntrySpec[] }): Promise<{ ok: boolean; menu: MenuEntrySpec[] }>;
     /* 聚合读取：应用内键（shortcuts.json）+ 截图/语音键（各自真存储） */
     shortcutsRead(): Promise<{ bindings: Record<string, string[]>; overrides: Record<string, string[]>; defaults: Record<string, string[]>; conflicts: string[][] }>;
     /* 只写应用内键；截图/语音由各自通道写 */

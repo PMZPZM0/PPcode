@@ -4,7 +4,7 @@
 //
 // 为什么需要剥壳（09-23 用户实测「图一看着很变扭」）：
 //   引擎执行的命令是**宿主自己包过一层 shell 启动器**的形态 —— 真机原样：
-//     "D:\PPcode Desktop-refactor\resources\tools\pwsh\pwsh.exe" -Command "Get-Content -Lit…"
+//     "D:\Codex Harness Desktop-refactor\resources\tools\pwsh\pwsh.exe" -Command "Get-Content -Lit…"
 //   于是界面上每一行都以同一段 ~90 字符的绝对路径开头（`resources/tools/pwsh/pwsh.exe` + `-Command "`），
 //   真正想看的命令被挤到看不见，一屏里重复十几遍同样的前缀。
 //   ⛔ 剥壳只用于**展示**：明细里那份可复制的完整命令必须保持引擎原文（用户要能照着复现），
@@ -100,7 +100,7 @@ export function stripShellLauncher(command) {
  * （⛔ 不要把整条命令当目标兜底，那正是"又长又乱"的来源）。
  *
  * 判据：像文件（带扩展名）且带路径分隔符（或盘符）的第一段。带空格的路径一起收进来
- * （我们的工作区目录名 `PPcode Desktop-refactor` 就带空格）。
+ * （我们的工作区目录名 `Codex Harness Desktop-refactor` 就带空格）。
  */
 export function commandTarget(command, max = 48) {
   const text = stripShellLauncher(command);
@@ -108,12 +108,12 @@ export function commandTarget(command, max = 48) {
   // ⛔ 盘符前缀必须**紧跟着分隔符**（`D:\` / `D:/`）：写成 `[A-Za-z]:` 时，URL 里的
   //    `https://…` 会被当成 `s:` 盘符，摘要变成「运行 s://api.pptoken.org」（真机实测到的笑话）。
   //   ⛔ 盘符只吃 `D:`、分隔符留给后面的分组（写成 `D:\` 会把那个 `\` 吃掉，
-  //      于是带空格的路径 `D:\PPcode…` 匹配不到 —— 实测）。
-  // ⛔ 扩展名字符集必须含 `-` 且加**尾部负向断言**（09-24 真机：`.ppcode-harness` 被截成
+  //      于是带空格的路径 `D:\Codex Harness…` 匹配不到 —— 实测）。
+  // ⛔ 扩展名字符集必须含 `-` 且加**尾部负向断言**（09-24 真机：`.codex-harness` 被截成
   //    `.codex` —— 扩展名遇 `-` 就停，界面上是半截路径；负向断言防在同一 token 中间匹配）。
   // ⛔ 路径各段必须允许**中文**（09-24 实测：`markitdown D:/x/报告.pdf` 取不到目标 ——
   //    段字符集只有 ASCII，中文文件名整段失配，技能/命令"怎么用的"就只剩技能名）。
-  //   ⛔ 续段必须**允许空格**（09-24：写成单一字符集时 `PPcode Desktop-refactor` 断在
+  //   ⛔ 续段必须**允许空格**（09-24：写成单一字符集时 `Codex Harness Desktop-refactor` 断在
   //      空格处 ⇒ 匹配从后半段开始，盘符和前两段全丢，只剩 `Desktop-refactor/src/App.tsx`）。
   const SEG = "[A-Za-z0-9_.@%~+\\u4e00-\\u9fff-]";
   const SEGP = "[A-Za-z0-9_.@%~+\\u4e00-\\u9fff -]";
@@ -134,7 +134,7 @@ export function commandTarget(command, max = 48) {
  * 例：`D:\a\src\features\app-state\parts\part09\01-seg.tsx` → `…/features/app-state/parts/part09/01-seg.tsx`
  */
 export function shortenPath(value, max = 48) {
-  // ⛔ 多分隔符要压缩（09-24 真机截图：`D://PPcode Desktop-refactor//.codex` —— 脚本里
+  // ⛔ 多分隔符要压缩（09-24 真机截图：`D://Codex Harness Desktop-refactor//.codex` —— 脚本里
   //   写的是 `D://…//` 这种双斜杠，直接归一成正斜杠会把这些双斜杠原样带到界面上）。
   const normalized = String(value ?? "").replace(/\\/g, "/").replace(/\/{2,}/g, "/");
   if (normalized.length <= max) return normalized;
@@ -454,4 +454,48 @@ export function commandAction(command, max = 24) {
   }
   if (!out) return "";
   return out.length > max ? `${out.slice(0, max)}…` : out;
+}
+
+/**
+ * 写文件类命令的**行数统计**（10-29 用户令：「编辑文件 / 修改文件 / 生成文件，只要动了文件
+ * 后面都要加 +N -M」）。
+ *
+ * ⛔⛔ 只给**数得出来**的数字：
+ *   · `added` = 这条命令**写入的内容行数**（heredoc / here-string / 数组字面量逐条数；
+ *     实在认不出就按 1 行算 —— 一次 `Set-Content` 至少写了一行）；
+ *   · `deleted` = 只有能确定时才给：追加（`-Append` / `>>`）确定是 0；
+ *     **覆盖写一律返回 null**（旧文件原来有多少行，命令执行后就无从得知，历史会话更不可能回读）。
+ *     ⛔ 不编 `-0` —— 假数字比没有数字更糟（用户会拿它判断"改了多少"）。
+ * 返回 null = 这条命令不写文件（调用方不渲染统计）。
+ * @param {string} command 引擎给的命令字面（带不带 shell 启动器外壳都行）
+ * @returns {{ added: number, deleted: number | null } | null}
+ */
+export function commandWriteStats(command) {
+  const text = stripShellLauncher(command);
+  if (!text) return null;
+  /* 写文件的判据与 commandIntentOf 的 "modify" 同源，但**不含** `mkdir` / `Remove-Item` /
+     `Rename-Item` 这类不产生行数的动作（给它们标 +1 就是编）。 */
+  const writes = /Set-Content|Out-File|Add-Content|WriteAllText|WriteAllLines|WriteAllBytes|writeFileSync|appendFileSync|\btee\b|(?<![0-9=<>])>(?![>&])/i.test(text);
+  if (!writes) return null;
+
+  let added = 0;
+  // bash heredoc：`cat > f <<'EOF' … EOF`
+  const heredoc = /<<-?\s*['"]?([A-Za-z_]\w*)['"]?\r?\n([\s\S]*?)\r?\n\s*\1/.exec(text);
+  if (heredoc) added = heredoc[2].split(/\r?\n/).filter((line) => line.trim()).length;
+  // PowerShell here-string：`@" … "@` / `@' … '@`
+  if (!added) {
+    const here = /@["']\r?\n([\s\S]*?)\r?\n["']@/.exec(text);
+    if (here) added = here[1].split(/\r?\n/).filter((line) => line.trim()).length;
+  }
+  // 数组字面量：`@('a','b')` / `('a','b')`（本仓最常见的多行写入形态）
+  if (!added) {
+    const arr = /@\(([\s\S]*?)\)/.exec(text);
+    if (arr) added = (arr[1].match(/'[^']*'|"[^"]*"/g) ?? []).length;
+  }
+  if (!added) added = 1;
+
+  /* 追加写的三种形态：PowerShell `-Append`、shell `>>`、以及自带追加语义的 API
+     （`Add-Content` / `appendFileSync`）—— 追加不会删任何东西，所以 deleted 能确定是 0。 */
+  const appended = /-Append\b|>>|Add-Content|appendFileSync/i.test(text);
+  return { added: Math.max(1, added), deleted: appended ? 0 : null };
 }

@@ -26,16 +26,12 @@ const OUT = path.join(ROOT, "electron", "builtin-skills", "14-skill-harness-api.
    口径：写给引擎看 —— 用户提什么需求时该想到这个域、能力边界在哪。一句话。 */
 const DOMAIN_DESCRIPTIONS = {
   "feishu-cli": "飞书官方 CLI（@larksuite/cli）：安装（约 51MB，npm 国内镜像）、飞书应用配置（config init）、用户登录授权（device flow）与命令执行；安装/登录在「设置 → 开发工具 → 飞书 CLI」完成，Codex 通过 feishu_cli 工具调用",
-  "extensions": "竖条与功能入口菜单的**可扩展目录**（extensions:catalog）：内置四项面板 + userData/extensions.json 里用户自建项，渲染层据此渲染，不改代码就能多一个入口。⛔ 扩展项只能声明封闭动作集（http(s) 链接 / 跳到某个设置页 / 纯说明文字）—— 没有「执行命令」这类动作",
-  "journal": "**开发日记**（竖条 → 开发日记）：按天一个 Markdown 文件（userData/dev-journal/YYYY-MM-DD.md）—— list 列日期与摘要 / read 看当天全文 / save 整篇覆盖 / append 追加一条「## HH:mm 标题 + 正文」/ remove 删当天 / search 全文检索。⛔ 与会话归档、项目工作日志是三件不同的事",
-  "vault": "本机**密码本**（输入框左侧竖条 → 密码本）：list 列条目 / save 新增或改（password 省略即保留原密码）/ remove 删除 / copy 把某条密码写入系统剪贴板（30 秒后若还是这条就自动清空）。⛔ 密码用系统 safeStorage 加密落 userData/vault.json，**明文永不落盘、渲染层与模型侧都拿不到**；加密不可用时拒绝保存。模型侧用不到它",
   "sessionspace": "会话专属工作区（10-29）：每个会话在项目地址下有一个 `<project>/.codex-harness/sessions/<threadId>/`，作为本会话的产物与临时落点。生命周期：新建即建、归档保留（可恢复）、永久删除时目录一并清理、启动时收口孤儿。⛔ 它不是记忆 workspace —— 项目记忆仍按项目根寻址（跨会话共享），会话私有走 private 层",
-  "dataaccess": "收藏夹 / 开发日记 / 密码本**对模型开放**的授权闸（10-29）：按「会话 + 模块 + 读/写」三元组授权，默认全关、只存在内存（应用退出即失效）。收藏与日记只允许 read + append（不能删/改历史）；密码本只允许存在性查询与「复制到剪贴板」（明文永不出主进程），写入必须先经用户一次性确认；没有删除类通道",
-  "shortcuts": "键盘快捷键统一读口（10-28）：应用内快捷键存 userData/shortcuts.json，弹窗与「设置 → 控制台 → 键盘快捷键」读写同一份；截图/语音的全局键仍存各自设置文件，本域只读来聚合展示。⛔ 模型侧不调用它——改键是用户界面动作，不是工具能力",
+  "dataaccess": "收藏夹 / 开发日记 / 密码本**对模型开放**的授权闸（10-29）：按「会话 + 模块 + 读/写」三元组授权，默认全关、只存在内存（应用退出即失效）。开启后收藏与日记只允许 read + append（⛔ 不能删/改历史）；密码本只允许存在性查询与「复制到剪贴板」（明文永不出主进程），写入必须先经用户在界面一次性确认。⛔ 没有删除类通道 —— 删除只能由用户本人在界面操作",
+  "shortcuts": "键盘快捷键统一读口（10-28）：应用内快捷键存 userData/shortcuts.json，弹窗与「设置 → 控制台 → 键盘快捷键」读写同一份；截图/语音的全局键仍存各自设置文件（它们的 setter 要先注册成功 globalShortcut 再落盘），本域只读来聚合展示。⛔ 模型侧不调用它——改键是用户界面动作，不是工具能力",
   "openfilm": "OpenFilm 视频剪辑（第三方开源 github.com/openfilm/openfilm，MIT + 商标条款）对接：设置 → 工具页可**按需下载**命令行与渲染引擎（npm 走 npmmirror、Chromium 走 cdn.npmmirror，失败自动回官方），可卸载、可查最新版（自动更新三档）。数据面只有状态/安装/卸载/查版本；⛔ 不内置上游二进制，卸载只删运行时、不碰用户 film 目录",
-  "app-lock": "应用密码锁（设置 → 应用锁，默认关闭）：开启时生成随机或自定义解锁密码，明文只展示一次、磁盘只存 scrypt 盐哈希；启动/重新显示先锁屏。连续 10 次错误会清空应用数据并重置。⛔ 界面门禁，不是磁盘加密；模型侧不调用它",
-  "boss-groups": "创世 boss 群编排：建群/派活/独立评审/打回换人/预算闸（成员各自一个常驻会话，浏览器用 ego lite 独立 TaskSpace）",
-  "work-logs": "各项目的**工作日志与项目记忆**管理（<项目>/.ppcode-harness/memory/**：长期记忆 MEMORY.md / 坑与纪律 LESSONS.md+lessons/ / 每日工作日志 logs/YYYY-MM-DD.md / archive / project）——设置 → 数据管理 → 工作日志。可看正文、按项目与类型分组、批量删除。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事；删除是销毁性的（工作日志删了不会重建）",
+  "app-lock": "应用密码锁（设置 → 应用锁，默认关闭）：开启时生成随机或自定义解锁密码，明文只展示一次、磁盘只存 scrypt 加盐哈希；应用启动/重新显示时先锁屏。错误次数落盘，连续 10 次错误会清空应用数据并重置。⛔ 这是界面门禁，不是磁盘加密；模型侧不调用它",
+  "work-logs": "各项目的**工作日志与项目记忆**管理（<项目>/.codex-harness/memory/**：长期记忆 MEMORY.md / 坑与纪律 LESSONS.md+lessons/ / 每日工作日志 logs/YYYY-MM-DD.md / archive / project）——设置 → 数据管理 → 工作日志。可看正文、按项目与类型分组、批量删除。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事；删除是销毁性的（工作日志删了不会重建）",
   "video": "内置视频生成接口（国内外 8 家：可灵/万相/Seedance/CogVideoX/MiniMax/Runway/Luma/Veo）：submit 提交 → poll 轮询 → download 落工作区；凭证存 userData/video-providers.json",
   "poll": "轮询板块的配置与中止（间隔 / 超时上限 / 失败重试次数，存 userData/poll-settings.json；poll:abort = 用户在界面上按「中止」时停掉主进程的等待循环）。⛔ 这是**轮询行为**的配置，不是任务本身 —— 提交/查询任务走 video 域那套工具",
   "drama-canvas": "AI 短剧无限画布：把工作流拆成卡片摆在无限画布上（生图/短剧/白模/3D 建模/电商出图各类模板），连线表示「这份输入喂给下一步」。**画布可被模型读写**：board-sync 由画布自动镜像快照，模型用真工具 workflow_read 读内容、workflow_writeback 把产物写回节点（卡片实时显示）——「按画布搭的流程跑」是可行请求",
@@ -52,7 +48,7 @@ const DOMAIN_DESCRIPTIONS = {
   "html-video": "**本地 HTML→MP4**（10-11，P1）：render(source, seconds?, fps?, width?, height?, outPath?) 把一段 HTML/CSS 动画在本地渲成 MP4 —— Chromium 抓帧 + 运行时自带 MP4 编码器，**零 ffmpeg 依赖、不联网、不花厂商额度**。source = 可信根内的 .html 绝对路径或 http(s) URL（其余一律拒）；outPath 同样过可信根闸，不传落 <userData>/renders/。模型侧走 harness_tools 网关的 `video_render_html`。典型用法：把工作区里做好的界面/动画/分镜 HTML 成品化成 mp4",
   "image-lab": "**图像工坊**（10-09，Windows/Mac 同一份实现）：read(path) 读图片字节（可信根内、图片扩展名白名单、≤128MB，直传给浮层预览）。⛔ 模型侧不直接调这条通道 —— 四个工具是**各自独立的 dynamicTool**（不走 harness_tools 网关），且各有一条自己的 IPC：`image_generate`→image-lab:generate（**唯一要生图插件凭证的**）、`image_edit`→image-lab:edit（修图：缩放 / 裁剪 / 旋转 / 翻转 / 转格式 / 明暗对比 / 灰度·棕褐 / 模糊 / 马赛克 / 水印合成 / 加英文文字——中文会画成空白；**零凭证**，产出不覆盖原图）、`image_info`→image-lab:info（读尺寸·格式·透明·字节数）、`image_view`→image-lab:view（应用内弹浮层给用户看）。改「形」用 image_edit、改「意」（换主体/风格）用 image_generate；只做小改动前先 agent_ask 问用户。生成与编辑都会弹「图像工坊」浮层，工具调用结束自动收起。⛔ 编辑引擎是 jimp（纯 JS），不许换成 sharp/canvas 这类原生库",
   "whatsnew": "「更新到新版本后首次启动」的**新功能介绍弹窗**（10-06）：state 取该版本的要点与「该不该弹」（判定含：这个版本有没有要点、用户看过没有、是升级还是全新安装——全新安装不弹，避免新用户看到莫名其妙的「更新内容」）；ack 记下当前版本已看过 ⇒ 同版本不再弹。要点数据在主进程 electron/whats-new-notes.ts，每次发版要加一条（守卫【11r】钉）。⛔ 模型侧用不到它",
-  "kb": "**项目级本地知识库**（<项目>/.ppcode-harness/knowledge/）：list 列文档 / add-text·add-files 导入 md·txt·代码文档（自动分块）/ search 分块全文检索（带高亮片段）/ read 读全文 / remove 删除。用户要「把资料存进知识库 / 查项目资料」时用它；语义向量后端为按需下载项。⛔⚠️ 上面是 **IPC 桥（给设置页 UI 用），不是模型工具** —— 模型侧只有两个：`knowledge_search(query, limit?)` 检索（workspace 缺省 = 调用者 cwd；装了 Laya 时最相关的一条会被置顶标注）与 `knowledge_add(title, text, source?)` 写入（10-04 补，此前模型只能读不能写；⚠️ 同名不覆盖会堆重复条目、⚠️ 写入不做语义向量化、⚠️ 专家/被调度会话不许写、⚠️ 装了 Laya 时低价值内容会被拒写并说明原因——充实内容后重试即可）。⛔⛔ **但只有「知识库后端 = 本地」时才是这两个**：后端切到**云端 weknora** 后，检索与写入一律走 MCP 连接器 \`cloud-kb\` 的工具（\`cloud_kb__ask\` / \`cloud_kb__search_knowledge\` / \`cloud_kb__grep_chunks\` / \`cloud_kb__list_documents\` / \`cloud_kb__read_document\` / \`cloud_kb__list_knowledge_bases\`），本地那两个此时**不在工具列表里**。判定方法：工具列表里有 \`cloud_kb__\` 前缀 ⇒ 云端；否则本地。切换**不迁移数据**（本地库与云端库是两份），详见内置技能 \`knowledge-backend\`",
+  "kb": "**项目级本地知识库**（<项目>/.codex-harness/knowledge/）：list 列文档 / add-text·add-files 导入 md·txt·代码文档（自动分块）/ search 分块全文检索（带高亮片段）/ read 读全文 / remove 删除。用户要「把资料存进知识库 / 查项目资料」时用它；语义向量后端为按需下载项。⛔⚠️ 上面是 **IPC 桥（给设置页 UI 用），不是模型工具** —— 模型侧只有两个：`knowledge_search(query, limit?)` 检索（workspace 缺省 = 调用者 cwd；装了 Laya 时最相关的一条会被置顶标注）与 `knowledge_add(title, text, source?)` 写入（10-04 补，此前模型只能读不能写；⚠️ 同名不覆盖会堆重复条目、⚠️ 写入不做语义向量化、⚠️ 专家/被调度会话不许写、⚠️ 装了 Laya 时低价值内容会被拒写并说明原因——充实内容后重试即可）。⛔⛔ **但只有「知识库后端 = 本地」时才是这两个**：后端切到**云端 weknora** 后，检索与写入一律走 MCP 连接器 \`cloud-kb\` 的工具（\`cloud_kb__ask\` / \`cloud_kb__search_knowledge\` / \`cloud_kb__grep_chunks\` / \`cloud_kb__list_documents\` / \`cloud_kb__read_document\` / \`cloud_kb__list_knowledge_bases\`），本地那两个此时**不在工具列表里**。判定方法：工具列表里有 \`cloud_kb__\` 前缀 ⇒ 云端；否则本地。切换**不迁移数据**（本地库与云端库是两份），详见内置技能 \`knowledge-backend\`",
   "cloud": "**云端会话同步**（10-18 自云助手移植）：把本机会话**按行增量**推到云端、按需从云端拉回、以及冲突解决（`cloud:sync/status|push|pull|conflict/resolve`）。⛔ 与 cloud-auth（登录）/ cloud-models（模型目录）是并列的独立板块。用户说「上传会话 / 同步会话到云端 / 从云端恢复会话」时用它。⛔ 服务端可能由管理员关闭同步，此时会返回 `session-sync-disabled`（人话「管理员已关闭云端会话同步」），不要当成网络故障重试",
   "cloud-auth": "**云账号**的登录 / 登出 / 切换（10-16）：用账号密码换云端会话令牌（⛔ 不是配对流程）；令牌在 safeStorage 里，⛔ 渲染层与模型侧都拿不到明文。用户说「登录云端 / 退出云账号 / 换个云账号」时用它。⛔ 与本机「中转站账号」是两条独立的登录线，别混",
   "cloud-models": "**云端模型目录同步**（10-16）：登录后自动把云端「已勾选」的模型写成本机供应商 `cloud`（勾选 = 下拉框可见），并默认每 10 分钟自动保持更新。用户说「云端模型没同步 / 拉一下云端模型 / 勾了模型选不到」时用它（sync 是唯一同步入口，force=true 会重签代理令牌）",
@@ -68,7 +64,9 @@ const DOMAIN_DESCRIPTIONS = {
   "external": "用系统默认浏览器打开外部链接",
   "agents": "子智能体库（创建/归档/委派/目录；成员会话与角色）",
   "subagents": "子智能体——**可创建**：用户要「新建一个子智能体/代理」时，**直接用真工具 `subagent_save`**（name+systemPrompt 必填；同 name 即更新）→ `agent_invoke` 派活",
+  "cliagents": "CLI 智能体（10-29）：把外部命令行工具（Claude Code / Codex CLI / Gemini CLI / Aider / OpenClaw / 自建入口）当成**可调度对象**，与专家、子智能体一起出现在输入框 `@` 候选里，派活走 `agent_invoke`（kind=\"cli\"）→ 同一个 runDelegatedTask（开独立会话、登记归属、产出回传）。管理面在「设置 → 开发工具 → CLI 智能体」：按分类（编码 / 通用智能体 / 自建）分组、搜索、检测是否已装（where/which + --version）、复制官方安装命令、启停、新增自定义条目。⛔ 这一步**不能**替你一键安装：installCmd 只在核实过官方来源时才有值，其余显示「按官方文档安装」；⛔ 模型侧没有增删 CLI 定义的通道 —— 用户要接入新 CLI 时，请让他在这个面板里添加（或直接填可执行名）",
   "teams": "专家团/专家的定义与成员管理——**可创建**：用户要「新建一个专家/专家团」时，**直接用真工具 `expert_save`**（先 `expert_list` 查重；normalize 自动补默认与 id 规范；teamId 相同即覆盖更新）。字段：displayName/profession/description（zh+en）/category/tags(≤3)/quickPrompts(≤3)/sop；lead 必带 name+systemPrompt；多角色协作加 members[]（每人 name+profession+description+systemPrompt）。⛔ 内置专家（知微/呈象/洞明/鲁班/画意/剪承团）每次启动确保存在——不要用与内置相同的 teamId 去覆盖内置定义，新建用独有 teamId；建完向用户复述 teamId 与成员名单",
+  "boss-groups": "创世 boss 群编排：建群/派活/独立评审/打回换人/预算闸（成员各自一个常驻会话，浏览器用 ego lite 独立 TaskSpace）",
   "team-runs": "专家团运行记录查询",
   "close-confirm": "关闭确认弹窗的回包（最小化到托盘 / 完全退出 / 取消，可勾不再询问）",
   "team-threads": "专家团成员会话映射",
@@ -133,6 +131,9 @@ const DOMAIN_DESCRIPTIONS = {
   "scratch": "临时便签（快速记一条）",
   "pasted-text": "粘贴文本暂存（大段粘贴落盘防丢）",
   "voice": "语音通话全链路（呼叫/音频流/转写/打断/挂断，39 通道）",
+  "vault": "本机**密码本**（输入框左侧竖条 → 密码本）：list 列条目 / save 新增或改（password 省略即保留原密码）/ remove 删除 / copy 把某条密码写入系统剪贴板（30 秒后若还是这条就自动清空）。⛔ 密码用系统 safeStorage 加密落 userData/vault.json，**明文永不落盘、渲染层与模型侧都拿不到**；加密不可用时拒绝保存。模型侧用不到它",
+  "journal": "**开发日记**（竖条 → 开发日记）：按天一个 Markdown 文件（userData/dev-journal/YYYY-MM-DD.md）—— list 列日期与摘要 / read 看当天全文 / save 整篇覆盖 / append 追加一条「## HH:mm 标题 + 正文」/ remove 删当天 / search 全文检索。⛔ 与会话归档、项目工作日志是三件不同的事",
+  "extensions": "竖条与功能入口菜单的**可扩展目录**（extensions:catalog）：内置四项面板 + userData/extensions.json 里用户自建项，渲染层据此渲染，不改代码就能多一个入口。⛔ 扩展项只能声明封闭动作集（http(s) 链接 / 跳到某个设置页 / 纯说明文字）—— 没有「执行命令」这类动作",
   "team-runs-placeholder": "",
 };
 
@@ -166,7 +167,7 @@ const totalChannels = domains.reduce((a, d) => a + d.count, 0);
 const lines = [];
 lines.push("---");
 lines.push("name: harness-api");
-lines.push("description: PPcode 宿主的接口清单与可拓展能力。当用户提「做个功能 / 加个集成 / 能不能自动 XX / 宿主有没有 XX 能力 / 帮我接上 XX」这类需求时先读它 —— 按域查现成接口，不用扫描源码，也不要重造宿主已有的能力。");
+lines.push("description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当用户提「做个功能 / 加个集成 / 能不能自动 XX / 宿主有没有 XX 能力 / 帮我接上 XX」这类需求时先读它 —— 按域查现成接口，不用扫描源码，也不要重造宿主已有的能力。");
 lines.push("---");
 lines.push("");
 lines.push("# 宿主接口清单与可拓展能力（自动生成，勿手改）");
@@ -204,7 +205,7 @@ lines.push("| 想加的东西 | 落点（改哪里 / 用什么） | 注意 |");
 lines.push("|---|---|---|");
 lines.push("| 宿主原生能力（新接口） | `electron/ipc-channels.manifest.json` 加一条 → `npm run gen:ipc` → 补 `ipc-registry.ts` 的域 `count` | ⛔ 生成物勿手改；守卫【2】【90】【107】盯；改完**重跑本清单生成器** |");
 lines.push("| 教模型的流程（怎么做事） | 内置技能 `electron/builtin-skills/NN-*.ts` + 在 `builtin-skills.ts` 登记 | 正文必须**字面量**（【86】做配置面安全扫描），勿运行时拼装 |");
-lines.push("| 个人 / 项目的经验与流程 | `<workspace>/.codex/skills/<name>/SKILL.md`（引擎原生发现，**默认落点**） | 跨项目才放 `$CODEX_HOME/skills/`；⛔ 别放 `.ppcode-harness/skills`（引擎不读） |");
+lines.push("| 个人 / 项目的经验与流程 | `<workspace>/.codex/skills/<name>/SKILL.md`（引擎原生发现，**默认落点**） | 跨项目才放 `$CODEX_HOME/skills/`；⛔ 别放 `.codex-harness/skills`（引擎不读） |");
 lines.push("| 外部服务 / API 接入 | **MCP 连接器**（设置 → 连接器；或自写 MCP server） | 工具面是动态的，以 `tools/list` 实际返回为准 |");
 lines.push("| 让某个角色长期替你干活 | **专家 / 专家团**（定义 + 技能包） | 成员在独立会话里跑，产出由主理人汇总 |");
 lines.push("| 定时 / 周期任务 | **调度器**（`scheduler:*`） | 任务真的在指定 workspace 目录里跑（不是「看起来在那里」） |");

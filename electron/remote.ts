@@ -12,13 +12,13 @@ import { buildRemotePageHtml } from "./remote/web-page";
 import { RelayTunnel, type RelayStatus } from "./relay-tunnel";
 
 /** 手机安装包所在的 Release tag（⛔ 不是桌面版安装包的 v* 发布，别混用） */
-const REMOTE_APK_RELEASE = "mobile-remote-v0.1.7";
+const REMOTE_APK_RELEASE = "mobile-remote-v0.1.9";
 
 /** 安装包校验和（GitHub 资产自带的 digest）：镜像层可能被篡改，对不上就不落盘 —— 与 updates.ts 同口径。
  *  ⛔ 重新发布同名资产时必须同步改这里，否则手机端会一直报「校验和不匹配」。 */
 const REMOTE_APK_SHA256: Record<string, string> = {
-  "CodexRemote-0.1.7.apk": "1925f420b57c4d2d54da45a4a86e68e3b18345e469bf9eab50d30bd24553e402",
-  "PPcodeRemote-0.1.7.apk": "69e152ef2ce0f7490ebd1be7965942249725b10171358c57d91810457849bcae",
+  "CodexRemote-0.1.9.apk": "d489f9a9a2047f85ada859e904cb726250744d6c351d07656ec02a0f1f705924",
+  "PPcodeRemote-0.1.9.apk": "ae0a938304731a4a55b98d86a2283aa34b516cfc13814824329e5a472a945e54",
 };
 
 /** cloudflared 可执行文件（手机配对的公网隧道）。
@@ -136,9 +136,9 @@ const DEVICE_TTL_MS = 30 * 24 * 60 * 60_000;
 
 /** 内置中转站的默认根地址（手机远控「装完即用」的线上网关）。
  *  ⛔ 换域名只改这一处 + 各仓的 APK 内置地址；运行时可用 HARNESS_RELAY_URL / relay-url.txt 覆盖。 */
-/* ⛔⛔ 本仓与主仓**故意不同**：PPcode 走自己的中转（38.145.220.136 / ppcode.pptoken.cc:18443）。
+/* ⛔⛔ 本仓与主仓**故意不同**：PPcode 走自己的中转（38.145.220.136 / ppcode.pptoken.cc/remote，443 路径入口；18443 在部分移动网络被拦）。
    三仓同步时别把这行覆盖回 remote.ppz123.asia —— 那是 Codex Harness 桌面版的中转。 */
-const RELAY_DEFAULT_BASE = "https://ppcode.pptoken.cc:18443";
+const RELAY_DEFAULT_BASE = "https://ppcode.pptoken.cc/remote";
 
 /** 手机远控的固定本地端口：自建中转（frp）要把它转发出去，⛔ 别改回随机端口 ——
  *  端口每次启动都变，服务端的转发配置就永远对不上（安卓 App / 固定域名场景直接连不上）。 */

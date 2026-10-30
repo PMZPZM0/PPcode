@@ -24,7 +24,7 @@ type Options = {
   userData: string;
   /** 本机远控端口（每次取最新值：端口可被 remote-port.txt 覆盖） */
   localPort: () => number;
-  /** 中转站根地址，如 https://ppcode.pptoken.cc:18443（⛔ 不带 /t/<id>；本仓用自己的服务器） */
+  /** 中转站根地址，如 https://ppcode.pptoken.cc/remote（⛔ 不带 /t/<id>；本仓用自己的服务器） */
   relayBase: () => string;
   onStatus?: (status: RelayStatus) => void;
 };

@@ -68,7 +68,9 @@ jobs:
             exit 1
           fi
           # 重写说明正文：只 upload 资产会让发布页停在**首建时**的旧正文
-          gh release edit "v${VERSION}" --notes-file "${NOTES}" --repo "${PUBLISH_REPO}"
+          # ⛔ 10-30 实证：release 若先由别的路径建出来（标题为空），GitHub 会拿**提交标题**
+          #    当发布名 ⇒ 发布页显示成 `chore(release): v0.1.7`。这条分支必须带 --title。
+          gh release edit "v${VERSION}" --title "v${VERSION}" --notes-file "${NOTES}" --repo "${PUBLISH_REPO}"
           # ⛔ 10-02 事故：删 tag 重建会让同名 release **退回草稿**，而 upload / edit(notes) 都不会转正
           #    ⇒ 草稿对匿名 API 不可见、/releases/latest 回落上一版、应用内更新器永远收不到。
           #    ⇒ 探测 isDraft，命中就转正。

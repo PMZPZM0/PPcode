@@ -35,8 +35,10 @@ const REQ_TIMEOUT_MS = 20_000;   // 隧道半死时别让手机干等 35s
 const MAX_INFLIGHT = 32;
 const MAX_PER_MINUTE = 900;
 /* 安装包公开下载（不要求已配对）：老版本 App 的「安装包」入口坏了，也能用手机浏览器更新 */
+/* ⛔⛔ 本仓与主仓**故意不同**：PPcode 网关发 PPcode 的安装包（CodexRemote 装的是连主仓中转的版本）。
+   ⛔ 同步时别把这行覆盖回去。 */
 const APK_URL = process.env.RELAY_APK_URL
-  || "https://github.com/PMZPZM0/codex-harness-desktop/releases/download/mobile-remote-v0.1.6/CodexRemote-0.1.6.apk";
+  || "https://github.com/PMZPZM0/codex-harness-desktop/releases/download/mobile-remote-v0.1.6/PPcodeRemote-0.1.6.apk";
 /* 安装包**由网关自己缓存后再发**：国内手机直连 GitHub Release 经常超时（实测 302 过去就挂），
    ⛔ 不要退回「302 到 GitHub」——那等于把可用性交给墙。镜像顺序与 gh-mirror.ts 同源。 */
 const APK_DIR = process.env.RELAY_APK_DIR || "/var/lib/relay/apk";

@@ -136,7 +136,9 @@ const DEVICE_TTL_MS = 30 * 24 * 60 * 60_000;
 
 /** 内置中转站的默认根地址（手机远控「装完即用」的线上网关）。
  *  ⛔ 换域名只改这一处 + 各仓的 APK 内置地址；运行时可用 HARNESS_RELAY_URL / relay-url.txt 覆盖。 */
-const RELAY_DEFAULT_BASE = "https://remote.ppz123.asia";
+/* ⛔⛔ 本仓与主仓**故意不同**：PPcode 走自己的中转（38.145.220.136 / ppcode.pptoken.cc:18443）。
+   三仓同步时别把这行覆盖回 remote.ppz123.asia —— 那是 Codex Harness 桌面版的中转。 */
+const RELAY_DEFAULT_BASE = "https://ppcode.pptoken.cc:18443";
 
 /** 手机远控的固定本地端口：自建中转（frp）要把它转发出去，⛔ 别改回随机端口 ——
  *  端口每次启动都变，服务端的转发配置就永远对不上（安卓 App / 固定域名场景直接连不上）。 */

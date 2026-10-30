@@ -43,6 +43,15 @@ export type WhatsNewEntry = {
 /** 全部版本的要点，**最新在最前**（弹窗按数组顺序展示）。 */
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: "0.1.8",
+    date: "2026-10-30",
+    items: [
+      { t: "修复已知问题", d: "本版只修问题，没有新增功能" },
+      { t: "启动崩溃已修", d: "上一版装完打不开的，直接装本版即可" },
+      { t: "mac 首次打开", d: "解压后拖进「应用程序」，再按发布页那条命令放行一次" },
+    ],
+  },
+  {
     version: "0.1.7",
     date: "2026-10-30",
     items: [

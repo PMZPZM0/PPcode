@@ -707,6 +707,10 @@ console.log(C.bold("\n【25】思考等级：展示 低/中/高/最高/极高，
   //    补齐市场段（先落盘再启动引擎），⛔ 必须紧跟 getPonytailMode() 判断（默认仍不装）。
   const bootHealGated = /getPonytailMode\(\)\) !== "off"[\s\S]{0,500}ensurePonytailPlugin/.test(bootTs);
   (!bootTs.includes("ensurePonytailPlugin") ? ok : bootHealGated ? ok : fail)("ponytail 启动不自动种（仅「写代码模式 ≠ off」时自愈，且必须紧跟模式判断）");
+  /* ★ 10-30 用户实测「这个界面没有返回功能」（机器人面板）：返回键与其它内页同款，Esc 等效且捕获阶段拦。 */
+  const botConsole = codeOnly(readFileSync(join(ROOT, "src/features/app-view/AppView/05-remote-console.tsx"), "utf8"));
+  (botConsole.includes('className="secondary-setting bot-back"') ? ok : fail)("机器人面板有「返回」（左箭头 + 次要按钮，在标题行最左）");
+  (/if \(!botManagerOpen\) return;[\s\S]{0,240}event\.key !== "Escape"[\s\S]{0,240}stopPropagation\(\)[\s\S]{0,240}setBotManagerOpen\(false\)/.test(botConsole) ? ok : fail)("机器人面板 Esc 可关（捕获阶段 stopPropagation，不误关底下面板）");
   // ⛔ 09-16 实测教训：引擎对 config/value/write 要求**必填** mergeStrategy，缺了整条请求被拒
   //    （Invalid request: missing field `mergeStrategy`）。这些调用普遍带 .catch(() => undefined)
   //    静默吞掉 → 表现成「开关点了没生效」。这里按结构守：**只认真正的调用点**
@@ -1124,7 +1128,9 @@ w.postMessage({id:1,op:"list",root});
   (/gh release view "v\$\{VERSION\}"[\s\S]{0,200}?isDraft[\s\S]{0,200}?gh release edit "v\$\{VERSION\}" --draft=false/.test(releaseAll29) ? ok : fail)(
     "【29】有草稿态转正兜底（删 tag 重建会让同名 release 退回草稿 ⇒ 用户永远收不到更新）"
   );
-  (release.includes('gh release edit "v${VERSION}" --notes-file "${NOTES}"') ? ok : fail)(
+  /* ⛔ 10-30：这条分支现在还带 --title（release 若先被别处建出来，标题会变成提交标题）；
+     断言按「--notes-file 在这条 edit 里」判，别把 --title 的有无当条件。 */
+  (/gh release edit "v\$\{VERSION\}"[^\n]*--notes-file "\$\{NOTES\}"/.test(release) ? ok : fail)(
     "【29】release 已存在时也重写说明正文（只 upload 资产会让发布页停在首建时的旧正文）"
   );
 

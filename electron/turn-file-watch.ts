@@ -297,7 +297,8 @@ async function pollLiveOnce(): Promise<void> {
           files.push({ path: p, status: "added", added: d.added, deleted: 0, ...(text != null ? { content: text.length > 12000 ? text.slice(-12000) : text } : {}) });
         } else if (before.size !== after.size || before.mtime !== after.mtime) {
           const text = await readLiveText(p);
-          const d = before.content != null && text != null ? lineDelta(before.content, text) : { added: 0, deleted: 0, diff: "" };files.push({ path: p, status: "modified", added: d.added, deleted: d.deleted, ...(d.diff ? { diff: d.diff } : {}) });
+          const d = before.content != null && text != null ? lineDelta(before.content, text) : { added: 0, deleted: 0, diff: "" }
+files.push({ path: p, status: "modified", added: d.added, deleted: d.deleted, ...(d.diff ? { diff: d.diff } : {}) });
         }
       }
       // 截断时不做删除判定（10-07）：前后遍历的截断点会随本轮文件数漂移，边界文件会被
@@ -305,7 +306,8 @@ async function pollLiveOnce(): Promise<void> {
       if (!truncated) {
         for (const [p, before] of entry.snap) {
           if (next.has(p)) continue;
-          const d = before.content != null ? lineDelta(before.content, "") : { added: 0, deleted: 0, diff: "" };files.push({ path: p, status: "deleted", added: 0, deleted: d.deleted, ...(d.diff ? { diff: d.diff } : {}) });
+          const d = before.content != null ? lineDelta(before.content, "") : { added: 0, deleted: 0, diff: "" }
+files.push({ path: p, status: "deleted", added: 0, deleted: d.deleted, ...(d.diff ? { diff: d.diff } : {}) });
         }
       }
       files.sort((x, y) => y.added + y.deleted - (x.added + x.deleted));

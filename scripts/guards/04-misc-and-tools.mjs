@@ -1650,6 +1650,10 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     (gwSrc.includes("MAX_INFLIGHT") && gwSrc.includes("MAX_PER_MINUTE") && gwSrc.includes("MAX_BODY") ? ok : fail)(
       "【139e】网关有并发/速率/体积上限（公网入口不许无限转发）"
     );
+    /* 10-30：安装包也要发本仓自己的（PPcodeRemote），主仓的 CodexRemote 装完连的是主仓中转。 */
+    (gwSrc.includes("PPcodeRemote-0.1.6.apk") && !codeOnly(gwSrc).includes("CodexRemote-0.1.6.apk") ? ok : fail)(
+      "【139e】本仓网关 /apk 默认发 PPcode 安装包（⛔ 不是主仓的 CodexRemote：APK 内置地址写着各仓的中转）"
+    );
     (gwSrc.includes('url === "/apk"') && gwSrc.includes("APK_URL") ? ok : fail)(
       "【139e】网关公开 /apk 跳转（老 APK 的安装包入口坏了也能用浏览器更新）"
     );
@@ -1661,6 +1665,10 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     );
     (tunnelSrc.includes('state === "online" ? this.status.publicBase : ""') ? ok : fail)(
       "【139e】离线时 publicBase 为空 —— 二维码必须退回旧通道，不能给用户一个死地址"
+    );
+    /* 10-30 用户：「ppcode 的中转地址填错了，填成了 ppz.123 那个」 —— 本仓必须用自己的服务器。 */
+    (relaySrc.includes('RELAY_DEFAULT_BASE = "https://ppcode.pptoken.cc:18443"') && !codeOnly(relaySrc).includes("remote.ppz123.asia") ? ok : fail)(
+      "【139e】本仓中转地址 = PPcode 自己的服务器（ppcode.pptoken.cc:18443）；⛔ 不是主仓的 remote.ppz123.asia（同步时别覆盖回去）"
     );
     (relaySrc.includes("startRelayTunnel()") && relaySrc.includes("RELAY_DEFAULT_BASE") && relaySrc.includes("const relay = this.relay?.publicBase();") ? ok : fail)(
       "【139e】远控服务启动即连中转，配对基址中转优先（离线才退回固定地址/临时隧道/局域网）"

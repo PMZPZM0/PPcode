@@ -569,10 +569,11 @@ export async function getMemoryHandles(input: {
   };
   const common = { sessionId, projectKey, workspace, agent };
 
-  /* ⛔⛔ private 层的归属：**委派实例用它自己的会话 id**（不是发起方的）——
-     派出去的专家写的是"它自己在这条线上看到的"，与主会话的私有记忆是两份。
-     读取端另由 `dispatch` 标记决定**能不能读主会话那一层**（见 buildContext）。 */
-  const privateOwner = sessionId;
+  /* ⛔⛔ private 层的归属：**委派实例用它自己的会话 id**（不是发起方的）。
+     ⛔⛔ 10-30：上面那句「读取端另由 dispatch 决定」此前是**空头承诺**（buildContext 没收这个入参）。
+     现在落实为硬闸：私有归属若等于发起方会话 id ⇒ 直接不给 private 层。 */
+  const dispatchOrigin = String(input?.dispatch?.originThreadId ?? "").trim();
+  const privateOwner = sessionId && sessionId !== dispatchOrigin ? sessionId : "";
   /* team 层：团 id 归一（⛔ 没有团 id 就没有 team 层，不给"空团"开后门）。 */
   const teamId = String(input?.teamId ?? input?.dispatch?.teamId ?? "").trim();
 

@@ -1656,7 +1656,7 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
       "【139e】网关有并发/速率/体积上限（公网入口不许无限转发）"
     );
     /* 10-30：安装包也要发本仓自己的（PPcodeRemote），主仓的 CodexRemote 装完连的是主仓中转。 */
-    (gwSrc.includes("PPcodeRemote-0.1.6.apk") && !codeOnly(gwSrc).includes("CodexRemote-0.1.6.apk") ? ok : fail)(
+    (gwSrc.includes("PPcodeRemote-0.1.7.apk") && !codeOnly(gwSrc).includes("CodexRemote-0.1.7.apk") ? ok : fail)(
       "【139e】本仓网关 /apk 默认发 PPcode 安装包（⛔ 不是主仓的 CodexRemote：APK 内置地址写着各仓的中转）"
     );
     (gwSrc.includes('url === "/apk"') && gwSrc.includes("APK_URL") ? ok : fail)(
@@ -1771,8 +1771,8 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     (relaySrc.includes("DEVICE_TTL_MS") && relaySrc.includes("private pruneApproved()") && relaySrc.includes("this.pruneApproved();") ? ok : fail)(
       "【139e】已配对设备 30 天未连接自动清理（启动时 + 读列表时），列表不再无限增长"
     );
-    (relaySrc.includes("mobile-remote-v0.1.6") ? ok : fail)(
-      "【139e】安装包版本与 Release 对齐（0.1.6）"
+    (relaySrc.includes("mobile-remote-v0.1.7") ? ok : fail)(
+      "【139e】安装包版本与 Release 对齐（0.1.7）"
     );
   }
 }

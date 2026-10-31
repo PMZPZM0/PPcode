@@ -113,6 +113,21 @@ const LOGO_SRC = `${import.meta.env.BASE_URL}pptoken-logo.png`;
 
 export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => void; onLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string; saved?: any; models?: string[] }) => Promise<boolean>; onCloudReady?: (info: { username?: string }) => Promise<boolean> }) {
   const [tab, setTab] = useState<"login" | "register">("login");
+  /* 10-31 用户：「ppcode 也是一样，做这种两段效果」—— 默认只列登录方式，点一条展开表单；
+     点卡片外面收起（与桌面版同一套交互）。 */
+  const [expanded, setExpanded] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  /* 展开态点卡片外面 ⇒ 收起（与桌面版同一规则） */
+  useEffect(() => {
+    if (!expanded) return;
+    const onDown = (event: MouseEvent) => {
+      const el = cardRef.current;
+      if (!el || el.contains(event.target as Node)) return;
+      setExpanded(false);
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [expanded]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -295,7 +310,11 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
       <div className="authx-aurora" aria-hidden="true" />
       <div className="authx-grid" aria-hidden="true" />
 
-      <div className="authx-card">
+      <div
+        ref={cardRef}
+        className="authx-card"
+        onClick={() => { if (!expanded) setExpanded(true); }}
+      >
         <header className="authx-brand">
           <span className="authx-logo"><img src={LOGO_SRC} alt="" /></span>
           <span className="authx-brand-text">
@@ -306,9 +325,9 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
 
         <div className="authx-tabs" role="tablist">
           <button type="button" role="tab" aria-selected={tab === "login"} className={tab === "login" ? "on" : ""}
-            onClick={() => { setTab("login"); setStatus(""); }}>登录</button>
+            onClick={() => { setTab("login"); setStatus(""); setExpanded(false); }}>登录</button>
           <button type="button" role="tab" aria-selected={tab === "register"} className={tab === "register" ? "on" : ""}
-            onClick={() => { setTab("register"); setStatus(""); }}>注册</button>
+            onClick={() => { setTab("register"); setStatus(""); setExpanded(true); }}>注册</button>
           <span className="authx-tab-ink" data-tab={tab} aria-hidden="true" />
         </div>
 
@@ -317,127 +336,131 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
         {tab === "login" && (
           <div className="authx-method" role="tablist" aria-label="登录方式">
             <button type="button" role="tab" aria-selected={method === "relay"} className={method === "relay" ? "on" : ""}
-              onClick={() => { setMethod("relay"); setStatus(""); setFixNote(""); }}>
+              onClick={() => { setMethod("relay"); setStatus(""); setFixNote(""); setExpanded((v) => (method === "relay" ? !v : true)); }}>
               <Wallet size={16} />
               <span><b>中转站账号</b><small>仅支持 pptoken · 余额 / 套餐</small></span>
             </button>
             <button type="button" role="tab" aria-selected={method === "cloud"} className={method === "cloud" ? "on" : ""}
-              onClick={() => { setMethod("cloud"); setStatus(""); setFixNote(""); }}>
+              onClick={() => { setMethod("cloud"); setStatus(""); setFixNote(""); setExpanded((v) => (method === "cloud" ? !v : true)); }}>
               <Cloud size={16} />
               <span><b>云管理账号</b><small>登录即用 · 自动配置</small></span>
             </button>
           </div>
         )}
 
-        {tab === "register" ? (
-          <RegisterPanel
-            baseUrl={DEFAULT_GATEWAY}
-            username={username.trim() || undefined}
-            onUsernameChange={(v) => setUsername(v)}
-            cloudCenterUrl={cloudCenterUrl}
-            onLogin={onLogin}
-            onBack={() => setTab("login")}
-          />
-        ) : (
-          <div className="authx-panel">
-            {method === "relay" ? (<>
-            <label className="authx-field">
-              <span>账号邮箱</span>
-              <div className="authx-input">
-                <Mail size={14} />
-                <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="你在中转站注册的邮箱"
-                  autoComplete="username" spellCheck={false}
-                  onKeyDown={(e) => { if (e.key === "Enter" && canSubmit) void relayLogin(); }} />
-              </div>
-            </label>
+        <div className={`authx-form-wrap${expanded ? " is-open" : ""}`}>
+        <div className="authx-form-inner">
+          {tab === "register" ? (
+              <RegisterPanel
+                baseUrl={DEFAULT_GATEWAY}
+                username={username.trim() || undefined}
+                onUsernameChange={(v) => setUsername(v)}
+                cloudCenterUrl={cloudCenterUrl}
+                onLogin={onLogin}
+                onBack={() => setTab("login")}
+              />
+            ) : (
+              <div className="authx-panel">
+                {method === "relay" ? (<>
+                <label className="authx-field">
+                  <span>账号邮箱</span>
+                  <div className="authx-input">
+                    <Mail size={14} />
+                    <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="你在中转站注册的邮箱"
+                      autoComplete="username" spellCheck={false}
+                      onKeyDown={(e) => { if (e.key === "Enter" && canSubmit) void relayLogin(); }} />
+                  </div>
+                </label>
 
-            <label className="authx-field">
-              <span>密码</span>
-              <div className="authx-input">
-                <Lock size={14} />
-                <input type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                  placeholder="中转站账号密码" autoComplete="current-password"
-                  onKeyDown={(e) => { if (e.key === "Enter" && canSubmit) void relayLogin(); }} />
-                <button type="button" className="authx-eye" onClick={() => setShowPw((v) => !v)} title={showPw ? "隐藏密码" : "显示密码"}>
-                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                <label className="authx-field">
+                  <span>密码</span>
+                  <div className="authx-input">
+                    <Lock size={14} />
+                    <input type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+                      placeholder="中转站账号密码" autoComplete="current-password"
+                      onKeyDown={(e) => { if (e.key === "Enter" && canSubmit) void relayLogin(); }} />
+                    <button type="button" className="authx-eye" onClick={() => setShowPw((v) => !v)} title={showPw ? "隐藏密码" : "显示密码"}>
+                      {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </label>
+
+                {/* 10-24 品牌特供款：用户名（界面昵称）从「高级设置」提为正常字段；
+                    网关恒为 pptoken（⛔ 不再提供改网关的入口 —— 只保留 pptoken 中转站登录）。 */}
+                <label className="authx-field">
+                  <span>用户名（选填）</span>
+                  <div className="authx-input">
+                    <UserRound size={14} />
+                    <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="登录后显示在左上角" />
+                  </div>
+                </label>
+
+                {status && <div className="authx-error">{status}</div>}
+                {fixNote && <div className="authx-ok">{fixNote}</div>}
+
+                <button type="button" className="authx-primary" disabled={!canSubmit} onClick={() => void relayLogin()}>
+                  {busy ? <><Loader2 size={15} className="authx-spin" />正在登录并配置…</> : <><Sparkles size={15} />登录并开始使用</>}
                 </button>
-              </div>
-            </label>
 
-            {/* 10-24 品牌特供款：用户名（界面昵称）从「高级设置」提为正常字段；
-                网关恒为 pptoken（⛔ 不再提供改网关的入口 —— 只保留 pptoken 中转站登录）。 */}
-            <label className="authx-field">
-              <span>用户名（选填）</span>
-              <div className="authx-input">
-                <UserRound size={14} />
-                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="登录后显示在左上角" />
-              </div>
-            </label>
+                {/* 本机已保存过同一网关+邮箱的有效会话 ⇒ 不必为一次配置反复赌密码（10-09 用户被
+                    「invalid email or password」卡住时，机器里明明躺着一个 24h 的有效 token）。 */}
+                {savedSessionMatches && (
+                  <button type="button" className="authx-ghost" disabled={busy}
+                    title="用本机上一次成功登录留下的会话继续（不发送密码）"
+                    onClick={() => void relayLogin({ skipLogin: true })}>
+                    <KeyRound size={14} />用本机已保存的登录状态继续（不重输密码）
+                  </button>
+                )}
 
-            {status && <div className="authx-error">{status}</div>}
-            {fixNote && <div className="authx-ok">{fixNote}</div>}
+                <p className="authx-note">
+                  没有账号？切到上方「注册」——只需邮箱验证码，注册完自动登录并接好模型供应商。
+                </p>
+                </>) : (<>
+                <label className="authx-field">
+                  <span>云账号</span>
+                  <div className="authx-input">
+                    <Mail size={14} />
+                    <input value={cloudAccount} onChange={(e) => setCloudAccount(e.target.value)}
+                      placeholder="你在云端注册的账号（与网页端同一个）" autoComplete="username" spellCheck={false}
+                      onKeyDown={(e) => { if (e.key === "Enter" && cloudAccount.trim() && cloudPassword && !busy) void cloudLogin(); }} />
+                  </div>
+                </label>
 
-            <button type="button" className="authx-primary" disabled={!canSubmit} onClick={() => void relayLogin()}>
-              {busy ? <><Loader2 size={15} className="authx-spin" />正在登录并配置…</> : <><Sparkles size={15} />登录并开始使用</>}
-            </button>
+                <label className="authx-field">
+                  <span>密码</span>
+                  <div className="authx-input">
+                    <Lock size={14} />
+                    <input type={showCloudPw ? "text" : "password"} value={cloudPassword} onChange={(e) => setCloudPassword(e.target.value)}
+                      placeholder="云账号密码" autoComplete="current-password"
+                      onKeyDown={(e) => { if (e.key === "Enter" && cloudAccount.trim() && cloudPassword && !busy) void cloudLogin(); }} />
+                    <button type="button" className="authx-eye" onClick={() => setShowCloudPw((v) => !v)} title={showCloudPw ? "隐藏密码" : "显示密码"}>
+                      {showCloudPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </label>
 
-            {/* 本机已保存过同一网关+邮箱的有效会话 ⇒ 不必为一次配置反复赌密码（10-09 用户被
-                「invalid email or password」卡住时，机器里明明躺着一个 24h 的有效 token）。 */}
-            {savedSessionMatches && (
-              <button type="button" className="authx-ghost" disabled={busy}
-                title="用本机上一次成功登录留下的会话继续（不发送密码）"
-                onClick={() => void relayLogin({ skipLogin: true })}>
-                <KeyRound size={14} />用本机已保存的登录状态继续（不重输密码）
-              </button>
-            )}
+                {/* 10-24 品牌特供款：云端服务地址折叠已隐藏 —— 云端基址由账号服务派生，特供款用户不需要也不该改。 */}
 
-            <p className="authx-note">
-              没有账号？切到上方「注册」——只需邮箱验证码，注册完自动登录并接好模型供应商。
-            </p>
-            </>) : (<>
-            <label className="authx-field">
-              <span>云账号</span>
-              <div className="authx-input">
-                <Mail size={14} />
-                <input value={cloudAccount} onChange={(e) => setCloudAccount(e.target.value)}
-                  placeholder="你在云端注册的账号（与网页端同一个）" autoComplete="username" spellCheck={false}
-                  onKeyDown={(e) => { if (e.key === "Enter" && cloudAccount.trim() && cloudPassword && !busy) void cloudLogin(); }} />
-              </div>
-            </label>
+                {status && <div className="authx-error">{status}</div>}
 
-            <label className="authx-field">
-              <span>密码</span>
-              <div className="authx-input">
-                <Lock size={14} />
-                <input type={showCloudPw ? "text" : "password"} value={cloudPassword} onChange={(e) => setCloudPassword(e.target.value)}
-                  placeholder="云账号密码" autoComplete="current-password"
-                  onKeyDown={(e) => { if (e.key === "Enter" && cloudAccount.trim() && cloudPassword && !busy) void cloudLogin(); }} />
-                <button type="button" className="authx-eye" onClick={() => setShowCloudPw((v) => !v)} title={showCloudPw ? "隐藏密码" : "显示密码"}>
-                  {showCloudPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                <button type="button" className="authx-primary" disabled={!cloudAccount.trim() || !cloudPassword || busy} onClick={() => void cloudLogin()}>
+                  {busy ? <><Loader2 size={15} className="authx-spin" />正在登录并自动配置…</> : <><Cloud size={15} />登录并自动配置</>}
                 </button>
+
+                <p className="authx-note">
+                  登录后自动同步云端模型并接通云端知识库与记忆，随后打开模型配置：勾选要用的模型 → 保存并启用 → 重启。
+                </p>
+                {cloudCenterUrl && (
+                  <button type="button" className="authx-cloud-link"
+                    onClick={() => { void window.codex.openExternal(cloudCenterUrl).catch(() => undefined); }}>
+                    <ExternalLink size={13} />还没有云账号？去云端用户中心注册
+                  </button>
+                )}
+                </>)}
               </div>
-            </label>
-
-            {/* 10-24 品牌特供款：云端服务地址折叠已隐藏 —— 云端基址由账号服务派生，特供款用户不需要也不该改。 */}
-
-            {status && <div className="authx-error">{status}</div>}
-
-            <button type="button" className="authx-primary" disabled={!cloudAccount.trim() || !cloudPassword || busy} onClick={() => void cloudLogin()}>
-              {busy ? <><Loader2 size={15} className="authx-spin" />正在登录并自动配置…</> : <><Cloud size={15} />登录并自动配置</>}
-            </button>
-
-            <p className="authx-note">
-              登录后自动同步云端模型并接通云端知识库与记忆，随后打开模型配置：勾选要用的模型 → 保存并启用 → 重启。
-            </p>
-            {cloudCenterUrl && (
-              <button type="button" className="authx-cloud-link"
-                onClick={() => { void window.codex.openExternal(cloudCenterUrl).catch(() => undefined); }}>
-                <ExternalLink size={13} />还没有云账号？去云端用户中心注册
-              </button>
             )}
-            </>)}
-          </div>
-        )}
+        </div>
+      </div>
 
         <button className="ghost login-skip authx-skip" onClick={onSkip}><WifiOff size={14} />暂时不登录，直接进入</button>
       </div>

@@ -48,6 +48,9 @@ export function RegisterPanel({ baseUrl, username, onUsernameChange, cloudCenter
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState<"" | "settings" | "code" | "register">("settings");
+  /* 10-31 用户：「pptoken 注册界面要区分 pptoken 中转站和 ppcode 云管理」——
+     默认只列两条，点一条才展开对应内容。 */
+  const [regMode, setRegMode] = useState<"cloud" | "relay" | null>(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(0);
@@ -138,6 +141,23 @@ export function RegisterPanel({ baseUrl, username, onUsernameChange, cloudCenter
       {/* ── 默认：pptoken 云管理注册（网页端完成，注册完回「登录」即用） ── */}
       {/* 10-31 用户：「这个注释也优化一下美观度啊，这样布局太丑了」——
           长段落换成三条事实标签（一眼扫完），说明压成一行小字，主按钮独占一行。 */}
+      <div className="authx-method authx-reg-method" role="tablist" aria-label="注册方式">
+        <button type="button" role="tab" aria-selected={regMode === "cloud"} className={regMode === "cloud" ? "on" : ""}
+          onClick={() => setRegMode((m) => (m === "cloud" ? null : "cloud"))}>
+          <Cloud size={16} />
+          <span><b>ppcode 云管理</b><small>网页注册 · 登录即用</small></span>
+        </button>
+        <button type="button" role="tab" aria-selected={regMode === "relay"} className={regMode === "relay" ? "on" : ""}
+          onClick={() => setRegMode((m) => (m === "relay" ? null : "relay"))}>
+          <Mail size={16} />
+          <span><b>pptoken 中转站</b><small>邮箱验证码 · 站点账号</small></span>
+        </button>
+      </div>
+
+      <div className={`authx-form-wrap${regMode ? " is-open" : ""}`}>
+        <div className="authx-form-inner">
+
+      {regMode === "cloud" && (
       <div className="authx-cloud-register">
         <div className="authx-cloud-register-icon"><Cloud size={22} /></div>
         <strong>注册 ppToken 云管理账号</strong>
@@ -151,10 +171,10 @@ export function RegisterPanel({ baseUrl, username, onUsernameChange, cloudCenter
         </button>
         <p className="authx-hint">注册完回「登录」，用同一账号登录即自动配置</p>
       </div>
+      )}
 
       {/* ── 备用：中转站邮箱注册（sub2api 网关账号；整块折叠进高级） ── */}
-      <details className="authx-adv">
-        <summary>用中转站邮箱注册（高级）</summary>
+      {regMode === "relay" && (<div className="authx-relay-register">
 
         {loadingSettings ? (
           <div className="authx-loading"><Loader2 size={15} className="authx-spin" />正在读取站点设置…</div>
@@ -222,7 +242,9 @@ export function RegisterPanel({ baseUrl, username, onUsernameChange, cloudCenter
           注册成功后会自动登录并接入模型供应商。
           {settings?.siteName ? ` 当前站点：${settings.siteName}。` : ""}
         </p>
-      </details>
+      </div>)}
+        </div>
+      </div>
     </div>
   );
 }

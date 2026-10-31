@@ -304,3 +304,77 @@
   .authx-tab-ink, .authx-primary { transition: none; }
   .authx-spin { animation-duration: 3s; }
 }
+/* ── 10-31 重做：PPcode 定制登录页（用户：「PPCODE 定制界面原来挺好看的，现在很丑」）──────
+   原来 430 宽 + 半透明玻璃卡在亮色下被极光洗白，字发灰、层级塌；这里统一到与桌面版登录页
+   同一套度量（宽卡 / 42 输入 / 44 主按钮 / 28 内边距），但**保留 PP 自己的品牌与极光底**。
+   ⛔ 只在本文件覆盖：`.authx-*` 是 PP 专属样式，不进三仓同步面的样式替换。 */
+.authx-card {
+  width: min(560px, 100%);
+  gap: 12px;
+  padding: 26px 26px 20px;
+  border-radius: 22px;
+  /* 亮色下原来 84% 透明度 + 模糊 ⇒ 极光透上来把字洗灰；提到 95% 才有卡片感 */
+  background: color-mix(in oklab, var(--panel) 95%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, #fff 55%, transparent) inset,
+    0 26px 64px -28px color-mix(in oklab, var(--text) 30%, transparent),
+    0 2px 10px -4px color-mix(in oklab, var(--text) 12%, transparent);
+}
+/* 极光与网格收一档：原来亮色下饱和度过高，盖过内容 */
+.authx-aurora { opacity: 0.34; filter: blur(44px) saturate(105%); }
+.authx-grid { opacity: 0.32; }
+
+.authx-brand { gap: 12px; }
+.authx-brand-text strong { font-size: 19px; letter-spacing: 0.2px; }
+.authx-brand-text em { font-size: 11.5px; }
+
+.authx-tabs { height: 40px; border-radius: 12px; }
+.authx-tabs button { font-size: 12.5px; }
+
+.authx-method { gap: 8px; }
+.authx-method button { padding: 10px 12px; border-radius: 13px; }
+.authx-method button b { font-size: 13px; }
+.authx-method button small { font-size: 10.8px; }
+
+.authx-field { gap: 6px; }
+.authx-field > span { font-size: 11.5px; }
+.authx-input { height: 42px; border-radius: 11px; padding: 0 12px; }
+.authx-input input { font-size: 13px; }
+
+.authx-primary { min-height: 44px; border-radius: 13px; font-size: 13.5px; font-weight: 650; letter-spacing: 0.2px; }
+
+.authx-note { font-size: 11.5px; line-height: 1.55; }
+/* 10-31 用户「文字居中，注释可以不要」：品牌区居中、去掉底部那行说明（与桌面版登录页同一口径）。
+   ⛔ 两张"登录方式"卡的小字保留 —— 它区分的是"走哪条登录线"，属于信息不是注释。 */
+.authx-brand { flex-direction: column; justify-content: center; text-align: center; gap: 8px; }
+.authx-brand-text { align-items: center; }
+.authx-note { display: none; }
+
+/* 注册页（10-31 重做）：图标磁贴 + 标题 + 三条事实标签 + 主按钮 + 一行小字。
+   ⛔ 不再用长段落 —— 宽卡里长段落会把整块压歪（用户截图：「这样布局太丑了」）。 */
+.authx-cloud-register { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 4px 0 2px; }
+.authx-cloud-register-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  display: grid; place-items: center;
+  color: color-mix(in oklab, #a855f7 75%, var(--text));
+  background: color-mix(in oklab, #a855f7 12%, transparent);
+  border: 1px solid color-mix(in oklab, #a855f7 22%, transparent);
+}
+.authx-cloud-register strong { font-size: 16px; font-weight: 650; color: var(--text); }
+.authx-facts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.authx-facts li {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 11.5px; color: var(--muted);
+  background: color-mix(in oklab, var(--panel-2) 80%, transparent);
+  border: 1px solid color-mix(in oklab, var(--line) 80%, transparent);
+}
+.authx-facts svg { color: color-mix(in oklab, #a855f7 70%, var(--muted)); }
+.authx-cloud-register .authx-primary { width: 100%; }
+.authx-hint { margin: 0; font-size: 11.5px; color: var(--faint); }
+.authx-back {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 4px;
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 11.5px; padding: 2px 0;
+}
+.authx-back:hover { color: var(--text); }

@@ -136,15 +136,20 @@ export function RegisterPanel({ baseUrl, username, onUsernameChange, cloudCenter
       <button type="button" className="authx-back" onClick={onBack}><ArrowLeft size={13} />返回登录</button>
 
       {/* ── 默认：pptoken 云管理注册（网页端完成，注册完回「登录」即用） ── */}
+      {/* 10-31 用户：「这个注释也优化一下美观度啊，这样布局太丑了」——
+          长段落换成三条事实标签（一眼扫完），说明压成一行小字，主按钮独占一行。 */}
       <div className="authx-cloud-register">
         <div className="authx-cloud-register-icon"><Cloud size={22} /></div>
-        <strong>注册 pptoken 云管理账号</strong>
-        <p>一个账号管全部：模型额度、知识库、记忆。注册在网页端完成，注册后回「登录」用同一账号登录，
-          应用会自动配好模型供应商（登录即用，不用手动填 Key）。</p>
+        <strong>注册 ppToken 云管理账号</strong>
+        <ul className="authx-facts">
+          <li><CheckCircle2 size={13} />模型额度</li>
+          <li><CheckCircle2 size={13} />知识库</li>
+          <li><CheckCircle2 size={13} />记忆</li>
+        </ul>
         <button type="button" className="authx-primary" onClick={openCloudRegister}>
-          <ExternalLink size={15} />去云管理注册（浏览器打开）
+          <ExternalLink size={15} />去网页注册
         </button>
-        <p className="authx-note">已经有云管理账号了？切回上方「登录」，选「云管理账号」直接登录。</p>
+        <p className="authx-hint">注册完回「登录」，用同一账号登录即自动配置</p>
       </div>
 
       {/* ── 备用：中转站邮箱注册（sub2api 网关账号；整块折叠进高级） ── */}

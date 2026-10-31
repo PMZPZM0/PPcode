@@ -61,6 +61,10 @@
 @import "./styles/31-newbie-guide" layer(components);
 @import "./styles/32-polling" layer(components);
 @import "./styles/33-image-lab" layer(components);
+/* ⛔ 10-31：这一行被漏了 ⇒ PPcode 定制登录页（`.authx-*`，306 行）根本没进产物，
+   页面只剩裸 DOM（用户截图「定制登录界面也没了 / 变成这种垃圾」）。
+   ⛔ 33 号有两个文件（image-lab 是主线的，relay-auth 是 PP 专属），两条都要在。 */
+@import "./styles/33-relay-auth" layer(components);
 @import "./styles/34-devtools-cards" layer(components);
 @import "./styles/36-boot-550c" layer(components);
 @import "./styles/37-cloud-account" layer(components);

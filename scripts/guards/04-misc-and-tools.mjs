@@ -6,7 +6,7 @@
  * 共享面由 ./_ctx.mjs 注入（同名导入）。动机：多路并行写者往同一文件加守卫会互相覆盖（已发生）。
  */
 import {
-  C, ROOT, codeOnly, createRequire, existsSync, fail, join, mainSrc, ok, pathToFileURL, readAppUi, readFileSync, readMainSource, readStyles, readdirSync, relative, warn,
+  C, ROOT, codeOnly, createRequire, existsSync, fail, join, mainSrc, ok, pathToFileURL, readAppUi, readFileSync, readMainSource, readSettingsSurface, readStyles, readdirSync, relative, warn,
 } from "./_ctx.mjs";
 
 export async function run() {
@@ -286,7 +286,7 @@ console.log(C.bold("\n【工具取消/卸载】10-07 重构的四条不变量"))
     : fail("渲染层没处理 cancelled 事件 —— 取消后「正在安装」挂着不动（无响应状态）");
   // ⑥ 通道账本：runtime 前缀 5 条（【2】只验 manifest 自洽，这里钉人读的账本别漏登记）
   (/prefix: "runtime", count: 7/.test(readFileSync(join(ROOT, "electron", "ipc-registry.ts"), "utf8")) && /"runtime:cancel"/.test(readFileSync(join(ROOT, "electron", "ipc-registry.ts"), "utf8")))
-    ? ok("ipc-registry runtime 账本 count=5 且含 runtime:cancel")
+    ? ok("ipc-registry runtime 账本 count=7（含 10-12 的 update-check/update）且含 runtime:cancel")
     : fail("runtime 账本没登记 runtime:cancel —— 预检【2】会红，且读账本的人不知道有这条通道");
 }
 
@@ -299,7 +299,7 @@ console.log(C.bold("\n【工具取消/卸载】10-07 重构的四条不变量"))
 console.log(C.bold("\n【dtIA】开发工具页两级 IA 契约"));
 {
   const dtPage = readFileSync(join(ROOT, "src", "features", "settings-devtools", "DevtoolsSettingsSection.tsx"), "utf8");
-  const dtReg = readFileSync(join(ROOT, "src", "features", "app-view", "AppView", "08-settings-sheet", "01-settings-layout", "00-settings-registry.tsx"), "utf8");
+  const dtReg = readSettingsSurface();
   const dtCss = readFileSync(join(ROOT, "src", "styles", "34-devtools-cards.css"), "utf8");
   const dtStylesEntry = readFileSync(join(ROOT, "src", "styles.css"), "utf8");
 
@@ -360,8 +360,10 @@ console.log(C.bold("\n【extIA】拓展接口页两级 IA 契约"));
   );
   (dialogAt > 0 ? ok : fail)("二级载体统一走 SettingsDialog（⛔ 不许自造弹窗：与开发工具页共用一套规范）");
   /* ⛔ 换行必须容错（`\r?\n`）：主仓工作区是 LF、PPcode 副本是 CRLF —— 锚死 `\n` 会让
-     同一条断言在主仓绿、在副本红（10-10 实测：PPcode check 多出这一条红）。 */
-  (/\.devtools-card,\r?\nbutton.settings-card \{/.test(extCss) ? ok : fail)(
+     同一条断言在主仓绿、在副本红（10-10 实测：PPcode check 多出这一条红）。
+     10-11 选择器收窄成 `button.settings-card`（裸 `.settings-card` 把控制台页的
+     div 信息卡也压成了竖排标签 —— 用户截图实测），断言跟着锚新形态。 */
+  (/\.devtools-card,\r?\nbutton\.settings-card \{/.test(extCss) ? ok : fail)(
     "⛔ 两页卡片样式**同源**（button.settings-card / .devtools-card 是同一份 CSS 的并列选择器；⛔ 不许退回裸 .settings-card —— 那会把 div 信息卡也压扁）"
   );
 }
@@ -406,7 +408,7 @@ console.log(C.bold("\n【15】供应商列表：点开关（启用/停用）右�
   (providerHookSrc15.includes("cloudModelsSync") && /customDraft\.provider === "cloud"/.test(providerHookSrc15) ? ok : fail)(
     "【15】云端供应商刷新走 cloud-models 目录（⛔ 不再拿 /models 探活）"
   );
-  (/provider-activated[\s\S]{0,500}?refreshActive/.test(providerEventSrc15) ? ok : fail)(
+  (/provider-activated[\s\S]{0,400}?refreshActive/.test(providerEventSrc15) ? ok : fail)(
     "【15】provider-activated 后刷新整张供应商列表（旧开关同步变灰）"
   );
 }
@@ -711,8 +713,23 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
       ? ok("★ 调度开关唯一渲染点＝顶栏（App.tsx 里只有一处 <DispatchMenu topbar>）")
       : fail(`调度开关渲染点 ${dispatchEntry9} 处 / 未用 topbar 变体 —— 双入口会让「在哪开」说不清`);
     /顶栏/.test(dpSrc9) && !/输入框的调度开关/.test(dpSrc9)
-      ? ok("★ L3 拒绝文案指向真实入口（顶栏调度开关）")
-      : fail("调度权限恢复文案未指向顶栏 —— 开关只在顶栏渲染，用户找不到");
+      ? ok("★ L3 拒绝文案指向真实入口（顶栏调度开关）")      : fail("调度权限恢复文案未指向顶栏 —— 开关只在顶栏渲染，用户找不到");
+    /* ⛔ 10-11 用户报「独立弹窗里少了两个图标」⇒ 🔍 搜索与调度开关改为**主窗口与独立弹窗都渲染**
+       （此前弹窗分支把整簇换成只剩「返回主应用」）。判据打在**位置关系**上：这两处必须在
+       弹窗三元 `{bag.popoutThreadId ? (` **之外** —— 放回分支里就又会只剩一个按钮。
+       ⛔ 顺序类断言先确认两个锚都在，别被 `indexOf` 的 -1 骗成恒真（本仓踩过这个假绿形态）。
+       ⛔ 这里读**该文件原文**而不是 `readAppUi()`：聚合器对 `app-state/parts/**` 会剥掉 `bag.` 前缀
+          （见 `_ctx.mjs` 的说明），带前缀的字面量在聚合面上永远匹配不到 —— 位置类断言本就该锚本文件。 */
+    const seg09 = codeOnly(readFileSync(join(ROOT, "src/features/app-state/parts/part09/02-seg.tsx"), "utf8"));
+    const ternIdx9 = seg09.indexOf("{bag.popoutThreadId ? (");
+    const searchIdx9 = seg09.indexOf('className="history-search-wrap"');
+    const dispatchIdx9 = seg09.indexOf("<DispatchMenu");
+    ternIdx9 > 0 && searchIdx9 > 0 && dispatchIdx9 > 0 && searchIdx9 < ternIdx9 && dispatchIdx9 < ternIdx9
+      ? ok("★ 🔍 搜索与调度开关在弹窗三元**之外**（两个窗口都渲染）")
+      : fail("搜索/调度又回到 popout 分支里了 —— 独立弹窗会只剩「返回主应用」");
+    /bag\.popoutThreadId \? \(\s*<button className="icon-button popout-return-btn"[\s\S]{0,400}?popout-open-btn/.test(seg09)
+      ? ok("★ 弹窗三元只二选一「返回主应用 / 独立弹窗」两个按钮（别的按钮别塞回分支里）")
+      : fail("弹窗三元里塞了别的按钮 —— 两个窗口的顶栏会不一致");
     !dp.canDispatchFrom({ depth: dp.MAX_DEPTH }).ok
       ? ok(`L3 深度闸：depth >= MAX_DEPTH(${dp.MAX_DEPTH}) 拒绝`)
       : fail("深度闸失效 —— 调用链可以无限延长");
@@ -736,7 +753,7 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     /* 10-29 定稿：没有总开关；专家/子智能体恒在，专家团按 team 过滤（连旧记录里的 false 也不生效）。 */
     const dflt9 = dp.filterTargetsBySwitch(targets9, { enabled: false });
     dflt9.length === 2 && dflt9[0].kind === "expert"
-      ? ok("默认目录 = 专家 + 子智能体（旧记录的 enabled 不再影响）") : fail("默认目录不对");
+      ? ok("默认目录 = 专家 + 子智能体（旧记录的 enabled 不再影响）") : fail("默认目录不对 —— 专家/子智能体应当恒在、专家团默认不在");
     const withTeam = dp.filterTargetsBySwitch(targets9, { enabled: true, expert: false, team: true, subagent: false });
     withTeam.length === 3
       ? ok("开启专家团后三类都在（旧记录里被关掉的专家/子智能体也算开）")
@@ -805,9 +822,6 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
         && /subAgentConfig\.inheritApproval/.test(delegateSrc) && /subAgentConfig\.inheritModel/.test(delegateSrc)
         ? ok : fail)("★ 派活真正消费子智能体的推理强度/模型/沙箱/审批（表单不再只写不读）");
     }
-    /* 勾选必须**在执行端硬拦** kind。只删工具不加闸 ⇒ 模型仍能凭 agent_invoke 的参数拼出
-       被取消的类别（用户报的正是「取消勾选还是能调」）。⛔ 断言分两层：纯函数**取值** + **接线**
-       —— 写了没接 = 恒绿死函数（本仓反复踩过的坑）。 */
     /* 类别闸在执行端硬拦 kind（10-29 定稿：专家/子智能体**恒可用**，专家团是唯一开关）。 */
     (typeof dp.dispatchKindAllowed === "function"
       && dp.dispatchKindAllowed("expert", { expert: false, team: false, subagent: false }).ok === true
@@ -1436,8 +1450,10 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     (/matchMedia\("\(width<=760px\)"\)/.test(goalPal250) && /ctxMenuOpen\)[\s\S]{0,400}setCtxMenuOpen\(false\)/.test(goalPal250) ? ok : fail)(
       "【250】缩到窄屏必须**逻辑关掉**工作区浮层（只靠 CSS 会出现「按钮没了 ⇒ 浮层点不掉」的死角）"
     );
-    (/padding-right: 145px/.test(readFileSync(join(ROOT, "src/styles/02-sidebar-threads.css"), "utf8")) ? ok : fail)(
-      "【250】顶栏保留 145px 给原生窗口钮（Windows 无边框窗的 WCO 渲染层碰不到）"
+    /* ⛔ 10-31 由 145 → **132**（用户「右上角紧凑一点」）：Windows 原生三钮 46×3=138，
+       顶栏自身还有 6px 外圈 margin ⇒ 132+6=138 才正好贴住；145 是早年估值（多留 13px 空白）。 */
+    (/padding-right: 132px/.test(readFileSync(join(ROOT, "src/styles/02-sidebar-threads.css"), "utf8")) ? ok : fail)(
+      "【250】顶栏预留 132px（= 138 原生钮 − 6 外圈）给原生窗口钮，操作簇右缘正好贴住它"
     );
 
     /* ⛔⛔ 本轮真正的根因（10-03 用户截图「搜索跟调度图标没有隐藏」）：
@@ -1455,15 +1471,24 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
        ⛔ 一律过 codeOnly：part09 里现在有一段「已挪走、别加回」的注释提到 .ctx-picker，
        裸读会把注释当 JSX（负向断言当场假红 —— 项目方法论第 4 条同款坑）。 */
     const appViewJsx250 = codeOnly(readFileSync(join(ROOT, "src/features/app-view/AppView.tsx"), "utf8"));
-    /*⛔⛔ 10-04 用户改判：**搜索（.history-search-wrap）豁免，不进任何断点**。
-       原判据（10-03）把它与"目标进程"同列 —— 但那是两个完全不同的功能：
-       搜索搜当前会话的消息，是高频且**无替代入口**（快捷键不等于可发现性）；
-       目标是低频辅助。⇒豁免必须写进断言，否则下一个人又会"顺手"把它加回断点。
-
-       豁免机制：EXEMPT 里的是**"必须不出现在任何断点里"**的控件
-       （出现即fail —— 防止"当年那个决定又回来了"）。 */
-    const EXEMPT_250 = ["history-search-wrap"];
-    const CONTAINERS = ["ctx-picker", "task-menu-wrap"];
+    /* ⛔⛔ 10-11 用户**改判**（原话「这一排图标要根据窗口大小自适应隐藏，主界面上面这一排和
+       独立弹窗这一排都要自适应隐藏」+ 追问「搜索也一起收」）：
+       · 搜索（.history-search-wrap）**进最窄档 ≤640** —— 10-04 那条「豁免、不进任何断点」
+         就此作废（原理由是"无替代入口"；Ctrl+Shift+F 仍在，用户接受）；
+       · 调度（.dispatch-topbar-btn）此前**任何断点里都没有**（09-13 只列了当时存在的按钮）⇒ 补进 ≤860。
+       ⛔ 两条都必须"CSS 收按钮 + 逻辑关状态"成对：只靠 CSS 会留下「按钮没了 ⇒ 浮层点不掉」的死角。 */
+    const searchSrc250 = readFileSync(join(ROOT, "src/features/app-state/parts/part04/02-seg/02-chat-search-history.tsx"), "utf8");
+    (/@media \(width<=640px\)[\s\S]*?\.topbar-actions \.history-search-wrap,[\s\S]{0,160}?\.history-search-panel[\s\S]{0,120}?display: none/.test(topbarCss250)
+      && /matchMedia\("\(width<=640px\)"\)/.test(searchSrc250) && /setChatSearchOpen\(false\)/.test(searchSrc250) ? ok : fail)(
+      "【250】搜索在 ≤640 最窄档：CSS 连按钮与 portal 浮层一起收 **且** 逻辑关掉面板（10-11 用户令；只靠 CSS = 点不掉的死角）"
+    );
+    (/^\s*\.topbar-actions \.dispatch-topbar-btn\s*[,{]/m.test(topbarCss250) ? ok : fail)(
+      "【250】调度开关（.dispatch-topbar-btn）必须落在某个断点里（10-11：它此前一直漏在档外，用户报「窄了也不隐藏」）"
+    );
+    /* 覆盖名单（**每个控件都必须落在某个断点里**）：10-11 起把调度与搜索也纳入 ——
+       搜索此前被"豁免"（10-04 口径），用户 10-11 改判后不再有豁免项。
+       ⛔ 判据 = 它自己那一行选择器（行首锚定），不是"文件里出现过这个串"（本仓踩过这个假绿）。 */
+    const CONTAINERS = ["ctx-picker", "task-menu-wrap", "dispatch-topbar-btn", "history-search-wrap"];
     const uncovered = CONTAINERS.filter((c) => {
       const inJsx = topbarJsx250.includes(c) || appViewJsx250.includes(c);
       if (!inJsx) return false;                       // 已从 JSX 移除 ⇒ 不用管
@@ -1472,17 +1497,9 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
       const ownLine = new RegExp("^\\s*\\.(?:topbar-actions|task-title)\\s+\\." + c + "\\s*[,{]", "m");
       return !ownLine.test(topbarCss250);
     });
-    // ⛔ 豁免控件若被人加回断点 ⇒ fail（这条是"不许回退"的防线）
-    const reExempted = EXEMPT_250.filter((c) => {
-      const inJsx = topbarJsx250.includes(c);
-      if (!inJsx) return false;
-      const ownLine = new RegExp("^\\s*\\.topbar-actions\\s+\\." + c + "\\s*[,{]", "m");
-      return ownLine.test(topbarCss250);
-    });
-    (reExempted.length === 0 ? ok : fail)(
-      `【250】豁免控件不得回到断点里（${EXEMPT_250.join("、")}）—— `
-        + `被加回：${reExempted.join("、") || "无"}；`
-        + `⚠️ 搜索无替代入口，用户 10-04 明确要求无条件显示，别按旧判据"顺手"收进窄屏档`
+    (uncovered.length === 0 ? ok : fail)(
+      `【250】顶栏控件覆盖率：每个控件都必须落在某个断点里（缺：${uncovered.join("、") || "无"}）—— `
+        + `09-13 那套只列了当时存在的按钮，新增控件会静默漏在档外（10-03 用户截图即此因）`
     );
 
     /* 10-06 夜七轮（用户截图圈出右侧 📁 并令「把文件图标放到最前面」+「标题长度固定，太长省略」）：
@@ -1530,13 +1547,11 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
       `【250】顶栏新增控件必须补进断点（漏：${uncovered.join("、") || "无"}）`
     );
     // 目标进程按钮是 .task-menu-wrap 的**孩子**，父容器藏了它自然一起藏；单独钉它不存在反而是错的
-    // ⛔⛔ 10-04 用户改判：这条断言**整条废弃**。它原来要求"搜索🔍 必须在 <=980px 被隐藏"
-    //   （10-03 的判断），而用户 10-04 明确指出搜索与调度是两个不同功能、搜索必须无条件显示
-    //   （它搜当前会话的消息，是高频且无替代入口）。⇒ 反向断言已加在上面的 EXEMPT_250 里。
-    //   保留一条反向检查：搜索**不得**出现在 <=980px 那条断点规则里（防止旧判据复活）。
-    (/^\s*\.topbar-actions \.history-search-wrap\s*,?$/m.test(topbarCss250) ? fail : ok)(
-      "【250】搜索🔍 不得回到 <=980px 档的隐藏规则里（10-04 用户改判：无条件显示，它与调度是两个功能）"
-    );
+    // ⛔⛔ 10-11 用户再次改判（第三条口径，以本条为准）：原先这里有一条"搜索🔍 必须**不**出现在
+    //   断点里"的反向断言（10-04 定的"无条件显示"）。用户 10-11 令「这一排图标要根据窗口大小
+    //   自适应隐藏」+ 追问「搜索也一起收」⇒ 那条反向断言**整条删除**（留着会把新实现判红）。
+    //   现在的正向要求在上面：搜索必须落在 **≤640 最窄档**，且与逻辑关状态成对。
+    //   ⛔ 历史脉络（别再回退）：10-03 要求 980px 藏 → 10-04 改判"无条件显示" → 10-11 改判"最窄档藏"。
 
     const botChan250 = readFileSync(join(ROOT, "src/features/app-state/parts/part03/01-remote-bot-pin/01-bot-remote-channel.tsx"), "utf8");
     (/matchMedia\("\(width<=980px\)"\)/.test(botChan250) && /taskMenuOpen\)[\s\S]{0,400}setTaskMenuOpen\(false\)/.test(botChan250) ? ok : fail)(
@@ -1629,11 +1644,7 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     const tunnelSrc = readFileSync(join(ROOT, "electron", "relay-tunnel.ts"), "utf8");
     const relaySrc = readFileSync(join(ROOT, "electron", "remote.ts"), "utf8");
     const tunnelPage = readFileSync(join(ROOT, "electron", "remote", "web-page.ts"), "utf8");
-    /* ⛔ android/ 工程只存在于主仓（三仓同步面明确排除它）—— 副本里没有这个目录，
-       readFileSync 会直接抛 ENOENT、整组守卫连后面的断言一起不执行。所以按 N/A 处理。 */
-    const androidFile = join(ROOT, "android", "app", "src", "main", "java", "com", "codexharness", "remote", "MainActivity.java");
-    const hasAndroid = existsSync(androidFile);
-    const androidSrc = hasAndroid ? readFileSync(androidFile, "utf8") : "";
+    const androidSrc = readFileSync(join(ROOT, "android", "app", "src", "main", "java", "com", "codexharness", "remote", "MainActivity.java"), "utf8");
 
     /* 10-30 用户实机：手输 6 位码报「Value <!doctype ... cannot be converted to JSONObject」——
        根地址 /api/pair 被转去空的老通道（HTML）。现在网关按配对码/设备 cookie 找回对应电脑。 */
@@ -1643,6 +1654,9 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     (tunnelPage.includes('id="top-menu"') && tunnelPage.includes('id="thread-label"')
       && !tunnelPage.includes('id="btn-home"') && !tunnelPage.includes("<h1 id=\"title\"") && !tunnelPage.includes("brand-logo") ? ok : fail)(
       "【139e】手机页顶栏：☰ 菜单装首页/会话/断开连接；⛔ 顶部中间不再放品牌 logo"
+    );
+    (androidSrc.includes("AndroidRemote") && androidSrc.includes("JavascriptInterface") ? ok : fail)(
+      "【139e】APK 注入 AndroidRemote 桥：网页菜单的「断开连接」才能清本机 cookie / 自动登录标记 / 设备秘密"
     );
     (gwSrc.includes("RELAY_PATH_PREFIX") && gwSrc.includes("PATH_PREFIX}/t/${id}") && gwSrc.includes("Path=${PATH_PREFIX}/t/${id}") ? ok : fail)(
       "【139e】网关支持对外路径前缀：/t 响应的 Location 与 Set-Cookie Path 都带回去（直连 18443 时前缀为空，行为不变）"
@@ -1665,10 +1679,6 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     (gwSrc.includes("MAX_INFLIGHT") && gwSrc.includes("MAX_PER_MINUTE") && gwSrc.includes("MAX_BODY") ? ok : fail)(
       "【139e】网关有并发/速率/体积上限（公网入口不许无限转发）"
     );
-    /* 10-30：安装包也要发本仓自己的（PPcodeRemote），主仓的 CodexRemote 装完连的是主仓中转。 */
-    (gwSrc.includes("PPcodeRemote-0.1.11.apk") && !codeOnly(gwSrc).includes("CodexRemote-0.1.11.apk") ? ok : fail)(
-      "【139e】本仓网关 /apk 默认发 PPcode 安装包（⛔ 不是主仓的 CodexRemote：APK 内置地址写着各仓的中转）"
-    );
     (gwSrc.includes('url === "/apk"') && gwSrc.includes("APK_URL") ? ok : fail)(
       "【139e】网关公开 /apk 跳转（老 APK 的安装包入口坏了也能用浏览器更新）"
     );
@@ -1681,10 +1691,6 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     (tunnelSrc.includes('state === "online" ? this.status.publicBase : ""') ? ok : fail)(
       "【139e】离线时 publicBase 为空 —— 二维码必须退回旧通道，不能给用户一个死地址"
     );
-    /* 10-30 用户：「ppcode 的中转地址填错了，填成了 ppz.123 那个」 —— 本仓必须用自己的服务器。 */
-    (relaySrc.includes('RELAY_DEFAULT_BASE = "https://ppcode.pptoken.cc/remote"') && !codeOnly(relaySrc).includes("remote.ppz123.asia") ? ok : fail)(
-      "【139e】本仓中转地址 = PPcode 自己的服务器（ppcode.pptoken.cc/remote）；⛔ 不是主仓的 remote.ppz123.asia（同步时别覆盖回去）"
-    );
     (relaySrc.includes("startRelayTunnel()") && relaySrc.includes("RELAY_DEFAULT_BASE") && relaySrc.includes("const relay = this.relay?.publicBase();") ? ok : fail)(
       "【139e】远控服务启动即连中转，配对基址中转优先（离线才退回固定地址/临时隧道/局域网）"
     );
@@ -1694,7 +1700,7 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     (tunnelPage.includes('apiUrl("/apk")') && !tunnelPage.includes('baseUrl + "/apk"') ? ok : fail)(
       "【139e】安装包入口用 apiUrl（旧实现引用了未定义的 baseUrl ⇒ 点了必抛错）"
     );
-    (!hasAndroid || (androidSrc.includes("baseOf(normalize(raw))") && androidSrc.includes("baseOf(stored)") && androidSrc.includes('indexOf("/r/")')) ? ok : fail)(
+    (androidSrc.includes("baseOf(normalize(raw))") && androidSrc.includes("baseOf(stored)") && androidSrc.includes('indexOf("/r/")') ? ok : fail)(
       "【139e】APK 存扫码链接时必须保留 /t/<id> 前缀（只存 origin 会 404）"
     );
     (relaySrc.includes("let submitting = false") && relaySrc.includes("if (submitting) return") && !relaySrc.includes('location.href = API_BASE') ? ok : fail)(
@@ -1748,16 +1754,16 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
       } catch (error) { console.log("      剥离模块导入失败：", error.message); }
       (stripOk ? ok : fail)("【139e】手机读历史必须剥掉 <!--boss-role--> 角色块（用户截图：整块注入显示在气泡里）");
     }
-    (!hasAndroid || (androidSrc.includes("R.id.code") && androidSrc.includes("R.id.connect") && androidSrc.includes("R.id.scan")) ? ok : fail)(
+    (androidSrc.includes("R.id.code") && androidSrc.includes("R.id.connect") && androidSrc.includes("R.id.scan") ? ok : fail)(
       "【139e】安卓首屏保留手输连接码 + 扫码（两个入口，同一个界面）"
     );
-    (!hasAndroid || (androidSrc.includes("setOrientationLocked(true)") && readFileSync(join(ROOT, "android", "app", "src", "main", "AndroidManifest.xml"), "utf8").includes('android:screenOrientation="portrait"') && readFileSync(join(ROOT, "android", "app", "src", "main", "AndroidManifest.xml"), "utf8").includes("tools:replace=\"android:screenOrientation\"")) ? ok : fail)(
+    ((androidSrc.includes("setOrientationLocked(true)") && readFileSync(join(ROOT, "android", "app", "src", "main", "AndroidManifest.xml"), "utf8").includes('android:screenOrientation="portrait"') && readFileSync(join(ROOT, "android", "app", "src", "main", "AndroidManifest.xml"), "utf8").includes("tools:replace=\"android:screenOrientation\"")) ? ok : fail)(
       "【139e】扫码页必须竖屏（zxing 默认 sensorLandscape，必须 tools:replace 覆盖）"
     );
-    (!hasAndroid || (androidSrc.includes("startConnect(code == null") && androidSrc.includes('"/api/pair"') && androidSrc.includes("pollApproval") && !androidSrc.includes("openChat(")) ? ok : fail)(
+    (androidSrc.includes("startConnect(code == null") && androidSrc.includes('"/api/pair"') && androidSrc.includes("pollApproval") && !androidSrc.includes("openChat(") ? ok : fail)(
       "【139e】配对在 App 内一次完成：手输码保留 + 直接 POST /api/pair 并轮询批准（⛔ 不再打开网页配对页）"
     );
-    (!hasAndroid || (androidSrc.includes("for (int attempt = 0; attempt < 3") && androidSrc.includes("removeIf") && androidSrc.includes("postDelayed(() -> web.loadUrl")) ? ok : fail)(
+    (androidSrc.includes("for (int attempt = 0; attempt < 3") && androidSrc.includes("removeIf") && androidSrc.includes("postDelayed(() -> web.loadUrl") ? ok : fail)(
       "【139e】冷启动自动登录要重试（中转未就绪不许让人白输码）+ Cookie 去重 + 进页前等一拍"
     );
     ((function(){ try { const ui=readFileSync(join(ROOT, "src/features/app-view/AppView/04-remote-approval.tsx"), "utf8"); return ui.includes("pullCode") && ui.includes("remotePairState") && ui.includes("setRemoteQr"); } catch(e) { return false; } })() ? ok : fail)(
@@ -1781,6 +1787,8 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     (relaySrc.includes("DEVICE_TTL_MS") && relaySrc.includes("private pruneApproved()") && relaySrc.includes("this.pruneApproved();") ? ok : fail)(
       "【139e】已配对设备 30 天未连接自动清理（启动时 + 读列表时），列表不再无限增长"
     );
+    /* 10-30 用户要求：加一个断开连接功能 —— 连接后右上角「断开」，清凭据回连接页。 */
+
     {
       /* 10-30 用户实测：「ppcode 手机 App 能看到思考，codex harness 手机 App 看不到」。
          根因：`thread/resume` 回读的 reasoning.summary 是**字符串数组**，流式 item 是对象数组；

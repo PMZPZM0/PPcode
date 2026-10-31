@@ -12,6 +12,7 @@
  * ⛔ 本组件自包含：只收 props，不进 bag；关闭三路（✕ / 遮罩 / Esc）并归还焦点。
  */
 import { useEffect, useRef, type ComponentType } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRight, Cloud, LogIn, Wallet, X } from "lucide-react";
 
 /** 直达的设置页 id（与 settings-registry / catalogs.ts 的「账户与模型」组一致）。
@@ -91,7 +92,8 @@ export function LoginManagerModal({ onNavigate, onClose, targets }: {
     };
   }, [onClose]);
 
-  return (
+  /* ⛔ 同 SidebarGuideModal：挂在侧栏子树 + 侧栏有 transform ⇒ fixed 被压成侧栏宽度，必须 portal。 */
+  return createPortal(
     <div
       className="info-modal-mask sidebar-guide-mask"
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
@@ -137,6 +139,7 @@ export function LoginManagerModal({ onNavigate, onClose, targets }: {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

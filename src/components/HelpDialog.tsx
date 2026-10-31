@@ -32,13 +32,14 @@ export type OverviewGroup = {
 export const OVERVIEW_GROUPS: OverviewGroup[] = [
   {
     group: "账户与模型",
-    purpose: "决定 Codex 用哪个「大脑」：账户登录（云账号 / 中转站）会自动生成供应商并带来源倍率；自定义供应商只认你自己的地址和 Key。",
+    purpose: "决定 Codex 用哪个「大脑」：账户登录（云账号 / 中转站 / OpenAI 订阅）会自动生成供应商并带来源倍率；自定义供应商只认你自己的地址和 Key。",
     startHere: "模型",
     items: [
       { page: "用户中心", what: "昵称、头像（含 Codex 形象）、账户偏好与个性化入口", when: "想让 Codex 认识你、换个头像，或管理账户时" },
       { page: "模型", what: "供应商与模型的添加、测试、切换；模型下拉显示能力徽标、账户来源与上游倍率（自定义供应商不显示倍率）", when: "第一次用必须配（否则发不出消息）；觉得模型慢 / 贵也来这里" },
       { page: "中转站", what: "接入常见中转服务，多账号按额度 / 权重轮转；模型同样显示上游倍率", when: "手上有中转站账号、不想手填地址时" },
       { page: "云账号", what: "登录一次，自动同步云端模型 / 知识库 / 记忆，并显示云端倍率与本轮积分", when: "有云账号、想让模型列表自动跟上云端时" },
+      { page: "OpenAI 订阅", what: "登录 ChatGPT 账号，直接用官方额度", when: "有订阅、想用官方模型时" },
     ],
   },
   {
@@ -138,6 +139,7 @@ export const OVERVIEW_OUTSIDE: { label: string; where: string; hint: string }[] 
   { label: "命令面板", where: "Ctrl+K", hint: "直接搜任务与会话，不用翻侧栏" },
   { label: "独立弹窗", where: "会话顶栏最右", hint: "把当前会话开到新窗口；运行中暂不可用" },
   { label: "应用锁", where: "设置 → 数据 → 应用锁", hint: "密码只显示一次；输错 10 次清空应用数据，务必先备份" },
+  { label: "用户配置引导", where: "首次登录后自动弹出", hint: "称呼 / 头像 / 职业 / Codex 人格 / 兴趣；填完下一条消息生效，也可稍后配置" },
 ];
 
 export type HelpTopic = HelpKey | "overview";
@@ -147,14 +149,14 @@ type HelpSectionRaw = { title: string; steps: string[] };
 export const HELP_CONTENT: Record<HelpKey, HelpContent> = {
   model: {
     title: "模型配置 · 新手帮助",
-    intro: "模型分两类：**账户登录**（云账号 / 中转站，登录后自动生成供应商并带来源倍率）与**第三方供应商**（填自己的 API 地址与密钥）。二选一即可，配好后在对话框底部切换。",
+    intro: "模型分两类：**订阅账号**（登录 ChatGPT 用官方额度）与**第三方供应商**（填自己的 API 地址与密钥）。二选一即可，配好后在对话框底部切换。",
     sections: [
       {
-        title: "方式一：用云账号（最省事）",
+        title: "方式一：用 OpenAI 官方（有订阅最省事）",
         steps: [
-          "左侧选「云账号」",
-          "填账号密码，点「登录并自动配置」",
-          "登录成功后回到应用，云端模型会自动出现在模型列表里——到这里就能用了",
+          "左侧选「OpenAI 订阅」",
+          "点「登录」按钮，在弹出的浏览器窗口里登录你的 ChatGPT 账号",
+          "登录成功后回到应用，模型列表会自动出现——到这里就能用了",
         ],
       },
       {
@@ -428,6 +430,7 @@ export function HelpDialog({ helpKey, onClose, onNavigate }: { helpKey: HelpTopi
           </header>
           <div className="help-body">
             <p className="help-intro">{renderRich(`设置分 ${OVERVIEW_GROUPS.length} 组、共 ${OVERVIEW_GROUPS.reduce((n, g) => n + g.items.length, 0)} 页。**新手只需先配「模型」**，其余按需。不知道去哪一页，就先点下面的「我想做…」；每页都写了「它是干什么的」和「什么时候会用到它」，点页名可直接跳过去。`)}</p>
+            <p className="help-intro">{renderRich("**手机远控不在设置里**：点顶栏的 📱 图标打开「移动端远程控制」—— 扫码或输 6 位码配对，断开连接会同时移除电脑端这台设备。")}</p>
             <div className="overview-quick">
               <div className="overview-quick-head"><h3>我想做…</h3><span>点一下直接跳到那一页</span></div>
               <div className="overview-quick-grid">

@@ -229,6 +229,8 @@ if (!mainSrc || !preloadSrc) {
         "【2】vite-env.d.ts 生成段与 manifest 逐字节一致"
       );
       const regSrc = readFileSync(join(ROOT, "electron", "ipc-registry.ts"), "utf8");
+      /* ⛔ 10-18：动作段允许再带 `/`（`cloud:sync/status` 等子动作）—— 旧正则只认 `前缀:动作`，
+         带子路径的通道永远判成「未登记」，整条 check 链被它卡住。 */
       const regCh = new Set([...regSrc.matchAll(/["']([\w-]+(?::[\w/-]+)+)["']/g)].map((x) => x[1]));
       const unregistered = [...new Set(manifest.channels.map((c) => c.channel))].filter((c) => !regCh.has(c));
       (unregistered.length === 0 ? ok : fail)(
@@ -396,8 +398,18 @@ if (!existsSync(stylesEntry)) {
      · --submenu-top（composer-form 内联注入）· --ic-page（08-settings-sheet 写在设置弹窗根上、消费端全带 fallback —— 10-07 补登记，此前它一直漏在名单外）· --composer-editor-h / --composer-editor-max（10-06 夜三轮：
        composer-form 的输入框拖动把手内联注入，CSS 侧都带结构 fallback）· --vscode-scrollbar-shadow（xterm/VS Code 宿主约定，fallback #000）
      · --group-hue（10-26：群汇报成员头像色相 —— UserMessageView 按成员名 hash 逐条内联注入，
-       消费端 `hsl(var(--group-hue, 205) …)` 带 fallback；同名成员恒同色，故不适合写进 CSS 单一值） */
-  const whitelist = new Set(["--effort-color", "--fill-color", "--t", "--submenu-top", "--voice-level", "--vscode-scrollbar-shadow", "--composer-editor-h", "--composer-editor-max", "--ic-page", "--group-hue", "--tag-color", "--bot-gaze-x", "--bot-gaze-y", "--bot-eye-scale", "--skin-stage"]);
+       消费端 `hsl(var(--group-hue, 205) …)` 带 fallback；同名成员恒同色，故不适合写进 CSS 单一值）
+     · --tag-color（10-26：自定义标签颜色 —— EntityTagEditor / 侧栏 projectTag 内联 `style={{"--tag-color": color}}`，
+       消费端 color-mix 三处；颜色由用户选，不可能有单一值）
+     · --bot-gaze-x / --bot-gaze-y / --bot-eye-scale（10-26：语音悬浮球眼神跟随 ——
+       use-ball-reactions.ts 用 setProperty 按指针位置实时写，CSS 侧都带 fallback）
+     · --skin-stage（10-30：社区组件预览台底色 —— SkinHost 用 getComputedStyle 探出被嵌组件
+       其实是深底时注入 #232327、否则 removeProperty，浅色台走 CSS 里的 color-mix fallback。
+       ⛔ 不写进 CSS 单一值：同一个台子要按被嵌组件的实际底色切换，全站一个值就是错的）
+     · --switch-x / --switch-y / --switch-r（10-31：明暗切场涟漪的圆心与半径 ——
+       lib/visual-switch.ts 在点击那一刻按**指针位置**与视口对角线算出来再 setProperty，
+       每次点击都不一样，CSS 里只有 fallback（50% / 150vmax）；写死一个值就变成"永远从中间扩散"） */
+  const whitelist = new Set(["--effort-color", "--fill-color", "--t", "--submenu-top", "--voice-level", "--vscode-scrollbar-shadow", "--composer-editor-h", "--composer-editor-max", "--ic-page", "--group-hue", "--tag-color", "--bot-gaze-x", "--bot-gaze-y", "--bot-eye-scale", "--skin-stage", "--switch-x", "--switch-y", "--switch-r"]);
   const orphan = [...refs].filter((v) => !defined.has(v) && !whitelist.has(v));
   (orphan.length === 0 ? ok : fail)(
     orphan.length
@@ -478,7 +490,7 @@ if (!existsSync(stylesEntry)) {
   {
 console.log(C.bold("\n【284】mac 窗口 chrome 让位（红绿灯那一排）"));
 
-/* 10-07 用户实测：「把 PPcode 和 logo 放到**系统按键那一排下面**，下面自适应往下挪
+/* 10-07 用户实测：「把 Codex Harness 和 logo 放到**系统按键那一排下面**，下面自适应往下挪
    一点点」。原做法是 `[data-os="darwin"] .sidebar .brand-row { padding-left: 68px }` —— 把品牌行
    推到红绿灯**右边**、与它们**并排**。用户要的是**上下分层**。
    ⛔ 本条只认「下移」这个形状 + 「下移量」这个取值，不锚具体数字来源的写法 —— 取值本身由

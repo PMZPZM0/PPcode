@@ -87,7 +87,7 @@ import {
   rpaStore, server, setAppThemeDark, setDelegateRegistry, setMainWindow, setMemoryLayers,
   setMemoryStore, setRpaStore, setServer, setTeamRunStore, setThreadRuntimeStore,
   setVoiceModelsRoot, setVoiceService, sshSessions,
-  syncEngineWatchdog, teamRunStore, terminals, threadCwd, threadRuntimeStore, titleBarOverlayOptions,
+  syncEngineWatchdog, teamRunStore, terminals, threadCwd, threadRuntimeStore,
   trustPicked, upsertCustomModel,
 } from "./runtime-refs";
 import { readCustomModel, readCustomModels, writeCustomModels, healReservedProviderConfig, normalizeProvider, writeModelCatalogToml, readUserConfigSplit } from "./main/01-model-catalog";
@@ -900,11 +900,6 @@ let sessionProviderIdsCache: { at: number; ids: Set<string> } | null = null;
  *  渲染层通过 URL query `?popout=<threadId>` 进入弹窗模式（只渲染对话区并锁定该会话）。
  *  主题/事件都走全局广播，弹窗无需额外维护。 */
 
-// 无边框标题栏（Windows titleBarOverlay）的符号色：深色主题用浅符号，亮色主题近黑。
-const CHROME_SYMBOL_DARK = "#e8e8e5";
-
-const CHROME_SYMBOL_LIGHT = "#1b1b1a";
-
 /** 应用当前主题（由 theme:apply 写入）。null = 渲染层还没告知过 ⇒ 退回跟随系统。 */
 let appThemeDark: boolean | null = null;
 
@@ -915,13 +910,13 @@ let appThemeDark: boolean | null = null;
  *  （09-21 用户实测）。日志打「已下发的符号色 + 覆盖窗口数」——⛔ Electron 本版**没有
  *  getTitleBarOverlay 读回接口**（写出来 TS 直接报 TS2551），所以真机是否可见只能看窗口右上角。 */
 function applyWindowChrome(dark: boolean) {
-  const symbol = dark ? CHROME_SYMBOL_DARK : CHROME_SYMBOL_LIGHT;
+  /* ⛔⛔ 10-31：win32 改 frame:false，三个窗口钮由渲染层自绘（components/WindowControls.tsx）
+     ⇒ 不再下发标题栏符号色（颜色由 CSS 变量跟着主题走），主进程少一份真相源。 */
   const targets = allBusWindows().filter((win) => Boolean(win && !win.isDestroyed()));
   for (const win of targets) {
     try { win.setBackgroundColor(dark ? "#1b1b1a" : "#ffffff"); } catch { /* 窗口可能正在销毁 */ }
-    try { win.setTitleBarOverlay({ color: "#00000000", symbolColor: symbol, height: 55 }); } catch { /* overlay 未启用（非 win32 等）时忽略 */ }
   }
-  if (targets.length) console.log(`[theme] 窗口外观 → ${dark ? "dark" : "light"}；已给 ${targets.length} 个窗口下发标题栏符号色 ${symbol}`);
+  if (targets.length) console.log(`[theme] 窗口外观 → ${dark ? "dark" : "light"}；已给 ${targets.length} 个窗口下发底色`);
 }
 
 // 前端切主题时同步窗口外观：nativeTheme.themeSource 让系统标题栏与 Chromium 默认
@@ -1455,7 +1450,7 @@ export { filePreviewAllowed, fileStat, pastedTextDir, sshSessions, syncEngineWat
 export { devInstructionsInput };
 export { applyMemoryMode, distillSummarize, memoryGatewayFile, memoryLayers, memoryStore, memoryWorkspaceFile, readMemoryMode, rpaStore, scheduler, workspaceMemoryEnabled };
 export { collectSessionProviderIds, connectorToml, dispatchHttpPort, dispatchToken, ensureDispatchHttp, escapeToml, mcpToolRulesOf, readUserConfigSplit, writeModelCatalogToml };
-export { notifyPopoutClosed, popoutThreadIds, titleBarOverlayOptions };
+export { notifyPopoutClosed, popoutThreadIds };
 export { DISPATCH_FIXED_PORT, dispatchMcpTools, dispatchProbes, ensureDispatchToken, stableKey };
 export { appSourceRoot, voiceService };
 export { botStreamSessions, channelLog, channelThreadChat, qqReplyContexts };

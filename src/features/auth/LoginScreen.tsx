@@ -19,7 +19,7 @@
  * 公开面见同目录 index.ts。
  */
 
-import { Wallet, WifiOff, Mail, Lock, UserRound, Eye, EyeOff, Loader2, Sparkles, KeyRound, Cloud, ExternalLink } from "lucide-react";
+import { Wallet, WifiOff, Mail, Lock, UserRound, Eye, EyeOff, Loader2, Sparkles, KeyRound, Cloud } from "lucide-react";
 import { createPortal } from "react-dom";
 import { performRelayLogin, writeRelayActive } from "../../lib/relay";
 import { provisionCloud } from "../../lib/cloud-provision.mjs";
@@ -335,12 +335,12 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
             两条线互不影响：中转站走 sub2api 网关，云账号走 cloud-* 域 + 自动配置。 */}
         {tab === "login" && (
           <div className="authx-method" role="tablist" aria-label="登录方式">
-            <button type="button" role="tab" aria-selected={method === "relay"} className={method === "relay" ? "on" : ""}
+            <button type="button" role="tab" aria-selected={expanded && method === "relay"} className={expanded && method === "relay" ? "on" : ""}
               onClick={() => { setMethod("relay"); setStatus(""); setFixNote(""); setExpanded((v) => (method === "relay" ? !v : true)); }}>
               <Wallet size={16} />
               <span><b>中转站账号</b><small>仅支持 pptoken · 余额 / 套餐</small></span>
             </button>
-            <button type="button" role="tab" aria-selected={method === "cloud"} className={method === "cloud" ? "on" : ""}
+            <button type="button" role="tab" aria-selected={expanded && method === "cloud"} className={expanded && method === "cloud" ? "on" : ""}
               onClick={() => { setMethod("cloud"); setStatus(""); setFixNote(""); setExpanded((v) => (method === "cloud" ? !v : true)); }}>
               <Cloud size={16} />
               <span><b>云管理账号</b><small>登录即用 · 自动配置</small></span>
@@ -450,12 +450,8 @@ export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => v
                 <p className="authx-note">
                   登录后自动同步云端模型并接通云端知识库与记忆，随后打开模型配置：勾选要用的模型 → 保存并启用 → 重启。
                 </p>
-                {cloudCenterUrl && (
-                  <button type="button" className="authx-cloud-link"
-                    onClick={() => { void window.codex.openExternal(cloudCenterUrl).catch(() => undefined); }}>
-                    <ExternalLink size={13} />还没有云账号？去云端用户中心注册
-                  </button>
-                )}
+                {/* ⛔ 10-31 用户：「云管理这里不要在这个界面加注册跳转，注册界面有就行」
+                    —— 登录页不放外链注册入口（注册走上方「注册」标签）。 */}
                 </>)}
               </div>
             )}

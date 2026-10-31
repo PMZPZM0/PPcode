@@ -378,3 +378,22 @@
   font-size: 11.5px; padding: 2px 0;
 }
 .authx-back:hover { color: var(--text); }
+
+/* ── 10-31 两段式（用户：「ppcode 也是一样，做这种两段效果」）────────────────────
+   默认只列"登录方式 / 注册方式"，点一条才把对应表单撑开；点卡片外面收起。
+   高度动画同样用 grid-template-rows 0fr→1fr（height:auto 不可过渡）。 */
+.authx-form-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.34s cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 0.22s ease,
+    margin-top 0.34s cubic-bezier(0.22, 0.61, 0.36, 1);
+  margin-top: -4px;
+}
+.authx-form-wrap.is-open { grid-template-rows: 1fr; opacity: 1; margin-top: 4px; }
+.authx-form-inner { overflow: hidden; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+/* 注册页的两张方式卡：与登录页同一套外观，略矮一点 */
+.authx-reg-method { margin-top: 2px; }
+.authx-relay-register { display: flex; flex-direction: column; gap: 10px; }

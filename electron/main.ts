@@ -919,7 +919,7 @@ function applyWindowChrome(dark: boolean) {
   const targets = allBusWindows().filter((win) => Boolean(win && !win.isDestroyed()));
   for (const win of targets) {
     try { win.setBackgroundColor(dark ? "#1b1b1a" : "#ffffff"); } catch { /* 窗口可能正在销毁 */ }
-    try { win.setTitleBarOverlay({ color: "#00000000", symbolColor: symbol, height: 43 }); } catch { /* overlay 未启用（非 win32 等）时忽略 */ }
+    try { win.setTitleBarOverlay({ color: "#00000000", symbolColor: symbol, height: 55 }); } catch { /* overlay 未启用（非 win32 等）时忽略 */ }
   }
   if (targets.length) console.log(`[theme] 窗口外观 → ${dark ? "dark" : "light"}；已给 ${targets.length} 个窗口下发标题栏符号色 ${symbol}`);
 }

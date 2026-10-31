@@ -224,6 +224,19 @@ ok(
   !HAS_CLOUD_UI || /云管理账号|login-option-title">云账号</.test(loginSrc),
   "首启登录页有「云管理账号 / 云账号」入口（缺了 ⇒ 新用户看不到这套能力）",
 );
+/* ⛔⛔ 10-31 用户截图（本仓登录页）：「没有选中的时候不要亮着」——
+   方式卡选中态原来只看 `method`（默认 relay），收起态第一张永远亮，看着像已选中。
+   ⛔ 本仓用 `method` + `.on`（桌面版是 `mode` + `.active`），别照抄主线的正则。 */
+ok(
+  !/\$\{method === "(relay|cloud)" \? "on" : ""\}/.test(loginSrc)
+  && (loginSrc.match(/expanded && method === "(relay|cloud)" \? "on"/g) || []).length >= 2,
+  "登录方式卡选中态绑定 expanded：收起态一张都不亮（只列选项时不该有「已选中」的观感）",
+);
+/* ⛔ 云管理登录页不放外链注册入口（用户：「云管理这里不要在这个界面加注册跳转，注册界面有就行」）。 */
+ok(
+  !/去云端用户中心注册|authx-cloud-link/.test(loginSrc),
+  "云管理登录页不放「去云端用户中心注册」外链（注册页里有入口，登录页只登录）",
+);
 ok(
   !HAS_CLOUD_UI || (/cloudAuthLogin/.test(loginSrc) && /provisionCloud/.test(loginSrc)),
   "首启登录页的云账号走真通道（cloudAuthLogin + provisionCloud 自动配置）",
@@ -383,7 +396,11 @@ ok(
   `积分徽标预热目录：进入时一次 + 每次轮询一次（实测 ${(badgeSrc.match(/warmCloudCreditCatalog\(\)/g) || []).length} 次；⛔ 只剩轮询那次 ⇒ 徽标一直停在「未启用」直到用户发出第一回合）`,
 );
 ok(
-  /enabled !== true\) return \{ text: "闲时倍率：未启用/.test(badgeSrc) && /if \(!offPeak\) return null/.test(badgeSrc),
+  /* 10-31 对齐主线（10-26 的实现收敛）：`offPeakText()` 里一次判断
+     （`!offPeak || enabled !== true || !win ⇒ null`），比旧断言更严格（旧版在 enabled=false 时
+     还会返回一句"未启用"文案）。⛔ 这条一直是**假红** —— 实现早改成新写法，断言还钉着旧的。 */
+  /if \(!offPeak \|\| offPeak\.enabled !== true \|\| !win\) return null;/.test(badgeSrc) &&
+  !/闲时倍率：未启用/.test(badgeSrc),
   "目录没拿到时整行不出现（⛔ 不许显示「未启用」—— 那是在说谎）",
 );
 const catalogEntry = (manifest.channels || []).find((c) => c.channel === "cloud-models:catalog") || {};

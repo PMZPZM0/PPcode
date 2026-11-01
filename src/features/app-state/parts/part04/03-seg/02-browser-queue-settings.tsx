@@ -17,13 +17,67 @@ import { notePollAutoContinue } from "../../../../../polling/poll-store";
 import type { PollTask } from "../../../../../polling/poll-store";
 import type { Bag } from "../../bag-types";
 
+/**
+ * 「回合结束 → 应用替用户补一条续接」的**投递部分**（二次确认 + 入队 + 启动 + 钉顶 + 429 武装）。
+ * 供两条判据共用（09-19 的「截断空转」与 10-12 的「没干完就收工」）：
+ * 回合已 task_complete（引擎侧无 active turn，`turn/steer` 不可用 —— 它的前置条件是 "active turn id"），
+ * 承接只能落成**新回合** ⇒ 延迟等 turn/completed 收尾（mergeTurn / auto-start / markThreadStopped）跑完
+ * → `thread/queue/add` 一条承接指令 → `thread/queue/start` 启动。
+ * ⛔ 10-12 从 `maybeAutoContinueTruncated` **原样抽出**（两处共用，行为逐位不变）：延迟后二次确认
+ *   「还在本会话 / 该会话没在跑」（防误判多出一个应用自己发的回合）→ 入队 → 取队头 →
+ *   建钉顶意图 → 武装 429 兜底 → 启动；「已被引擎启动」的伪失败按成功处理（lib/queue-errors.mjs）。
+ * ⛔ 放**模块级**而不是 hook 体内：hook 体里的顶层声明会被 bag-types 生成器当成跨段 API
+ *   （实测会把内部辅助函数收进 `bag`）—— 它只是本文件内部实现，且已带 bag 入参。
+ */
 /** 10-31 用户令（对照 Qoder 截图）：排队消息发出去要**立刻当用户消息上屏** ——
  *  新回复在它下面、「等待模型回复」状态条在消息下面；不能干等引擎 1~2s 后的回声。
- *  复用正常发送的乐观气泡机制：引擎回声由既有确认逻辑合并；失败路径由调用方显式清掉。
- *  ⛔ 放模块级（hook 体顶层声明会被 bag-types 生成器收进 bag）。 */
+ *  复用正常发送的乐观气泡机制：引擎回声由既有确认逻辑合并（steer 进当前回合的也会被
+ *  optimisticConfirmed 认出，安全阀兜底回收），失败路径由调用方显式清掉。
+ *  ⛔ 放模块级（同 deliverAutoContinue 的理由：hook 体顶层声明会被 bag-types 生成器收进 bag）。 */
 function showQueuedOptimistic(bag: Bag, input: any) {
   if (!Array.isArray(input) || !input.length) return;
   bag.setOptimisticInput({ id: crypto.randomUUID(), type: "userMessage", content: input });
+}
+
+function deliverAutoContinue(bag: Bag, threadId: string, prompt: string, opts: { delayMs: number; toastTitle: string; toastBody: string; pinTag: string; dbgTag: string; failTitle: string }) {
+  window.setTimeout(() => {
+    if (bag.threadRef.current?.id !== threadId) return; // 用户已切走：不再自动动那个会话
+    // ⛔ 二次防误判（判据已收紧为"严格零产出"，这里是最后一道闸）：延迟期间若该会话已经
+    //   有回合在跑（用户手动续了 / 引擎自己恢复 / 队列已启动），就放弃自动续接——
+    //   绝不让"正常收尾"因为误判而多出一个应用自己发的回合（那才是真正的空转）。
+    if (bag.runningThreadIdsRef.current.has(threadId)) return;
+    const liveTurn = (bag.threadRef.current?.turns ?? []).find((entry) => isTurnRunning(entry));
+    if (liveTurn) return;
+    void window.codex.request("thread/queue/add", {
+      threadId,
+      input: [{ type: "text", text: prompt }],
+      clientUserMessageId: crypto.randomUUID(),
+    }).then(async () => {
+      bag.showToast(opts.toastTitle, opts.toastBody);
+      const list = await window.codex.request("thread/queue/list", { threadId, limit: 1 }).catch(() => null);
+      const head = list?.data?.[0];
+      if (!head) return;
+      const armed = bag.armPinForReleasedQueue(threadId, opts.pinTag);
+      if (armed) showQueuedOptimistic(bag, head.input ?? [{ type: "text", text: prompt }]);
+      // 429 兜底也要覆盖这条续接回合（续接场景正是上游不稳的高发区）
+      bag.armRetryForQueueRelease(threadId, head.input ?? [{ type: "text", text: prompt }]);
+      try {
+        await window.codex.request("thread/queue/start", { threadId, queuedSubmissionId: head.id });
+      } catch (error: any) {
+        const message = String(error?.message ?? error);
+        // ⛔ 引擎已自行启动这条（上一回合结束后约 9ms 就发 queue/changed 并清空队列）⇒
+        //   「找不到 / 队列空」是**伪失败**：续接其实正在发生，别撤意图、别报错。
+        //   成因与判据见 lib/queue-errors.mjs（用户 09-24 截图反馈的正是这一类噪声）。
+        if (isQueueAlreadyStartedError(message)) {
+          bag.dbg(opts.dbgTag, { threadId, message });
+        } else {
+          // 启动失败 ⇒ 那条续接不会出现：撤回钉顶意图（否则去钉列表里别的消息），并告知
+          if (armed) bag.disarmPinIntent(`${opts.pinTag}-fail`);
+          bag.showToast(opts.failTitle, message);
+        }
+      }
+    }).catch((error: any) => bag.showToast(opts.failTitle, String(error?.message ?? error)));
+  }, opts.delayMs);
 }
 
 export function usePart04c2(bag: Bag) {
@@ -113,17 +167,20 @@ export function usePart04c2(bag: Bag) {
       }
       return;
     }
+    /* ⛔⛔ 批量审查（10-31）抓到的两个洞（都是本轮引入）：
+       ① 乐观气泡原来放在 busy 判定**之前** ⇒ 忙时重排（消息还没发出去）也会上屏；
+       ② 新回合释放路径没重置「安全阀」状态（sawRunningTurnRef）—— 旧回合刚 completed 的瞬间
+          回收阀看到「没在跑 + 上轮跑过」⇒ 气泡上屏几毫秒就被撤（与正常发送的 send 路径
+          显式重置同口径，见 part08/02-seg/send.tsx）。 */
+    if (armedDue) {
+      bag.sawRunningTurnRef.current = false;
+      bag.optimisticTurnIdRef.current = null;
+      showQueuedOptimistic(bag, entry.input);
+    }
     try {
       await window.codex.request("thread/queue/start", { threadId, queuedSubmissionId: id });
       if (bag.threadRef.current?.id === threadId) bag.setQueue((current) => current.filter((item) => item.id !== id));
       void bag.refreshQueue(threadId);
-      /* ⛔ 批量审查（10-31）：乐观气泡只在**确认发出**分支上；新回合释放要重置安全阀状态
-         （旧回合刚 completed 的瞬间回收阀会把气泡上屏即撤 —— 与正常发送路径同口径）。 */
-      if (armedDue) {
-        bag.sawRunningTurnRef.current = false;
-        bag.optimisticTurnIdRef.current = null;
-        showQueuedOptimistic(bag, entry.input);
-      }
       bag.showToast("消息发送成功", "排队消息已发出，开始执行", threadId);
     } catch (error: any) {
       const message = String(error?.message ?? error);
@@ -330,14 +387,6 @@ bag.armPinForReleasedQueue = armPinForReleasedQueue as typeof bag.armPinForRelea
   }
 bag.disarmPinIntent = disarmPinIntent as typeof bag.disarmPinIntent;
 
-  /** 回合级「截断空转」的自动续接（09-19 用户实测「思考内容过长会被截断，运行状态就断了」）。
-   *  机制：回合已 task_complete（引擎侧无 active turn，`turn/steer` 不可用——它的前置条件是
-   *  "active turn id"，引擎自己也不做 finish_reason=length 的续写），承接只能落成**新回合**。
-   *  所以：延迟等 turn/completed 收尾（mergeTurn / auto-start / markThreadStopped）跑完 →
-   *  `thread/queue/add` 一条「从断点承接续写」指令 → `thread/queue/start` 启动。
-   *  ⛔ 指令语义是**承接**（接着上次没写完的往下输出、不重新思考），不是"重新做一遍任务"。
-   *  ⛔ 防死循环：同一会话 AUTO_CONTINUE_WINDOW_MS 内最多 AUTO_CONTINUE_MAX_ATTEMPTS 次；
-   *     达到上限停手并提示换供应商（本地部署模型同样受单次输出上限约束）。 */
   function maybeAutoContinueTruncated(threadId: string) {
     const now = Date.now();
     const rec = bag.autoContinueLogRef.current.get(threadId);
@@ -350,47 +399,17 @@ bag.disarmPinIntent = disarmPinIntent as typeof bag.disarmPinIntent;
       }
       rec.count++;
     }
-    window.setTimeout(() => {
-      if (bag.threadRef.current?.id !== threadId) return; // 用户已切走：不再自动动那个会话
-      // ⛔ 二次防误判（判据已收紧为"严格零产出"，这里是最后一道闸）：延迟期间若该会话已经
-      //   有回合在跑（用户手动续了 / 引擎自己恢复 / 队列已启动），就放弃自动续接——
-      //   绝不让"正常收尾"因为误判而多出一个应用自己发的回合（那才是真正的空转）。
-      if (bag.runningThreadIdsRef.current.has(threadId)) return;
-      const liveTurn = (bag.threadRef.current?.turns ?? []).find((entry) => isTurnRunning(entry));
-      if (liveTurn) return;
-      void window.codex.request("thread/queue/add", {
-        threadId,
-        input: [{ type: "text", text: autoContinuePrompt() }],
-        clientUserMessageId: crypto.randomUUID(),
-      }).then(async () => {
-        bag.showToast("已自动续接", "检测到被供应商截断，正在从断点继续输出…");
-        const list = await window.codex.request("thread/queue/list", { threadId, limit: 1 }).catch(() => null);
-        const head = list?.data?.[0];
-        if (head) {
-          const armedForCont = bag.armPinForReleasedQueue(threadId, "auto-continue");
-          if (armedForCont) showQueuedOptimistic(bag, head.input ?? [{ type: "text", text: autoContinuePrompt() }]);
-          // 429 兜底也要覆盖这条续接回合（续接场景正是上游不稳的高发区）
-          bag.armRetryForQueueRelease(threadId, head.input ?? [{ type: "text", text: autoContinuePrompt() }]);
-          try {
-            await window.codex.request("thread/queue/start", { threadId, queuedSubmissionId: head.id });
-          } catch (error: any) {
-            const message = String(error?.message ?? error);
-            // ⛔ 引擎已自行启动这条（上一回合结束后约 9ms 就发 queue/changed 并清空队列）⇒
-            //   「找不到 / 队列空」是**伪失败**：续接其实正在发生，别撤意图、别报错。
-            //   成因与判据见 lib/queue-errors.mjs（用户 09-24 截图反馈的正是这一类噪声）。
-            if (isQueueAlreadyStartedError(message)) {
-              bag.dbg("auto-continue-raced-by-engine", { threadId, message });
-            } else {
-              // 启动失败 ⇒ 那条续接不会出现：撤回钉顶意图（否则去钉列表里别的消息），并告知
-              if (armedForCont) bag.disarmPinIntent("auto-continue-fail");
-              bag.showToast("自动续接失败", message);
-            }
-          }
-        }
-      }).catch((error: any) => bag.showToast("自动续接失败", String(error?.message ?? error)));
-    }, 2500);
+    deliverAutoContinue(bag, threadId, autoContinuePrompt(), {
+      delayMs: 2500,
+      toastTitle: "已自动续接",
+      toastBody: "检测到被供应商截断，正在从断点继续输出…",
+      pinTag: "auto-continue",
+      dbgTag: "auto-continue-raced-by-engine",
+      failTitle: "自动续接失败",
+    });
   }
 bag.maybeAutoContinueTruncated = maybeAutoContinueTruncated as typeof bag.maybeAutoContinueTruncated;
+
 
   /** 轮询任务**成功返回结果**后的自动继续（10-10 用户要求：「回合结束后，轮询还在的话，
    *  如果返回结果了…现在是不会自动继续」）。
@@ -425,7 +444,6 @@ bag.maybeAutoContinueTruncated = maybeAutoContinueTruncated as typeof bag.maybeA
         const head = list?.data?.[0];
         if (!head) return;
         const armed = bag.armPinForReleasedQueue(threadId, "poll-continue");
-        if (armed) showQueuedOptimistic(bag, head.input ?? [{ type: "text", text: prompt }]);
         bag.armRetryForQueueRelease(threadId, head.input ?? [{ type: "text", text: prompt }]);
         try {
           await window.codex.request("thread/queue/start", { threadId, queuedSubmissionId: head.id });
@@ -462,8 +480,14 @@ bag.maybeAutoContinueAfterPoll = maybeAutoContinueAfterPoll as typeof bag.maybeA
     const steerTurnId = bag.activeTurnId && bag.activeTurnId === runningTurnId ? bag.activeTurnId : runningTurnId;
     if (steerTurnId && entry) {
       // 「立即」= 这条消息马上会作为用户消息出现在当前回合里 → 先建立钉顶意图（否则它落进内容流）
-      const armedForSteer = bag.armPinForReleasedQueue(bag.thread.id, "steer");
-      if (armedForSteer) showQueuedOptimistic(bag, entry.input);
+      bag.armPinForReleasedQueue(bag.thread.id, "steer");
+      /* ⛔⛔ 这里**不上乐观气泡**（10-31 审查实测）：
+         steer 的消息由引擎插进**当前回合**，会立刻在回合内原位渲染出来；
+         再给它一个末尾的乐观气泡 = 同一条消息显示两遍，而且 `optimisticConfirmed` 的兜底只在
+         「baseline 之外的新回合」里找（这个回合正是 baseline 本身）⇒ 整个回合都确认不了，
+         要等到回合结束才被收尾逻辑撤掉。这也与 09-13 的定案一致（排队消息点立即 = 并入当前任务 +
+         弹窗提醒，不在聊天区另外造一条）。 */
+      /* 钉顶意图照旧建立（能不能钉取决于回合是否已开始渲染，返回 false 属正常）。 */
       // 这条消息会并入当前回合；若该回合以 429 结束，重发的就是它（同手动发送的语义）
       bag.armRetryForQueueRelease(bag.thread.id, entry.input);
       try {
@@ -482,7 +506,9 @@ bag.maybeAutoContinueAfterPoll = maybeAutoContinueAfterPoll as typeof bag.maybeA
       } catch (error: any) {
         const message = String(error?.message ?? error ?? "");
         if (!/no active turn/i.test(message)) {
-          if (armedForSteer) { bag.disarmPinIntent("steer-fail"); bag.setOptimisticInput(null); }   // 意图悬空会去钉别的消息；乐观气泡一并撤
+          /* 撤掉刚建立的钉顶意图（意图悬空会去钉别的消息 / 视口莫名跳回旧消息）。
+             ⛔ 不撤气泡：这条路径根本没有上气泡（见上面的说明）。 */
+          bag.disarmPinIntent("steer-fail");
           bag.showToast("发送失败", message);
           return;
         }
@@ -494,7 +520,7 @@ bag.maybeAutoContinueAfterPoll = maybeAutoContinueAfterPoll as typeof bag.maybeA
     }
     const armedForStart = bag.armPinForReleasedQueue(bag.thread.id, "queue-start");
     if (armedForStart && entry) {
-      /* ⛔ 新回合释放：重置安全阀状态（旧回合刚 completed 的瞬间回收阀会把气泡上屏即撤）。 */
+      /* ⛔ 新回合释放：同 releaseQueuedTimerDue，重置安全阀状态（否则气泡上屏即被回收）。 */
       bag.sawRunningTurnRef.current = false;
       bag.optimisticTurnIdRef.current = null;
       showQueuedOptimistic(bag, entry.input);

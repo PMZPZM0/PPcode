@@ -315,6 +315,5 @@ try {
     "共享技能池改受控：按钮在工具栏、池页面按需渲染（两段式），不再自带触发条");
 }
 
-
 console.log(`\n【skills-switch】${checks - fails}/${checks} 通过${fails ? ` —— ${fails} 条红` : ""}`);
 process.exit(fails ? 1 : 0);

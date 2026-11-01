@@ -1,3 +1,5 @@
+/* 11-01：本仓知识库落点是 <项目>/.ppcode-harness/knowledge（品牌分开，见 electron/knowledge-base.ts 的 KB_DIR）
+   ⇒ 夹具必须往同一个目录写 embeddings.json，否则「一条都没命中」是夹具指错了地方，不是实现坏。 */
 /**
  * 知识库检索判据（2026-10-04，纯离线、可随预检跑）
  *
@@ -97,7 +99,7 @@ try {
   //   这正是用户最自然的提问方式。0 条 = 那个 bug 回来了。
   {
     const zhWs = mkdtempSync(join(tmpdir(), "kb-guard-zh-"));
-    mkdirSync(join(zhWs, ".codex-harness", "knowledge"), { recursive: true });
+    mkdirSync(join(zhWs, ".ppcode-harness", "knowledge"), { recursive: true });
     try {
       addDocument(zhWs, { title: "中文召回样本", text: "记忆库的容量上限是三万字。超过之后尾部内容会被截断。", source: "guard" });
       const zhHits = searchDocs(zhWs, "记忆库容量", 5);

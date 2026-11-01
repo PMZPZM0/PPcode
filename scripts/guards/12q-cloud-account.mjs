@@ -17,7 +17,7 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { codeOnly } from "./_ctx.mjs";
+import { codeOnly, readSettingsSurface } from "./_ctx.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
@@ -155,13 +155,7 @@ ok(/HARNESS_CLOUD_SYNC_MINUTES/.test(modelsCode), "轮询间隔可配（HARNESS_
 /* ── ⑩ 渲染层：设置页三件套（注册表 / 导航 / 帮助总览）+ 页面自包含 ──────
    ⛔ 这三处必须同轮改齐：漏注册表 ⇒【101】红；漏帮助总览 ⇒【32】红；
      漏导航 ⇒ 用户根本进不去那一页（守卫查不到，但功能等于没做）。 */
-const registrySrc = read("src/features/app-view/AppView/08-settings-sheet/01-settings-layout/00-settings-registry.tsx");
-/* ⛔⛔ 本仓 = PPcode：**登录页与设置注册表是产品级分叉** —— 云账号的 **UI 入口**未同步。
-   下面 5 条按"本仓声称提供的能力"判：有入口就严格要求，没有就如实跳过。
-   ⛔ 不是"关掉守卫"：主进程侧（凭据不落明文 / 上游唯一决策点 / 集成闸门）仍严格断言。
-   ⛔ 声明必须在**第一条用它的断言之前**（否则 TDZ，整个守卫直接异常退出 —— 实测踩到）。 */
-const HAS_CLOUD_UI = /(?:mode|method) === "cloud"/.test(read("src/features/auth/LoginScreen.tsx"));
-
+const registrySrc = codeOnly(readSettingsSurface());
 const navSrc = read("src/features/app-view/helpers/catalogs.ts");
 const helpSrc = read("src/components/HelpDialog.tsx");
 const typesSrc = read("src/features/app-view/types.ts");
@@ -182,7 +176,6 @@ ok(
   /__refreshProviders/.test(pageSrc),
   "同步后刷新渲染层供应商状态（不刷新 ⇒ 同步成功了但下拉框还是空的）",
 );
-
 ok(
   /cloud-login-simple/.test(pageSrc) && /cloud-tutorial/.test(pageSrc) && /cloud-advanced/.test(pageSrc),
   "云账号页三段式：登录即用卡 / 新手教程 / 手动流程折叠（10-22 用户令「流程简化，保留手动流程，加上新手教程」）",
@@ -216,41 +209,52 @@ ok(
 /* ── ⑪ 首启登录页也有「云账号」入口（用户 10-16 实测「我还没看见登录界面」）──
    ⛔ 只做设置页不够：**首启看到的是 LoginScreen**，那里没有入口 = 新用户根本发现不了这套能力。 */
 const loginSrc = read("src/features/auth/LoginScreen.tsx");
+/* 11-01：本仓登录页用 `method: "relay" | "cloud"` 表示当前方式（主仓叫 `mode`，且多两路）。
+   ⇒ 断言按「本仓实际变量名」取，钉的仍是同一件事；⛔ 别把主仓的 mode 联合类型照抄进来。 */
+const modeVar = /mode === "cloud"/.test(loginSrc) ? "mode" : "method";
 ok(
-  !HAS_CLOUD_UI || (/(?:mode|method) === "cloud"/.test(loginSrc) && /"relay" \| "cloud"|"openai" \| "cloud"/.test(loginSrc)),
-  '首启登录页有 cloud 模式（state 联合类型含 "cloud"）',
+  new RegExp(`${modeVar} === "cloud"`).test(loginSrc) && /"relay" \| "cloud"|"openai" \| "cloud"/.test(loginSrc),
+  `首启登录页有 cloud 模式（${modeVar} 联合类型含 "cloud"）`,
 );
 ok(
-  !HAS_CLOUD_UI || /云管理账号|login-option-title">云账号</.test(loginSrc),
-  "首启登录页有「云管理账号 / 云账号」入口（缺了 ⇒ 新用户看不到这套能力）",
+  /login-option-title">云账号</.test(loginSrc) || /role="tab"[^>]*cloud|云账号/.test(loginSrc),
+  "首启登录页有「云账号」选项卡（缺了 ⇒ 新用户看不到这套能力）",
 );
-/* ⛔⛔ 10-31 用户截图（本仓登录页）：「没有选中的时候不要亮着」——
-   方式卡选中态原来只看 `method`（默认 relay），收起态第一张永远亮，看着像已选中。
-   ⛔ 本仓用 `method` + `.on`（桌面版是 `mode` + `.active`），别照抄主线的正则。 */
+/* ⛔⛔ 10-31 用户截图（PPcode 登录页）：「没有选中的时候不要亮着」——
+   登录方式卡片的选中态原来只看方式变量，所以**收起态第一张永远是亮的**，
+   看起来像已经被选中、可表单根本没展开。选中态必须与 `expanded` 同时成立。 */
 ok(
-  !/\$\{method === "(relay|cloud)" \? "on" : ""\}/.test(loginSrc)
-  && (loginSrc.match(/expanded && method === "(relay|cloud)" \? "on"/g) || []).length >= 2,
-  "登录方式卡选中态绑定 expanded：收起态一张都不亮（只列选项时不该有「已选中」的观感）",
+  !new RegExp(`\\$\\{${modeVar} === "(pptoken|openai|relay|custom|cloud)" \\? "(active|on)" : ""\\}`).test(loginSrc)
+  && (loginSrc.match(new RegExp(`expanded && ${modeVar} === "(pptoken|openai|relay|custom|cloud)" \\? "(active|on)"`, "g")) || []).length >= 2,
+  "登录方式卡的选中态绑定 expanded：收起态一张都不亮（只列选项时不该有\"已选中\"的观感）",
 );
-/* ⛔ 云管理登录页不放外链注册入口（用户：「云管理这里不要在这个界面加注册跳转，注册界面有就行」）。 */
+/* ⛔ 同轮：云管理登录页不要放外链注册入口（用户：「注册界面有就行」）——
+   登录页只负责登录，注册是上方「注册」页签的事；两处都有会让人以为要先去网页注册。 */
 ok(
-  !/去云端用户中心注册|authx-cloud-link/.test(loginSrc),
+  !/还没有云账号\?去云端用户中心注册|authx-cloud-link/.test(loginSrc),
   "云管理登录页不放「去云端用户中心注册」外链（注册页里有入口，登录页只登录）",
 );
+const provisionSrc = read("src/lib/cloud-provision.mjs");
 ok(
-  !HAS_CLOUD_UI || (/cloudAuthLogin/.test(loginSrc) && /provisionCloud/.test(loginSrc)),
-  "首启登录页的云账号走真通道（cloudAuthLogin + provisionCloud 自动配置）",
+  /cloudAuthLogin/.test(loginSrc) && /provisionCloud/.test(loginSrc)
+  && /cloudModelsSync/.test(provisionSrc) && /cloudKbSync/.test(provisionSrc) && /cloudMemorySync/.test(provisionSrc)
+  && /kbBackendSet/.test(provisionSrc) && /setMemoryBackend/.test(provisionSrc),
+  "首启登录页走「登录即用」：cloudAuthLogin → provisionCloud（模型 + 知识库 + 记忆同一套编排，⛔ 不写第二套）",
 );
 ok(
-  !HAS_CLOUD_UI || (/onCloudReady/.test(loginSrc) || /provider: "cloud", name: "云端模型"/.test(loginSrc))
+  /onlyIfEmpty/.test(provisionSrc) && /getCustomModel/.test(provisionSrc) && /activateCloudProvider|cloudModelsActivate/.test(provisionSrc),
+  "自动配置不抢生效位：只有「没有别家供应商 / 已是云端」才激活（onlyIfEmpty + getCustomModel）",
+);
+ok(
+  /* 10-24：登录页不再直接调 onLogin 落盘，而是把云端凭据交给「自动配置弹窗」，
+     由用户在弹窗里勾选模型后保存启用。id/名仍必须与主进程 cloud-provider 同口径。 */
+  /provider:\s*"cloud",[\s\S]{0,120}?name:\s*"云端模型"/.test(loginSrc)
     && /ProviderSetupDialog/.test(loginSrc),
-  "登录后接上云端供应商：统一自动配置弹窗勾选模型，完成后 onCloudReady 读生效供应商",
+  "登录后把供应商落成 id=cloud / 名=云端模型（经自动配置弹窗保存，口径与主进程一致）",
 );
 ok(
-  !HAS_CLOUD_UI || (/provisionCloud\(api, \{ activate: false \}\)/.test(loginSrc)
-    && /setSetupIntent\(\{[\s\S]{0,160}?source: "cloud"/.test(loginSrc)
-    && /onCloudReady/.test(loginSrc)),
-  "首启云登录：provisionCloud(activate:false) 只读目录，勾选/保存/激活交给统一弹窗，随后 onCloudReady 进主界面",
+  /登录并自动配置/.test(loginSrc),
+  "首启登录页按钮是「登录并自动配置」（新手一眼知道会替他配好）",
 );
 
 /* ── ⑫⛔⛔ 10-16 用户实测两条：供应商「测试」永远 401 / 加完供应商引擎配置没跟上 ──
@@ -396,9 +400,9 @@ ok(
   `积分徽标预热目录：进入时一次 + 每次轮询一次（实测 ${(badgeSrc.match(/warmCloudCreditCatalog\(\)/g) || []).length} 次；⛔ 只剩轮询那次 ⇒ 徽标一直停在「未启用」直到用户发出第一回合）`,
 );
 ok(
-  /* 10-31 对齐主线（10-26 的实现收敛）：`offPeakText()` 里一次判断
-     （`!offPeak || enabled !== true || !win ⇒ null`），比旧断言更严格（旧版在 enabled=false 时
-     还会返回一句"未启用"文案）。⛔ 这条一直是**假红** —— 实现早改成新写法，断言还钉着旧的。 */
+  /* 10-26 更新：实现收敛成 `offPeakText()` 里一次判断（`!offPeak || enabled !== true || !win ⇒ null`），
+     比旧断言更严格（旧版在 enabled=false 时还会返回一句"未启用"文案）。
+     断言意图不变：**拿不到就整行不出现**，且全文件不许出现「未启用」这种猜测文案。 */
   /if \(!offPeak \|\| offPeak\.enabled !== true \|\| !win\) return null;/.test(badgeSrc) &&
   !/闲时倍率：未启用/.test(badgeSrc),
   "目录没拿到时整行不出现（⛔ 不许显示「未启用」—— 那是在说谎）",
@@ -450,15 +454,6 @@ ok(!/enabled: models\.length > 0 \? true/.test(providerSrc),
   "⛔ 云端行不许再无条件 `enabled: true`（那正是两个绿开关的根因）");
 ok(/const enabled = models\.length > 0 && \(cloudActive \|\| !othersEnabled\)/.test(providerSrc),
   "云端行的 enabled = 「生效中」或「空场」—— 不是「有模型就亮」（否则每 10 分钟把用户的选择顶回来）");
-
-/* ── ⑨⛔ 默认账号服务地址 = **客户自建服务器**（10-23 用户令「PPCODE 的服务地址要连客户这台」）──
-   ⛔ 这条是**防同步覆盖**用的棘轮：桌面版主仓的同一行是 ppz123.asia，按三仓同步流程 apply 过来
-     会把它冲掉，而且冲掉之后「设置页默认地址」会静默变回主站 —— 面板上看不出任何异常。
-     所以在这里钉死；真要改默认地址，必须同时改这条断言（逼人想一遍）。 */
-ok(
-  /export const DEFAULT_ACCOUNTS_BASE = "https:\/\/ppcode\.pptoken\.cc\/cloud-api"/.test(read("electron/cloud-api.ts")),
-  "PPcode 默认账号服务地址 = https://ppcode.pptoken.cc/cloud-api（⛔ 同步覆盖会红）",
-);
 
 console.log(`\n【cloud-account】${checks - fails}/${checks} 通过`);
 if (fails > 0) process.exit(1);

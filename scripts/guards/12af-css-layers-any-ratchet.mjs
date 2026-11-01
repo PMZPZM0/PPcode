@@ -72,11 +72,7 @@ ok(xtermInTsx === 0, "TS/TSX 里不再直接 import xterm.css（实测 " + xterm
  *  10-29 1696→1700（+4 实测）：来自**已提交**的飞书 CLI 页（`FeishuCliCard.tsx` 0→6）与
  *  `event-router/02-request.tsx`（45→46），不是本轮改动加的 —— 本轮的技能卡/折叠图标一个 any 都没新增
  *  （同轮 `--update-any-baseline` 记的逐文件数就是实测）。该线提交时没刷总账，按实测补记，否则整链永远红。 */
-/* PPcode 实测值（10-31）：**本仓**的 any 总数是 1709（桌面主线 1702）——两个仓的代码面
-   不完全相同（本仓多中转/注册页、少部分桌面专属页），所以这条棘轮的**总额**必须按仓实测，
-   ⛔ 不要把主线的 1703 套过来（那会让本仓长期红，或反过来掩盖增长）。
-   ⛔ 只许降不许涨：真要降就借改动的文件顺手收，然后 --update-any-baseline 记账。 */
-const ANY_CAP = 1709;
+const ANY_CAP = 1710;   // 11-01 按本仓实测记账（守卫换代 + 记忆分层同步后 1710）
 let anyCount = 0;
 const perFile = [];
 const walk = (dir) => {

@@ -241,8 +241,9 @@ if (mod && typeof mod.scanSensitive === "function") {
   ok(/enum: \["private", "project"\]/.test(seg), "主会话 scope 统一 private/project（旧 session 仅兼容）");
   const store = readFileSync(join(ROOT, "electron", "memory-store.ts"), "utf8");
   const layers = readFileSync(join(ROOT, "electron", "memory-layers.ts"), "utf8");
+  const budget = readFileSync(join(ROOT, "electron", "memory", "layers-budget.ts"), "utf8");
   ok(/appendPendingLesson/.test(store) && /appendPendingLesson/.test(layers), "MCP 模式自动捕获 lesson 候选有落点（不静默丢）");
-  ok(/PENDING_MCP_SECTION/.test(layers) && /待入 MCP/.test(layers), "待归档区标题存在（Codex 能看见）");
+  ok(/PENDING_MCP_SECTION/.test(budget) && /待入 MCP/.test(budget), "待归档区标题存在（Codex 能看见）");
   const mcpSkill = readFileSync(join(ROOT, "electron", "builtin-skills", "13-skill-memory-mcp.ts"), "utf8");
   ok(/四问/.test(mcpSkill) && /明令不写/.test(mcpSkill), "MCP 技能自带判据（不依赖已停用的 memory-classify）");
   ok(/待入 MCP/.test(mcpSkill), "MCP 技能说明待归档区怎么排空");

@@ -1,23 +1,17 @@
 name: Release
 
-# ⛔ 10-12 **仓库合并**：源码已从原私有仓 `ppcode-src` 合入本仓（`PMZPZM0/PPcode`），
-#   一个仓同时是**源码 + 发布页**。原因：① 私有仓的 Actions 分钟**计费**，额度用尽时
-#   作业会**秒失败且拿不到 runner**（`runner=(未分配)` + `步骤数=0`），表现为
-#   「推了 tag 却什么都没发生」—— v0.1.3 就这样静默失败过；公开仓吃免费分钟。
-#   ② 用户端「检查更新」读的本来就是本仓的 `/releases/latest`，**更新路径一个字没动**
-#      ⇒ 老用户（已装 ≤0.1.2）的自动更新不受影响。
-#   ⇒ 现在发版 = `git push origin v*` → 本工作流在本仓构建三端包，
-#      build-win / build-mac **各自直传本仓 Release**（`GH_TOKEN` 用默认 `github.token`，
-#      **不再需要任何跨仓 PAT**）。
-#   （历史：本机远端是 SSH deploy key，只能推代码/标签，建 Release/传资产必须靠 Actions ——
-#     所以发布永远跑在 Actions 里，不在本机。）
+# ⛔ 为什么发布要跑在 Actions 里而不是本机：
+#   本机的 GitHub 远端是 SSH（deploy key `~/.ssh/codex_gh_release`），SSH **只能推代码/标签**，
+#   既不能创建 Release 也不能上传资产；本机也没有 gh CLI 与任何 API token。
+#   所以「用 SSH 发版」的唯一可行形态就是：`git push origin v0.0.18` → 本工作流用仓库自带的
+#   GITHUB_TOKEN 构建三端包并发布。发版动作 = 推一个 tag，其余全在这里完成。
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
 
-# 自发布：建 Release / 传资产需要本仓 contents: write（默认只读）
+# 建 Release / 传资产需要写权限（默认只读）；actions: read 供 publish 取构建 artifact
 permissions:
   contents: write
   actions: read
@@ -37,45 +31,95 @@ jobs:
     uses: ./.github/workflows/build-win.yml
     secrets: inherit
 
-  # ⛔⛔ 10-12：artifact 中转与 publish 汇总作业整段删除 —— artifact 存储配额
-  #（免费账户 500MB，一次三端 ~2GB）打满会让 upload-artifact 硬失败且 6-12 小时才重算，
-  #  v0.1.1 / v0.1.2 连续两轮死在这一步（构建本身全绿）。现在由 build-win / build-mac
-  #  各自**直传**到公开发布仓 Release（Release 资产不受该配额限制）。
-
   publish:
-    # ⛔ 见 build-*.yml 的说明：两端各自直传**草稿**，这里等**都成功**了才转正。
-    #    失败方向的代价 = Release 停在草稿（可见、可手动转正），⛔ 不是悄悄发半成品。
     needs: [mac, win]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: 草稿转正 + 重写说明（两端资产齐了才发布）
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PUBLISH_REPO: PMZPZM0/PPcode
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 组装资产（版本号核对 + 规范化命名）
         shell: bash
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
-          NOTES="docs/releases/v${VERSION}.md"
           if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
             echo "::error::tag ${GITHUB_REF_NAME} 与 package.json 的版本 ${VERSION} 不一致——先对齐版本号再打 tag"
             exit 1
           fi
-          if [ ! -f "${NOTES}" ]; then
-            echo "::error::缺少更新说明 ${NOTES} —— 发版必须写说明，不当静默无说明发布"
+          mkdir -p dist-assets
+          # 命名规则由应用侧更新器决定（electron/updates.ts）：
+          #   Windows 取第一个 *.exe；mac 必须同时含 "mac"、".zip" 与架构名（arm64 / x64）。
+          #   ⛔ electron-builder 在 mac x64 上产出的是 `…-0.0.18-mac.zip`（**不带 x64**），
+          #      直接用会导致 Intel 用户永远匹配不到资产——所以这里强制规范化成带架构的名字。
+          pick() {
+            local dir="$1" pattern="$2" out="$3"
+            local found=()
+            while IFS= read -r file; do found+=("$file"); done < <(find "$dir" -type f -name "$pattern" | sort)
+            if [ "${#found[@]}" -ne 1 ]; then
+              echo "::error::${dir} 下匹配 ${pattern} 的文件有 ${#found[@]} 个（应恰好 1 个，artifact 里可能混了旧版本）"
+              printf '  %s\n' "${found[@]}"
+              exit 1
+            fi
+            case "$(basename "${found[0]}")" in
+              *"${VERSION}"*) ;;
+              *) echo "::error::产物 ${found[0]} 文件名不含版本号 ${VERSION}"; exit 1 ;;
+            esac
+            cp "${found[0]}" "dist-assets/${out}"
+          }
+          pick artifacts/win-x64   '*.exe' "PPcode-${VERSION}-win-x64.exe"
+          # 10-25 NSIS 差分更新：blockmap 与 latest.yml 必须跟安装包一起发；
+          # 缺任何一个，客户端都会自动回退到完整包（不会坏，但没有增量效果）。
+          pick artifacts/win-x64   '*.exe.blockmap' "PPcode-${VERSION}-win-x64.exe.blockmap"
+          LATEST=$(find artifacts/win-x64 -type f -name 'latest.yml' -print -quit)
+          if [ -z "${LATEST}" ]; then
+            echo "::error::缺少 latest.yml（electron-builder 未生成差分更新元数据）"
             exit 1
           fi
-          # 重写说明正文：只 upload 资产会让发布页停在**首建时**的旧正文
-          # ⛔ 10-30 实证：release 若先由别的路径建出来（标题为空），GitHub 会拿**提交标题**
-          #    当发布名 ⇒ 发布页显示成 `chore(release): v0.1.7`。这条分支必须带 --title。
-          gh release edit "v${VERSION}" --title "v${VERSION}" --notes-file "${NOTES}" --repo "${PUBLISH_REPO}"
-          # ⛔ 10-02 事故：删 tag 重建会让同名 release **退回草稿**，而 upload / edit(notes) 都不会转正
-          #    ⇒ 草稿对匿名 API 不可见、/releases/latest 回落上一版、应用内更新器永远收不到。
-          #    ⇒ 探测 isDraft，命中就转正。
-          if [ "$(gh release view "v${VERSION}" --repo "${PUBLISH_REPO}" --json isDraft --jq .isDraft)" = "true" ]; then
-            gh release edit "v${VERSION}" --draft=false --repo "${PUBLISH_REPO}"
-            echo "::notice::检测到草稿态，已转正 v${VERSION}"
+          cp "${LATEST}" dist-assets/latest.yml
+          if ! grep -q "path: PPcode-${VERSION}-win-x64.exe" dist-assets/latest.yml; then
+            echo "::error::latest.yml 的 path 与最终资产名不一致："
+            grep -n "path:" dist-assets/latest.yml || true
+            exit 1
           fi
-          echo "::notice::已发布 v${VERSION}（两端资产齐）"
+          pick artifacts/mac-arm64 '*.zip' "PPcode-${VERSION}-arm64-mac.zip"
+          pick artifacts/mac-x64   '*.zip' "PPcode-${VERSION}-x64-mac.zip"
+          echo "=== 待发布资产 ==="
+          (cd dist-assets && sha256sum ./* | tee ../assets-sha256.txt && ls -l)
+
+      - name: 创建或更新 Release 并上传资产
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          NOTES="docs/releases/v${VERSION}.md"
+          if [ ! -f "${NOTES}" ]; then
+            echo "::error::缺少更新说明 ${NOTES}（每次发版都要写，它是应用内「发现新版本」弹窗展示的内容）"
+            exit 1
+          fi
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "release v${VERSION} 已存在 → 更新资产与说明（可重跑）"
+            # ⛔ 已存在时 gh release upload 只换**资产**，说明正文不会跟着变 ⇒ 必须显式重写，
+            #    否则覆盖重发后发布页永远停在首次创建时那版旧正文（10-02 实测踩过）。
+            # ⛔ 10-30 实证：release 若先由别的路径建出来（标题为空），GitHub 会拿**提交标题**
+            #    当发布名 ⇒ 发布页显示成 `chore(release): v0.0.51`。这条分支也必须带 --title。
+            gh release edit "v${VERSION}" --title "v${VERSION}" --notes-file "${NOTES}"
+          else
+            gh release create "v${VERSION}" --title "v${VERSION}" --notes-file "${NOTES}"
+          fi
+          gh release upload "v${VERSION}" dist-assets/* --clobber
+          # ⛔⛔ 转正兜底：**删 tag 重建会让同名 release 退回草稿态**（GitHub 的行为），
+          #    而 gh release upload / edit(notes) 都不会把它转正。草稿对匿名 API 不可见 ⇒
+          #    /releases/latest 回落到上一版、应用内「发现新版本」永远收不到这一版（10-02 全量实测）。
+          if [ "$(gh release view "v${VERSION}" --json isDraft --jq '.isDraft')" = "true" ]; then
+            echo "release v${VERSION} 处于草稿态 → 转为正式发布"
+            gh release edit "v${VERSION}" --draft=false
+          fi
+          echo "=== 线上资产核对（size 应与上面 sha256sum 那步的 ls 一致；digest 是 GitHub 侧实算） ==="
+          gh release view "v${VERSION}" --json tagName,url,assets \
+            --jq '.url, (.assets[] | "  \(.name)  \(.size) B  \(.digest // "(digest 待生成)")")'

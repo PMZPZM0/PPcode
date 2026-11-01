@@ -1,3 +1,5 @@
+/* 11-01：本仓项目工作目录叫 .ppcode-harness（品牌分开，见 electron/memory-layers.ts）
+   ⇒ 夹具必须往同一个目录写 / 读，否则「没需要蒸馏的日志」「MEMORY.md 不存在」全是夹具指错地方。 */
 /**
  * 预检守卫组：10-memory-audit
  * 分节：【102】【103】【104】【105】【106】【107】（原 L8396–L8988）+【113】【114】（09-23 加：技能内置与安装门禁）
@@ -99,7 +101,9 @@ const injected102 = "[Harness 常驻记忆 · 上下文]\n- 旧纪律行\n[常�
   (/scope: "user" \| "background" \| "project" \| "lessons"/.test(envSrc) ? ok : fail)("【102】vite-env 声明同步 lessons scope");
   const instr = readFileSync(join(ROOT, "electron/developer-instructions.ts"), "utf8");
   (/LESSONS\.md/.test(instr) && /坑/.test(instr) ? ok : fail)("【102】引擎指令要求「踩坑留痕」（LESSONS.md + 格式）");
-  const layersSrc = readFileSync(join(ROOT, "electron/memory-layers.ts"), "utf8");
+    /* 10-18：DISTILL_PROMPT / 金字塔等已切到 memory/layers-budget.ts（P2 批次 4）⇒ 两源拼接 */
+  const layersSrc = readFileSync(join(ROOT, "electron/memory-layers.ts"), "utf8")
+    + readFileSync(join(ROOT, "electron/memory", "layers-budget.ts"), "utf8");
   (/现有踩坑与纪律/.test(layersSrc) ? ok : fail)("【102】蒸馏输入带上坑清单（否则蒸馏会把坑丢掉）");
   const svcSrc = readFileSync(join(ROOT, "electron/memory-store.ts"), "utf8");
   (/shouldCapture\(/.test(svcSrc) && /appendLesson/.test(svcSrc) ? ok : fail)("【102】捕获链改用纠错优先判定 + 追加坑");
@@ -181,14 +185,16 @@ const injected102 = "[Harness 常驻记忆 · 上下文]\n- 旧纪律行\n[常�
       /* ⛔ 断言的是「不许把 .ppcode-harness/skills 写成落点」，不是「不许出现这个词」——
          指令里那句是**禁止语境**（NEVER `<workspace>/.ppcode-harness/skills/` —— 引擎不读该目录），
          它出现在指令里恰恰是我们要的（提前堵掉这个误解）。 */
-      (/NEVER `<workspace>\/\.ppcode-harness\/skills\//.test(instr) ? ok : fail)("【103】引擎指令把 .ppcode-harness/skills 标为**禁止**落点（引擎实测不认该目录）");
+      /* 11-01：本仓项目工作目录叫 .ppcode-harness（品牌分开）⇒ 两种命名都接受；钉的是「该目录被写成禁止落点」。 */
+  (/NEVER `<workspace>\/\.(?:codex|ppcode)-harness\/skills\//.test(instr) ? ok : fail)("【103】引擎指令把本仓 harness/skills 目录标为**禁止**落点（引擎实测不认该目录）");
       (/已沉淀技能/.test(instr) && /LESSONS\.md/.test(instr) ? ok : fail)("【103】指令含沉淀回报行与「坑升级为技能」");
     } catch (error) { fail(`【103】引擎指令产物读不到：${error?.message ?? error}`); }
     try {
       const { buildDisciplineSection } = await import("../../dist-electron/skill-discipline.js");
       const disc = buildDisciplineSection({ skills: [], mcp: [] });
       (disc.includes(PROJECT_SKILLS_SUBDIR) && disc.includes(SKILL_AUTHORING_NAME) ? ok : fail)("【103】AGENTS.md 守则同步项目级落点与元技能名");
-      (/\.ppcode-harness\/memory/.test(disc) ? ok : fail)("【103】守则写明记忆（是什么）与技能（怎么做）的目录分工");
+      /* 11-01：本仓项目工作目录叫 .ppcode-harness（品牌分开）⇒ 两种命名都接受。 */
+      (/\.(?:codex|ppcode)-harness\/memory/.test(disc) ? ok : fail)("【103】守则写明记忆（是什么）与技能（怎么做）的目录分工");
       (/scope=repo/.test(disc) ? ok : fail)("【103】守则说明项目级技能由引擎原生发现（不重复枚举）");
     } catch (error) { fail(`【103】守则产物读不到：${error?.message ?? error}`); }
   }
@@ -263,7 +269,7 @@ const injected102 = "[Harness 常驻记忆 · 上下文]\n- 旧纪律行\n[常�
      * （假红把真断言盖住了：实测 `trigger=age / 1 天`）。现在取「今天往前 6 天」⇒ 永远落在
      * 30 天窗口内，稳定走 watermark 路径。 */
     const day = (n) => new Date(Date.now() - (6 - n) * 86_400_000).toISOString().slice(0, 10);
-    /* 6 天日志（v2 布局：logs/），合计 6×8000=48000 字 > L4 预算 40000（logPerDay 8000×logDays 5，重度口径）的 90%（36000）⇒ 必然触发水位 */
+    /* 6 天日志（v2 布局：logs/），合计 6×8000=48000 字 > L4 预算（logPerDay × logDays）的 90% ⇒ 必然触发水位 */
     mkdirSync(join(memDir, "logs"), { recursive: true });
     for (let i = 0; i < 6; i += 1) writeFileSync(join(memDir, "logs", `${day(i)}.md`), `## ${day(i)}\n${"日志内容".repeat(2000)}\n`, "utf8");
     const hint = await inst.watermarkHint(ws);
@@ -318,7 +324,6 @@ const injected102 = "[Harness 常驻记忆 · 上下文]\n- 旧纪律行\n[常�
     (/internalThreads\.has\(id\)/.test(scopeSrc) && /delegateRegistry\.infoOf\(id\)/.test(scopeSrc) ? ok : fail)(
       "【104】非交互判定三路齐：内部会话 / 委派登记表 / 系统任务壳"
     );
-
 
     /* ⑤ 与指令 / 技能同源 */
     const skillSrc = readFileSync(join(ROOT, "electron", "builtin-skills", "08-skill-memory-distill.ts"), "utf8");
@@ -994,40 +999,42 @@ const injected102 = "[Harness 常驻记忆 · 上下文]\n- 旧纪律行\n[常�
     /* ── 10-30 用户令「要求跟主会话一样，自动生成对应的独立 ID，归档和删除也要跟主会话一样」──
        缺陷：sessionId 原先写的是 `threadId ?? originThreadId`，而三处调用点谁都不传 threadId
        ⇒ 读端永远落在**发起方**的私有命名空间（teams-ipc 那条更是空串 ⇒ 连 private 层都没有），
-       而写端（memory_write）用的是真实 threadId ⇒ 自己写的东西永远读不回来。
-       ⛔ 本段自带读取，不依赖上面的局部变量（副本仓的守卫可能落后主线）。 */
-    {
-      const dmP = join(ROOT, "electron", "delegate-memory.ts");
-      const dmS = existsSync(dmP) ? readFileSync(dmP, "utf8").replace(/\r/g, "") : "";
-      (!/threadId\s*\?\?\s*input\?\.originThreadId/.test(dmS) ? ok : fail)(
-        "【125】sessionId 只认被委派会话自己的 threadId（⛔ 不许 `threadId ?? originThreadId` 借发起方的私有层）"
-      );
-      (/dispatch:/.test(dmS) && /teamId:\s*teamId\s*\|\|\s*undefined/.test(dmS) ? ok : fail)(
-        "【125】originThreadId 传成 dispatch（防回退硬闸）+ 团 id 透传（不传 = 团内记忆永远为空）"
-      );
-      const delegS = readFileSync(join(ROOT, "electron", "features", "delegation.ts"), "utf8").replace(/\r/g, "");
-      const teamsS = [readFileSync(join(ROOT, "electron", "features", "teams-ipc.ts"), "utf8"),
-        readFileSync(join(ROOT, "electron", "team-invoke.ts"), "utf8")].join("\n").replace(/\r/g, "");
-      const sites = [
-        ["features/delegation.ts", delegS],
-        ["teams-ipc + team-invoke", teamsS],
-      ].filter(([, src]) => /buildDelegateMemory\([\s\S]{0,500}?threadId:/.test(src)).map(([n]) => n);
-      (sites.length === 2 ? ok : fail)(
-        `【125】三条派活路径都传了真实 threadId（实得 ${sites.length}/2：${sites.join(" / ")}）`
-      );
-      const csS = readFileSync(join(ROOT, "electron", "codex-server.ts"), "utf8").replace(/\r/g, "");
-      (/threadCwd\.set\(threadId, cwd\)/.test(csS) ? ok : fail)(
-        "【125】thread/start 唯一钩子里登记 threadCwd（缺了 ⇒ 委派会话的捕获/文件追踪/删会话清记忆全跳过）"
-      );
-      const bootS = readFileSync(join(ROOT, "electron", "features", "boot.ts"), "utf8").replace(/\r/g, "");
-      (bootS.includes("clearSessionPrivateMemory(") && bootS.includes("archiveSessionMemory(") ? ok : fail)(
-        "【125】删会话时清私有记忆目录 + 归档条目（与主会话同一条处理链）"
-      );
-      const fabS = readFileSync(join(ROOT, "electron", "memory-fabric.ts"), "utf8").replace(/\r/g, "");
-      (/sessionId\s*!==\s*dispatchOrigin/.test(fabS) ? ok : fail)(
-        "【125】dispatch 是真闸不是注释（私有归属 == 发起方会话 ⇒ 不给 private 层）"
-      );
-    }
+       而写端（memory_write）用的是真实 threadId ⇒ 自己写的东西永远读不回来。 */
+    const dmCode125 = readFileSync(dmPath, "utf8").replace(/\r/g, "");
+    (!/threadId\s*\?\?\s*input\?\.originThreadId/.test(dmCode125) ? ok : fail)(
+      "【125】sessionId 只认被委派会话自己的 threadId（⛔ 不许 `threadId ?? originThreadId` 借发起方的私有层）"
+    );
+    (/originThreadId\s*\n?\s*\?/.test(dmCode125) && /dispatch:/.test(dmCode125) ? ok : fail)(
+      "【125】委派时把 originThreadId 传成 dispatch（防回退硬闸），而不是当私有归属"
+    );
+    (/teamId:\s*teamId\s*\|\|\s*undefined/.test(dmCode125) ? ok : fail)(
+      "【125】团 id 透传给 getMemoryHandles（不传 = 团内记忆那一层永远是 null，死功能）"
+    );
+    const threadIdAtCallSites = [
+      ["features/delegation.ts", deleg],
+      ["features/teams-ipc.ts", teams],
+      ["team-invoke.ts", teams],
+    ].filter(([, src]) => /buildDelegateMemory\([\s\S]{0,400}?threadId:/.test(src)).map(([n]) => n);
+    (threadIdAtCallSites.length === 3 ? ok : fail)(
+      `【125】三条派活路径都传了真实 threadId（实得 ${threadIdAtCallSites.length}/3：${threadIdAtCallSites.join(" / ")}）`
+    );
+    /* ⛔ 归档/删除「跟主会话一样」的前提：cwd 必须有登记。原先只有渲染层那条响应拦截写 threadCwd
+       ⇒ 主进程自己发的 thread/start（子智能体/专家/团成员/渠道机器人）全缺 cwd
+       ⇒ 文件快照、记忆捕获、删会话时的记忆清理全部静默跳过。 */
+    const csSrc = readFileSync(join(ROOT, "electron", "codex-server.ts"), "utf8").replace(/\r/g, "");
+    (/threadCwd\.set\(threadId, cwd\)/.test(csSrc) ? ok : fail)(
+      "【125】thread/start 唯一钩子里登记 threadCwd（缺了 ⇒ 委派会话的捕获/文件追踪/删会话清记忆全跳过）"
+    );
+    const bootSrc125 = readFileSync(join(ROOT, "electron", "features", "boot.ts"), "utf8").replace(/\r/g, "");
+    (bootSrc125.includes("clearSessionPrivateMemory(") && bootSrc125.includes("archiveSessionMemory(") ? ok : fail)(
+      "【125】删会话时清私有记忆目录 + 归档条目（与主会话同一条处理链）"
+    );
+    /* 10-30：`dispatch` 参数此前是**空头承诺**（只声明类型，buildContext 根本没有这个入参）。
+       现在落实为硬闸，判据也要钉住它 —— 否则下次重构又会退回"注释声称能力"。 */
+    const fabricSrc125 = readFileSync(join(ROOT, "electron", "memory-fabric.ts"), "utf8").replace(/\r/g, "");
+    (/sessionId\s*!==\s*dispatchOrigin/.test(fabricSrc125) ? ok : fail)(
+      "【125】dispatch 是真闸不是注释（私有归属 == 发起方会话 ⇒ 不给 private 层）"
+    );
 
     /* 反向绊线：主会话那条注入路径不许被这次改动顺手改掉（标记/口径是两边共同契约） */
     const sendSrc = readFileSync(join(ROOT, "src", "features", "app-state", "parts", "part08", "02-seg", "send.tsx"), "utf8").replace(/\r/g, "");

@@ -80,6 +80,13 @@ jobs:
             exit 1
           fi
           cp "${LATEST}" dist-assets/latest.yml
+          # ⛔⛔ 11-01：安装包在上面被**重命名**成 PPcode-<ver>-win-x64.exe，但 latest.yml 里
+          #   写的是 electron-builder 的原始产物名 ⇒ 两者对不上，更新器按旧名找资产找不到，
+          #   症状是静默「已是最新」（本仓 v0.1.8 就是死在这一步）。⇒ 名称必须同步改写：
+          #   files[].url 与顶层 path 两处都改，sha512 是内容哈希、改名不影响。
+          sed -i -E "s|^[[:space:]]*-[[:space:]]*url:.*\.exe\.blockmap$|  - url: PPcode-${VERSION}-win-x64.exe.blockmap|" dist-assets/latest.yml
+          sed -i -E "s|^[[:space:]]*-[[:space:]]*url:.*\.exe$|  - url: PPcode-${VERSION}-win-x64.exe|" dist-assets/latest.yml
+          sed -i -E "s|^path:.*\.exe$|path: PPcode-${VERSION}-win-x64.exe|" dist-assets/latest.yml
           if ! grep -q "path: PPcode-${VERSION}-win-x64.exe" dist-assets/latest.yml; then
             echo "::error::latest.yml 的 path 与最终资产名不一致："
             grep -n "path:" dist-assets/latest.yml || true

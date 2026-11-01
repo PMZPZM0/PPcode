@@ -15,9 +15,9 @@ import { RelayTunnel, type RelayStatus } from "./relay-tunnel";
 const REMOTE_APK_RELEASE = "mobile-remote-v0.1.16";
 
 /** 安装包校验和（GitHub 资产自带的 digest）：镜像层可能被篡改，对不上就不落盘 —— 与 updates.ts 同口径。
- *  ⛔ 重新发布同名资产时必须同步改这里，否则手机端会一直报「校验和不匹配」。 */
+ *  ⛔ 重新发布同名资产时必须同步改这里，否则手机端会一直报「校验和不匹配」。
+ *  ⛔ 10-31 用户令：PPcode 的安卓包由**本仓**发布 ⇒ 这里只登记自己的品牌包（CodexRemote 在桌面版仓）。 */
 const REMOTE_APK_SHA256: Record<string, string> = {
-  "CodexRemote-0.1.16.apk": "765ab2f6f59ef301526e8f1d2142f8ba1c59da0d815dd161b66276713396f315",
   "PPcodeRemote-0.1.16.apk": "10803fa733f11504cc4299d627724d81b997caf4925104ba6ce90ba149ca848f",
 };
 
@@ -412,7 +412,8 @@ export class RemoteControlService {
       // 缓存损坏 / 是旧包：删掉重下（删不掉就直接覆盖写）
       try { fs.rmSync(target, { force: true }); } catch { /* 覆盖写也能兜住 */ }
     }
-    const base = `https://github.com/PMZPZM0/codex-harness-desktop/releases/download/${REMOTE_APK_RELEASE}/${this.apkFile}`;
+    /* ⛔ 10-31 用户令：PPcode 的安卓包改由**本仓**（PMZPZM0/PPcode）的 Release 发布 —— 别再指向主仓。 */
+    const base = `https://github.com/PMZPZM0/PPcode/releases/download/${REMOTE_APK_RELEASE}/${this.apkFile}`;
     const expected = REMOTE_APK_SHA256[this.apkFile];
     if (!expected) throw new Error(`没有登记 ${this.apkFile} 的校验和，拒绝下载`);
     let lastError = "未知错误";

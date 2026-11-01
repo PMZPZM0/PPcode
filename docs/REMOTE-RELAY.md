@@ -52,7 +52,7 @@ sudo systemctl reload caddy
 ```
 
 可选环境变量：`RELAY_PORT`（默认 18700）、`RELAY_HOST`、`RELAY_LEGACY_TARGET`（默认 127.0.0.1:18092）、
-`RELAY_STATE`、`RELAY_APK_URL`（默认指向 `mobile-remote-v0.1.2` 的 CodexRemote 资产）。
+`RELAY_STATE`、`RELAY_APK_URL`（默认指向**本仓** `PMZPZM0/PPcode` 的 `mobile-remote-v0.1.16` / `PPcodeRemote-0.1.16.apk`；⛔ PPcode 的安卓包不放桌面版仓）。
 
 ## 电脑端（为什么不需要装 frpc 了）
 
@@ -70,4 +70,4 @@ sudo systemctl reload caddy
 - 网关只转发 HTTP；手机页的事件走 1.5s 轮询（原来的 WebSocket 从未挂处理器，已删除）。
 - 同一手机连两台电脑时，cookie 由网关改写为 `Path=/t/<设备ID>`，互不覆盖。
 - 中转服务器能看到转发流量（隐私说明需在协议/帮助里写明）；网关有限速、并发上限与体积上限。
-- 未来换域名/换版本：改 `RELAY_DEFAULT_BASE`（remote.ts）、`APK_URL`（网关环境变量）与 APK 内置地址三处。
+- 未来换域名/换版本：改 `RELAY_DEFAULT_BASE`（remote.ts）、`APK_URL`（网关环境变量）、`remote.ts` 的下载基址与 APK 内置地址四处；PP 包的 Release 发在本仓 `PMZPZM0/PPcode`。

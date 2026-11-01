@@ -1682,8 +1682,8 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     (gwSrc.includes("MAX_INFLIGHT") && gwSrc.includes("MAX_PER_MINUTE") && gwSrc.includes("MAX_BODY") ? ok : fail)(
       "【139e】网关有并发/速率/体积上限（公网入口不许无限转发）"
     );
-    (gwSrc.includes('url === "/apk"') && gwSrc.includes("APK_URL") ? ok : fail)(
-      "【139e】网关公开 /apk 跳转（老 APK 的安装包入口坏了也能用浏览器更新）"
+    (gwSrc.includes('url === "/apk"') && gwSrc.includes("APK_URL") && gwSrc.includes("PMZPZM0/PPcode/releases/download") ? ok : fail)(
+      "【139e】网关 /apk 指向本仓（PMZPZM0/PPcode）的 Release —— PPcode 的安卓包不再放主仓"
     );
     (tunnelSrc.includes("relay-device.json") && tunnelSrc.includes("randomBytes(32)") && tunnelSrc.includes("scheduleRetry") ? ok : fail)(
       "【139e】内置隧道身份稳定（设备 ID + 令牌落 userData）、断线退避重连"
@@ -1929,8 +1929,8 @@ console.log(C.bold("\n【16】统一内置 provider id（新会话一律绑 harn
     (tunnelPage.includes("prefers-reduced-motion") && tunnelPage.includes("@keyframes fade-up") && tunnelPage.includes("@keyframes home-in") && tunnelPage.includes(".ripple") && tunnelPage.includes("menu-group") ? ok : fail)(
       "【139e】手机页动效体系：入场/切换/涟漪/菜单弹出 + 跟随系统减弱动效；☰ 菜单带图标与说明"
     );
-    (relaySrc.includes("mobile-remote-v0.1.16") ? ok : fail)(
-      "【139e】安装包版本与 Release 对齐（0.1.16）"
+    (relaySrc.includes("mobile-remote-v0.1.16") && relaySrc.includes("PMZPZM0/PPcode/releases/download") ? ok : fail)(
+      "【139e】安装包版本与 Release 对齐（0.1.16），且下载基址指向本仓 PMZPZM0/PPcode"
     );
   }
 }

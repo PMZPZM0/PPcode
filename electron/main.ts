@@ -917,12 +917,12 @@ let appThemeDark: boolean | null = null;
  *  会让它在深色模式下控制钮符号仍是近黑的 #1b1b1a，而顶栏也是深色 ⇒「看不见但能点」
  *  （09-21 用户实测）。日志打「已下发的符号色 + 覆盖窗口数」——⛔ Electron 本版**没有
  *  getTitleBarOverlay 读回接口**（写出来 TS 直接报 TS2551），所以真机是否可见只能看窗口右上角。 */
-function applyWindowChrome(dark: boolean) {
+function applyWindowChrome(dark: boolean, bg = dark ? "#1b1b1a" : "#ffffff") {
   /* ⛔⛔ 10-31：win32 改 frame:false，三个窗口钮由渲染层自绘（components/WindowControls.tsx）
      ⇒ 不再下发标题栏符号色（颜色由 CSS 变量跟着主题走），主进程少一份真相源。 */
   const targets = allBusWindows().filter((win) => Boolean(win && !win.isDestroyed()));
   for (const win of targets) {
-    try { win.setBackgroundColor(dark ? "#1b1b1a" : "#ffffff"); } catch { /* 窗口可能正在销毁 */ }
+    try { win.setBackgroundColor(bg); } catch { /* 窗口可能正在销毁 */ }
   }
   if (targets.length) console.log(`[theme] 窗口外观 → ${dark ? "dark" : "light"}；已给 ${targets.length} 个窗口下发底色`);
 }
@@ -942,7 +942,7 @@ ipcMain.handle("theme:apply", (_event, theme: string) => {
   appThemeDark = dark;
   setAppThemeDark(dark);
   nativeTheme.themeSource = dark ? "dark" : "light";
-  applyWindowChrome(dark);
+  applyWindowChrome(dark, nextTheme === "obsidian" ? "#0b0d10" : dark ? "#1b1b1a" : "#ffffff");
   /* ⛔ 广播给所有窗口（10-16，与云助手同轮同步）：独立会话弹窗当初只在**创建时**取主题，
      主窗口之后换主题它不会跟着变（用户令「独立窗口的主题色要跟着主界面变」）。
      11-02：广播**主题 id 本身**（不再压成 dark/light）—— 否则副窗切到「曜石」会退回旧「黑夜」。 */

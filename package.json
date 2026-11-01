@@ -35,7 +35,8 @@
     "voice:models": "node scripts/install-voice-models.cjs",
     "icons": "node scripts/build-app-icons.cjs && node scripts/build-tray-icon.cjs",
     "memory:audit": "node scripts/memory-audit.mjs",
-    "memory:recall": "node scripts/memory-recall.mjs"
+    "memory:recall": "node scripts/memory-recall.mjs",
+    "verify:runtime": "node scripts/verify-runtime.mjs"
   },
   "dependencies": {
     "@google/model-viewer": "^4.3.1",

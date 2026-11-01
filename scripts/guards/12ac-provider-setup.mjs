@@ -98,7 +98,9 @@ ok(/RELAUNCH_SECONDS/.test(dialog) && !/稍后重启/.test(dialog) && /立即重
 
 /* ── ④ 登录页四路接入 ── */
 ok(/ProviderSetupDialog/.test(login) && /setSetupIntent/.test(login), "登录页接入统一弹窗");
-ok(["source: \"cloud\"", "source: \"relay\"", "source: \"openai\"", "source: \"custom\""].every((s) => login.includes(s)), "四路来源齐全：云 / 中转站 / OpenAI / 自定义");
+/* ⛔ 本仓产品定义与主仓不同（10-09 用户令）：登录只有「中转站账户」与「云管理账号」两路。
+   ⇒ 断言按本仓口径钉两路；⛔ 别照抄主仓的四路 —— 那会让本仓守卫长期假红。 */
+ok(["source: \"cloud\"", "source: \"relay\""].every((s) => login.includes(s)), "两路来源齐全：云 / 中转站（本仓产品定义）");
 ok(/deferActivation:\s*true/.test(login) && /pending/.test(login), "中转站登录用 deferActivation 解析候选后再交给弹窗（取消不落档案）");
 ok(/deferActivation/.test(relay) && /pending: \{ provider: resolved\.provider/.test(relay), "performRelayLogin 的 defer 分支返回待启用凭据");
 ok(/if \(info\.saved\)/.test(handleLogin), "handleLogin 支持「弹窗已保存」的收尾路径");
@@ -124,7 +126,11 @@ ok(/provisionCloud\(api, \{ activate: true, onlyIfEmpty: true, restartIfActive: 
 ok(/选择模型并启用/.test(cloudPage) && /ProviderSetupDialog/.test(cloudPage) && /relaunchApp/.test(cloudPage), "云账号页有「选择模型并启用」入口 + 弹窗 + 重启");
 ok(/openOfficialSetup/.test(openaiPage) && /ProviderSetupDialog/.test(openaiPage) && /relaunchApp/.test(openaiPage), "OpenAI 页登录/启用订阅走同一弹窗");
 ok(!/onActivate\(OFFICIAL_MODELS\)/.test(openaiPage), "⛔ OpenAI 页不再绕过选模型直接 activate");
-ok(/refreshActive=\{app\.refreshActive\}/.test(registry) && /onRefreshActive=\{app\.refreshActive\}/.test(registry), "设置注册表把 refreshActive 接进模型页与 OpenAI 页");
+/* ⛔ 本仓现状（11-01 实测）：设置注册表只挂了「模型」页的 refreshActive；OpenAI 订阅页在本仓
+   **没有任何渲染点**（composer-form 里只 import 未使用）⇒ 主仓那条「模型页 + OpenAI 页都接」
+   在本仓不成立。⛔ 别照抄主仓：要么本仓补上 OpenAI 页入口（属产品变更，须用户点头），
+   要么保持只钉模型页这一处。 */
+ok(/refreshActive=\{refreshActive\}/.test(registry), "设置注册表把 refreshActive 接进模型页（本仓无 OpenAI 设置页）");
 ok(/provider-activated/.test(providerEvent) && /getCustomModel/.test(providerEvent) && /applyGlobalModelChoice/.test(providerEvent), "provider-activated 后当前会话模型跟到新供应商（⛔ 旧 model id 会发不出去）");
 ok(/activateCloudProvider/.test(cloudProvider) && /sendToWindow\("harness:event", \{ type: "provider-activated"/.test(cloudProvider), "云端 activate 也广播 provider-activated（与 custom-model 同一事件，⛔ 不另开一套）");
 

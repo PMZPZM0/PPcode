@@ -1227,7 +1227,7 @@ const appSrc4 = readAppUi();
       "【123】没有 setContextMenu 缓存菜单 —— 状态行会过期说假话"
     );
     // 菜单条目面（用户要「功能齐全」）：显隐 / 状态 / 关闭到托盘开关 / 打开数据目录 / 看日志 / 退出
-    const entries = ["显示主窗口", "隐藏主窗口", "运行中：", "空闲", "关闭窗口时最小化到托盘", "打开数据目录", "查看引擎日志", "退出 PPcode"];
+    const entries = ["显示主窗口", "隐藏主窗口", "运行中：", "空闲", "关闭窗口时最小化到托盘", "打开数据目录", "查看引擎日志", "退出 Codex Harness Desktop"];
     const missingEntry = entries.filter((e) => !traySrc.includes(e));
     (missingEntry.length === 0 ? ok : fail)(
       `【123】菜单条目齐（缺 ${missingEntry.join(" / ") || "无"}）`
@@ -1453,7 +1453,15 @@ const appSrc4 = readAppUi();
       }
     }
 
-    const distFav = join(ROOT, "dist-electron", "favorites.js");
+    /* ⛔ 11-02：favorites 域已按「一个板块一个域前缀」迁到 features/ 目录，
+       产物从 dist-electron/favorites.js 变成 dist-electron/features/favorites/index.js。
+       两处都探，避免域结构再调整时这条断言变成「永远红」。 */
+    const distFavCandidates = [
+      join(ROOT, "dist-electron", "features", "favorites", "store.js"),
+      join(ROOT, "dist-electron", "features", "favorites", "index.js"),
+      join(ROOT, "dist-electron", "favorites.js"),
+    ];
+    const distFav = distFavCandidates.find((candidate) => existsSync(candidate)) ?? distFavCandidates[0];
     if (!existsSync(distFav)) {
       fail("【145】dist-electron/favorites.js 不存在（先构建）—— 收藏夹行为断言无法执行");
     } else {

@@ -588,6 +588,8 @@ export interface Bag {
   setSandbox: React.Dispatch<React.SetStateAction<string>>;
   personality: string;
   setPersonality: React.Dispatch<React.SetStateAction<string>>;
+  /* 10-27：通知可显式带语气（tone）——「未选工作区/项目地址」这类提示按场景着色，
+     不再全靠 noticeTone() 从文案里猜（普通会话=蓝 info，中枢=琥珀 warning）。 */
   notices: { id: number; text: string; threadId?: string | undefined; scope: "settings" | "chat"; tone?: NoticeTone | undefined; }[];
   setNotices: React.Dispatch<React.SetStateAction<{ id: number; text: string; threadId?: string | undefined; scope: "settings" | "chat"; tone?: NoticeTone | undefined; }[]>>;
   noticeCenter: { id: number; text: string; threadId?: string | undefined; scope: "settings" | "chat"; at: number; read: boolean; tone?: NoticeTone | undefined; }[];
@@ -666,6 +668,11 @@ export interface Bag {
   setUpdateError: React.Dispatch<React.SetStateAction<string>>;
   updateDownloading: boolean;
   setUpdateDownloading: React.Dispatch<React.SetStateAction<boolean>>;
+  /** 更新方式：差分优先（默认）/ 强制完整包（差分出问题时兜底）。 */
+  updateMode: "differential" | "full";
+  setUpdateMode: (mode: "differential" | "full") => void;
+  /** 更新方式的状态 setter（设置页的「补丁 / 完整包」单选直接用 setState 语义）。 */
+  setUpdateModeState: React.Dispatch<React.SetStateAction<"differential" | "full">>;
   updateProgress: number;
   setUpdateProgress: React.Dispatch<React.SetStateAction<number>>;
   updateNotice: { version?: string | undefined; changelog?: string | undefined; size?: number | undefined; mandatory?: boolean | undefined; } | null;
@@ -737,8 +744,8 @@ export interface Bag {
   capabilityError: string;
   setCapabilityError: React.Dispatch<React.SetStateAction<string>>;
   refreshCapabilities: () => void;
-  installDevRuntime: (id: string) => Promise<void>;
-  uninstallDevRuntime: (id: string) => Promise<void>;
+  installDevRuntime: (id: string) => Promise<boolean>;
+  uninstallDevRuntime: (id: string) => Promise<boolean>;
   cancelDevRuntime: (id: string) => Promise<void>;
   runtimeUninstalling: string | null;
   setRuntimeUninstalling: React.Dispatch<React.SetStateAction<string | null>>;
@@ -1217,8 +1224,6 @@ export interface Bag {
   refreshThreadRole: (threadId?: string | undefined) => Promise<void>;
   delegateRecordsRef: React.RefObject<Record<string, DelegateRecordEntry>>;
   dispatchInfoRef: React.RefObject<{ description: string; targets: DispatchTargetEntry[]; }>;
-
-  /* ★ 10-29 @ 点名（专家 / 子智能体 / CLI 智能体 / 专家团）：本轮有效，发送后清空。 */
   dispatchMentions: DispatchTargetEntry[];
   setDispatchMentions: React.Dispatch<React.SetStateAction<DispatchTargetEntry[]>>;
   addDispatchMention: (target: DispatchTargetEntry) => void;
@@ -1384,9 +1389,9 @@ export interface Bag {
   deleteThread: (id: string) => Promise<void>;
   deleteThreadsByCwd: (cwd: string) => Promise<void>;
   /* 11-01 笔名体系（会话名即笔名）：
-     · aliasState —— 主进程 session-alias:snapshot 的只读快照，store 在 src/lib/alias-store.mjs；
+     · aliasState —— 主进程 `session-alias:snapshot` 的只读快照，store 在 `src/lib/alias-store.mjs`；
      · aliasRefreshKey —— 快照代次，用来让依赖它的 memo 失效；
-     · badgeCycle —— 行内「最多露一个标签」的轮播下标；
+     · badgeCycle —— 行内「最多露一个标签」的轮播下标（thread-badge-cycle store）；
      · delegateDescendantsOf —— 删会话时先级联删它派出去的子会话（⛔ 先子后父）。 */
   aliasState: import("../../../lib/alias-store.mjs").AliasState;
   aliasRefreshKey: string;
@@ -1398,7 +1403,6 @@ export interface Bag {
   /** 预填文本 + 一次性技能后**直接发送**（10-30 任务监控「进化」）；⛔ 文本/技能走一次性 ref，不落 state */
   sendPrefilled: (input: { text: string; skill?: { name: string; description: string } }) => Promise<void>;
   handleLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string | undefined; saved?: any; models?: string[] | undefined; }) => Promise<boolean>;
-  handleCloudReady: (info?: { username?: string | undefined; }) => Promise<boolean>;
   handleSkip: () => Promise<void>;
   MODEL_CONFIGURED_KEY: "model-configured-v1";
   markModelConfigured: () => void;
@@ -1479,7 +1483,7 @@ export interface Bag {
   insertFavorite: (item: FavoriteItem) => void;
   sendFavorite: (item: FavoriteItem) => Promise<void>;
   favoriteToMemory: (ids: string[], scope: MemoryLayerScope) => Promise<FavoritesToMemoryResult>;
-  /* ⛔ 10-23 补登记（同步主仓 0.0.47）：part07/03-seg 的滑窗下滚辅助函数 —— 【93】从 parts 推断出它、
+  /* ⛔ 10-22 补登记（并行线在途）：part07/03-seg 的滑窗下滚辅助函数 —— 【93】从 parts 推断出它、
      而 Bag 里没有（推断有/Bag 没有 = 1 项红）。生成器不在本仓，按实测值补进声明面。 */
   slideTurnWindowDown: (id: string) => void;
 }

@@ -43,6 +43,16 @@ export type WhatsNewEntry = {
 /** 全部版本的要点，**最新在最前**（弹窗按数组顺序展示）。 */
 export const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    version: "0.1.9",
+    date: "2026-11-02",
+    items: [
+      { t: "播放速度下拉跟随主题", d: "媒体预览的倍速选择改用应用内下拉，暗色下不再白底弹层" },
+      { t: "OpenFilm 卸载说明补回", d: "卡片重新写明：卸载只做引导，不会替你删系统目录" },
+      { t: "发版校验更准了", d: "几处判据与实现对齐（播报条宽度 / favorites 产物路径 / bag 类型）" },
+      { t: "mac 首次打开", d: "解压后拖进「应用程序」，再按发布页那条命令放行一次" },
+    ],
+  },
+  {
     version: "0.1.8",
     date: "2026-10-30",
     items: [

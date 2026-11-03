@@ -1246,8 +1246,12 @@ const appSrc4 = readAppUi();
       "【123】没有 setContextMenu 缓存菜单 —— 状态行会过期说假话"
     );
     // 菜单条目面（用户要「功能齐全」）：显隐 / 状态 / 关闭到托盘开关 / 打开数据目录 / 看日志 / 退出
-    const entries = ["显示主窗口", "隐藏主窗口", "运行中：", "空闲", "关闭窗口时最小化到托盘", "打开数据目录", "查看引擎日志", "退出 Codex Harness Desktop"];
-    const missingEntry = entries.filter((e) => !traySrc.includes(e));
+    const entries = ["显示主窗口", "隐藏主窗口", "运行中：", "空闲", "关闭窗口时最小化到托盘", "打开数据目录", "查看引擎日志"];
+    /* ⛔ 11-03：退出项文案**带品牌**（PPcode 是「退出 PPcode」、桌面版是「退出 Codex Harness Desktop」）——
+       原先把它写死在清单里，PPcode 仓恒红。改成从 tray 源里取实际文案：语义（必须有退出项）不变。 */
+    const quitEntry = (traySrc.match(/label:\s*"(退出 [^"]+)"/) || [])[1] || "";
+    const entriesAll = quitEntry ? [...entries, quitEntry] : entries;
+    const missingEntry = entriesAll.filter((e) => !traySrc.includes(e));
     (missingEntry.length === 0 ? ok : fail)(
       `【123】菜单条目齐（缺 ${missingEntry.join(" / ") || "无"}）`
     );

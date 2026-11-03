@@ -14,7 +14,6 @@
  *    改这里 = 改用户看到的设置页 ⇒ 按红线（可见交互）先问用户。
  */
 import { lazy } from "react";
-import { ArrowLeft, ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 import type { SettingsPage } from "../../../../app-view/types";
 import type { HarnessAppApi } from "../../../../app-state/useHarnessApp";

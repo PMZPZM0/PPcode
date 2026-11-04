@@ -596,3 +596,5 @@
 | 2026-11-04 | 自动同步改为跟随上次勾选的会话 | 修复 | `electron/app-settings.ts`、`cloud-reserve-ipc.ts`、`SessionSyncDialog.tsx`、`CloudManageSection.tsx`、守卫 12q | 手选上传成功后把勾选的会话 id 写进 app-settings（`cloudSyncIds`），后台 30s/5min 自动同步只保持这些会话的增量；没选过 = 不上传。避免「手选了一条，5 分钟后调度/成员会话又被全量传上去」。验证：build + 12q 97/100（3 条既有分歧）；真云账号手选 A → 自动同步 B 未上传。 | 本轮（同步主线） |
 
 | 2026-11-04 | 审查修正：手选旧会话 / 路径不外泄 / 自动同步不读全量 | 修复 | `cloud-sync.ts`、`cloud-reserve-ipc.ts`、`ipc-channels.manifest.json`、`SessionSyncDialog.tsx`、守卫 12q | ① 手选上传按文件名 id 筛（最多 10000 个）只读选中的文件，不再受「最新 40 个」限制；② 会话列表剥掉本机绝对路径 `path`；③ 自动同步直接用 `cloudSyncIds`，不再为算 ids 读 500 个 rollout 全文；④ 网页属性转义 / 云助手回落 / 未知类型兜底（账号页两站已部署）。验证：build + 12q 99/102（3 条既有分歧）。 | 本轮（同步主线） |
+
+| 2026-11-05 | 内部会话（内省/蒸馏）在云管理里单列且默认不传 | 修复 | `electron/features/cloud-reserve-ipc.ts`、`SessionSyncDialog.tsx`、守卫 12q | 10-31「自我改进建议」自噬环建的内部会话（侧栏隐藏、rollout 仍在磁盘）被上传弹窗当主会话默认勾选。现在 `sessionKinds` 优先认 `internalThreads` → kind=internal，弹窗单列「内部会话（内省/蒸馏）」并默认不勾。验证：build + 12q 100/103（3 条既有分歧）。 | 本轮（同步主线） |

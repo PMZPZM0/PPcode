@@ -594,3 +594,5 @@
 | 2026-11-04 | 云同步：先列会话再选传 + 删除确认 + 来源分类 | 改动 | `cloud-sync.ts`、`cloud-reserve-ipc.ts`、`cloud-bridge.ts`、`SessionSyncDialog.tsx`、`CloudManageSection.tsx`、`thread-attention-rows.tsx`、守卫 12q | 用户令「先检测出来会话，弹窗显示，再确定要上传哪些；要考虑专家团/中枢/带调度；删除都要弹窗，云管理和本地都一样」。① 上传前弹窗列本地会话，按来源分组（主会话/中枢/专家团/调度/成员/群成员），默认只勾主会话/中枢/主理人/专家团调度，可搜索/分组勾选；只提交勾选的 ids；② 每行显示已传/新增行数；③ 云端删除改模态确认；④ 侧栏本地删除会话也加确认弹窗。验证：build + 12q 96/99（3 条既有分歧）；真云账号只上传勾选的一条、另一条未上传、下载回来、清理。 | 本轮（同步主线） |
 
 | 2026-11-04 | 自动同步改为跟随上次勾选的会话 | 修复 | `electron/app-settings.ts`、`cloud-reserve-ipc.ts`、`SessionSyncDialog.tsx`、`CloudManageSection.tsx`、守卫 12q | 手选上传成功后把勾选的会话 id 写进 app-settings（`cloudSyncIds`），后台 30s/5min 自动同步只保持这些会话的增量；没选过 = 不上传。避免「手选了一条，5 分钟后调度/成员会话又被全量传上去」。验证：build + 12q 97/100（3 条既有分歧）；真云账号手选 A → 自动同步 B 未上传。 | 本轮（同步主线） |
+
+| 2026-11-04 | 审查修正：手选旧会话 / 路径不外泄 / 自动同步不读全量 | 修复 | `cloud-sync.ts`、`cloud-reserve-ipc.ts`、`ipc-channels.manifest.json`、`SessionSyncDialog.tsx`、守卫 12q | ① 手选上传按文件名 id 筛（最多 10000 个）只读选中的文件，不再受「最新 40 个」限制；② 会话列表剥掉本机绝对路径 `path`；③ 自动同步直接用 `cloudSyncIds`，不再为算 ids 读 500 个 rollout 全文；④ 网页属性转义 / 云助手回落 / 未知类型兜底（账号页两站已部署）。验证：build + 12q 99/102（3 条既有分歧）。 | 本轮（同步主线） |

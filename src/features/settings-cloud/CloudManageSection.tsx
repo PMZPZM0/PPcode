@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Cloud, Download, ExternalLink, RefreshCw, Search, Trash2 } from "lucide-react";
 import { Spinner } from "../../components/CardShell";
+import { AppSelect } from "../../components/AppSelect";
 import { cloudUserCenterUrl } from "../../lib/cloud-links.mjs";
 
 type CloudSession = {
@@ -246,17 +247,26 @@ export function CloudManageSection() {
         <div className="cloud-sync-manage-list-tools">
           <span className="cloud-sync-manage-search">
             <Search size={13} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索会话 / 项目 / 机器" />
+            <input value={query} onChange={(event) => { setQuery(event.target.value); setPicked(new Set()); }} placeholder="搜索会话 / 项目 / 机器" />
           </span>
-          <select className="cloud-sync-manage-select" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} aria-label="按项目筛选">
-            <option value="">全部项目</option>
-            {projects.map((project) => <option key={project} value={project}>{project}</option>)}
-          </select>
-          <select className="cloud-sync-manage-select" value={sortBy} onChange={(event) => setSortBy(event.target.value as "time" | "size" | "lines")} aria-label="排序">
-            <option value="time">最近上传</option>
-            <option value="size">体积最大</option>
-            <option value="lines">行数最多</option>
-          </select>
+          <AppSelect
+            className="cloud-sync-manage-select"
+            value={projectFilter}
+            onChange={(next) => { setProjectFilter(next); setPicked(new Set()); }}
+            ariaLabel="按项目筛选"
+            options={[{ value: "", label: "全部项目" }, ...projects.map((project) => ({ value: project, label: project }))]}
+          />
+          <AppSelect
+            className="cloud-sync-manage-select"
+            value={sortBy}
+            onChange={(next) => setSortBy(next as "time" | "size" | "lines")}
+            ariaLabel="排序"
+            options={[
+              { value: "time", label: "最近上传" },
+              { value: "size", label: "体积最大" },
+              { value: "lines", label: "行数最多" },
+            ]}
+          />
           <span className="cloud-sync-manage-toolbar-spacer" />
           <button type="button" className="secondary-setting" disabled={Boolean(busy) || picked.size === 0} onClick={() => void pull([...picked])}>
             <Download size={13} />下载选中{picked.size ? ` (${picked.size})` : ""}

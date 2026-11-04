@@ -584,3 +584,5 @@
 | 2026-11-04 | 勘误（本仓计数基线按各仓实测） | 基建 | `scripts/guards/_ctx.mjs` | 上一行的 3840 是**主仓**实测值；PPcode 本仓同轮实测 **3838**（差 2 条 = 品牌面断言不同），已按本仓值回填。EXPECTED_CHECKS 属各仓自测口径，不跨仓照抄。 |
 
 | 2026-11-04 | 云管理 ↔ 本机应用联动 + 会话名 + 卡片化 | 改动 | `electron/cloud-bridge.ts`（新）、`cloud-reserve-ipc.ts`、`cloud-sync.ts`、`CloudManageSection.tsx`、`37-cloud-account.css`、守卫 12q | 用户实测「网页云管理无法跟应用联动 / 列表全是 8 位 ID / 中间板块与上下格格不入」。① 应用侧新增本机云同步桥（只绑 127.0.0.1，端口 8927 起，账号站点 Origin 白名单 + PNA 预检），网页「立即上传 / 下载」直接驱动 PPcode；② 同步标题改取 `session_index.jsonl` 的会话名，兼容 `response_item` 真实用户消息，名字变化只更新云端索引（lines: []），旧行不再显示 ID；③ 应用内云管理改成两张与云账号页同皮肤的 `cloud-acct-card` 卡片（顺带修正上一轮组件已改名、CSS 仍是旧前缀导致的不匹配）。验证：build 通过、12q 新增 5 条断言通过（3 条首启登录页断言为本仓既有分歧）。 | 本轮（同步主线 59ba2048e） |
+
+| 2026-11-04 | 云管理产品隔离：PPcode 本机桥 Origin 改 pptoken | 修复 | `electron/cloud-bridge.ts`、守卫 12q | 本机桥默认只放**本产品**账号站点：PPcode = `ppcode.pptoken.cc`（此前误用 ppz123.asia ⇒ PPcode 页面的请求被 403，永远显示未检测到）。守卫改为「必须有 HTTPS Origin 白名单」不写死域名，主仓/PPcode 同一份判据都能过。验证：PPcode 应用真机探针（8927 health 返回 product=ppcode，ppcode.pptoken.cc Origin 200）、12q 新增断言通过（3 条首启登录页断言为本仓既有分歧）。 | 本轮（同步主线） |

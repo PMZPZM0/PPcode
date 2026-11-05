@@ -31,6 +31,7 @@ import { ToolCard, builtinCommandCatalog, categoryLabel, cronTemplates, describe
 // 10-04 阶段 5 渲染层插槽机制（见 src/runtime/registry.ts）：插件往设置页挂内容的唯一入口。
 // ⛔ 未注册时 Slot 渲染 null ⇒ 既有 DOM/class 逐字不变（accept.mjs 的 CDP 选择器依赖它）。
 import { Slot } from "../../../../../runtime/registry";
+import { TeamModePanel } from "../../../../harness-team";
 
 /* 云账号（10-16）：自包含设置页 —— ⛔ 不吃 app props（板块之间保持独立，也不动 bag）。 */
 const CloudAccountSection = lazy(() => import("../../../../settings-cloud/CloudAccountSection").then((m) => ({ default: m.CloudAccountSection })));
@@ -459,6 +460,8 @@ export function settingsPagesOf(app: HarnessAppApi): Partial<Record<SettingsPage
   } = app;
 
   return {
+    /* 团队模式（10-05）：独立板块，registry 只放一行渲染 */
+    team: { render: () => <TeamModePanel /> },
     automation: { render: () => <AutomationSettingsSection setSettingsPage={setSettingsPage} setNotice={setNotice} /> },
     agentteam: { render: () => <AgentTeamSettingsSection setSettingsPage={setSettingsPage} /> },
     "expert-center": { render: () => expertMarketOpen ? <ExpertMarketSection localSkills={localSkills} onBack={() => setExpertMarketOpen(false)} onInstalled={() => void refreshExpertCenterData()} onNotice={(m) => setNotice(m)} /> : <><ExpertCenterSection expertTeams={expertTeams} EXPERT_CATEGORY_DEFS={EXPERT_CATEGORY_DEFS} expertTeamMemberDirect={expertTeamMemberDirect} startMemberDirectSession={startMemberDirectSession} onOpenMarket={() => setExpertMarketOpen(true)} onBack={() => setSettingsPage("agentteam")} /></> },

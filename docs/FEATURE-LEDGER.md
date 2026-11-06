@@ -668,3 +668,5 @@
 | 2026-11-05 | CLI 智能体：更新检查 + 一键更新 + 安装进度条 + pip 国内镜像 | 新增 | `cli-install.ts`、`cli-agents-ipc.ts`、manifest/registry（cliagents +3）、`CliAgentsPanel.tsx`、`57-cli-agents.css`、守卫 12ah | 新增 check-updates/update/cancel 三通道（更新真跑真复核、取消真 kill）；面板显示「可更新」并支持一键更新；装卸期间弹窗内与面板顶部都有进度卡；pip 默认清华镜像。验证：真安装探针 + 版本比较真值表 + 12ah 153/153。 | b32a23034 |
 
 | 2026-11-05 | 审查修正：CLI 安装链路解析/并发/取消/更新检查 | 修复 | `src/lib/cli-install.mjs`、`electron/cli-install.ts`、守卫 12ah | 跳过带值选项的值（--index-url/--registry 不再当包名）、去包名引号；全局单操作闸；取消在换源间隙也生效且不串下一次；更新检查并行限 4 路；尊重用户自定义源。验证：解析器真值表 + 12ah 160/160。 | bf57d80c8 |
+
+| 2026-11-05 | CLI 智能体：显式「检查更新」入口 + 卡片已安装文案对齐 | 改动 | `CliAgentsPanel.tsx`、守卫 12ah | 工具栏「检查更新」+ 预览单条检查；卡片与弹窗统一「已安装 · 版本」。验证：安装探针内外一致 + 12ah 161/161。 | 2055326a5 |

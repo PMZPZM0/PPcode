@@ -662,3 +662,5 @@
 | 2026-11-05 | 重启改为 detached spawn + 剔除 ELECTRON_RUN_AS_NODE | 修复 | `electron/features/app-diagnostics.ts`、守卫 06【174】 | 保存重启后不自动启动：app.relaunch 等旧进程退出、concurrently -k 连新实例一起杀；改为先释放单实例锁再 detached spawn，并剔除 ELECTRON_RUN_AS_NODE（该变量会让新实例纯 Node 秒退）。验证：独立 Electron 探针二次启动成功；守卫 06 无失败。 | 702beec2d / 70bf28107 |
 
 | 2026-11-05 | 拓展接口分类卡美化 | 改动 | `19-misc-hints.css`、守卫 12ad | 一行式信息卡：左 44px 分类色块图标 / 中标题+说明+数量胶囊 / 右箭头；统一卡高 + hover 抬升。验证：12ad 164/164。 | c379916cb |
+
+| 2026-11-05 | 设置页统一小卡：开发工具/自检/专家团/备份/记忆/中转站 | 改动 | `45-settings-experience.css`、`08-settings-engine-update.css`、`ToolsHealthPanel.tsx`、守卫 12ad | 开发工具/专家团/自动化/备份/记忆/中转站改多列小卡；自检面板改头部卡 + 三组清单。验证：12ad 166/166。 | 9ce94660a |

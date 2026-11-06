@@ -660,3 +660,5 @@
 | 2026-11-05 | 供应商编辑弹窗保存条常驻可见 | 修复 | `42-provider-setup.css`、守卫 12ac | 弹窗高度改按遮罩 100%（100vh 会顶出可视区、保存条被切）；保存条 absolute 钉底部、表单留 72px。验证：已配置供应商弹窗可滚、顶/底保存条都在并命中点击；12ac 70/70。 | 09d032264 |
 
 | 2026-11-05 | 重启改为 detached spawn + 剔除 ELECTRON_RUN_AS_NODE | 修复 | `electron/features/app-diagnostics.ts`、守卫 06【174】 | 保存重启后不自动启动：app.relaunch 等旧进程退出、concurrently -k 连新实例一起杀；改为先释放单实例锁再 detached spawn，并剔除 ELECTRON_RUN_AS_NODE（该变量会让新实例纯 Node 秒退）。验证：独立 Electron 探针二次启动成功；守卫 06 无失败。 | 702beec2d / 70bf28107 |
+
+| 2026-11-05 | 拓展接口分类卡美化 | 改动 | `19-misc-hints.css`、守卫 12ad | 一行式信息卡：左 44px 分类色块图标 / 中标题+说明+数量胶囊 / 右箭头；统一卡高 + hover 抬升。验证：12ad 164/164。 | c379916cb |

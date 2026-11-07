@@ -1,5 +1,3 @@
-/* 11-01：本仓知识库落点是 <项目>/.ppcode-harness/knowledge（品牌分开，见 electron/knowledge-base.ts 的 KB_DIR）
-   ⇒ 夹具必须往同一个目录写 embeddings.json，否则「一条都没命中」是夹具指错了地方，不是实现坏。 */
 /**
  * 知识库检索判据（2026-10-04，纯离线、可随预检跑）
  *
@@ -35,7 +33,7 @@ const { chunkText, addDocument, searchDocs, listDocs } = mod;
 
 // ── 造一个临时项目（⛔ 不碰用户真实知识库目录） ──
 const ws = mkdtempSync(join(tmpdir(), "kb-guard-"));
-mkdirSync(join(ws, ".ppcode-harness", "knowledge"), { recursive: true });
+mkdirSync(join(ws, ".codex-harness", "knowledge"), { recursive: true });
 
 try {
   // ── 判据 1：块间有重叠 ──
@@ -99,7 +97,7 @@ try {
   //   这正是用户最自然的提问方式。0 条 = 那个 bug 回来了。
   {
     const zhWs = mkdtempSync(join(tmpdir(), "kb-guard-zh-"));
-    mkdirSync(join(zhWs, ".ppcode-harness", "knowledge"), { recursive: true });
+    mkdirSync(join(zhWs, ".codex-harness", "knowledge"), { recursive: true });
     try {
       addDocument(zhWs, { title: "中文召回样本", text: "记忆库的容量上限是三万字。超过之后尾部内容会被截断。", source: "guard" });
       const zhHits = searchDocs(zhWs, "记忆库容量", 5);
@@ -118,7 +116,7 @@ try {
   // 做法：用一个**恒定返回同一向量**的假 embedding 逼它走语义档。
   if (typeof mod.searchDocsSemantic === "function") {
     const ws2 = mkdtempSync(join(tmpdir(), "kb-guard2-"));
-    mkdirSync(join(ws2, ".ppcode-harness", "knowledge"), { recursive: true });
+    mkdirSync(join(ws2, ".codex-harness", "knowledge"), { recursive: true });
     try {
       const body = Array.from({ length: 120 }, (_, i) => `填充段落${i}ABCDE。`).join("\n\n")
         + "\n\n末尾独有关键词ZZQQ位于文档最末。";
@@ -130,7 +128,7 @@ try {
       const chunks2 = chunkText(body);
       const lastIdx = chunks2.findIndex((c) => c.includes("ZZQQ"));
       const docId = listDocs(ws2)[0].id;
-      const docDir = join(ws2, ".ppcode-harness", "knowledge", "docs", docId);
+      const docDir = join(ws2, ".codex-harness", "knowledge", "docs", docId);
       mkdirSync(docDir, { recursive: true });
       writeFileSync(
         join(docDir, "embeddings.json"),
@@ -277,9 +275,13 @@ try {
     const dhtSrc = readFileSync(join(ROOT, "electron", "delegate-harness-tool.ts"), "utf8");
     /* 10-21：工具面外面包了一层 `withStepParam(...)`（给工具注入卡片标题参数）⇒ 允许这层包装，
        但**里面那三个成员必须还在**（别为了包装把它拆掉）。 */
-    ok(/dynamicTools: (?:withStepParam\()?\[\.\.\.teamTools, buildDelegateHarnessTool\(\)/.test(delegation),
-      "被委派会话（子智能体 / 专家）拿到能力网关");
-    ok(/dynamicTools: withStepParam\(\[\.\.\.teamTools/.test(delegation),
+    /* ⛔⛔ 11-07：工具面提到 `desiredTools` 单一真相源（新建 + resume 同步共用一份）。
+       复用会话必须在 thread/resume **之前**同步，否则老会话首行还是旧工具面 ⇒ 主代理喊不动成员。 */
+    ok(/const desiredTools = withStepParam\(\[\s*\.\.\.teamTools, buildDelegateHarnessTool\(\)/.test(delegation)
+      && /dynamicTools: desiredTools/.test(delegation)
+      && /syncToolSurfaceAsync\(codexHome, reusable\.threadId, desiredTools/.test(delegation),
+      "被委派会话（子智能体 / 专家 / 团主理人）拿到能力网关，复用会话的工具面在 resume 前同步");
+    ok(/const desiredTools = withStepParam\(/.test(delegation),
       "委派会话工具面包了 `withStepParam`（主进程自建会话**不经过** codex-ipc 的注入点，漏了 = 子智能体的卡片没有标题）");
     const teamHits = teams.match(/buildDelegateHarnessTool\(\)/g) ?? [];
     ok(teamHits.length >= 2,

@@ -461,7 +461,7 @@ export function settingsPagesOf(app: HarnessAppApi): Partial<Record<SettingsPage
 
   return {
     /* 团队模式（10-05）：独立板块，registry 只放一行渲染 */
-    team: { render: () => <TeamModePanel /> },
+    team: { render: () => <TeamModePanel onOpenThread={(id) => { setSettingsOpen(false); void openThread(id); }} /> },
     automation: { render: () => <AutomationSettingsSection setSettingsPage={setSettingsPage} setNotice={setNotice} rpaRecipeCount={(rpaRecipes ?? []).length} /> },
     agentteam: { render: () => <AgentTeamSettingsSection setSettingsPage={setSettingsPage} /> },
     "expert-center": { render: () => expertMarketOpen ? <ExpertMarketSection localSkills={localSkills} onBack={() => setExpertMarketOpen(false)} onInstalled={() => void refreshExpertCenterData()} onNotice={(m) => setNotice(m)} /> : <><ExpertCenterSection expertTeams={expertTeams} EXPERT_CATEGORY_DEFS={EXPERT_CATEGORY_DEFS} expertTeamMemberDirect={expertTeamMemberDirect} startMemberDirectSession={startMemberDirectSession} onOpenMarket={() => setExpertMarketOpen(true)} onBack={() => setSettingsPage("agentteam")} /></> },

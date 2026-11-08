@@ -23,20 +23,20 @@
 |---|---:|---|
 | `src/App.tsx` | **12 行** | 只剩 `useHarnessApp()` + earlyView 短路 + `<AppView/>`，**不再吸收任何逻辑**（底部 60 行死 re-export 面 09-22 已删） |
 | `src/features/app-view/AppView.tsx` | 472 行 | 视图装配壳：编号段 `01-sidebar-shell` … `09-file-preview-editor` + 子目录 |
-| `src/features/` | **61 个域目录**（10-05 实测） | 其中 `settings-*` **27 个**（设置页**按页同构**拆分，粒度稳定）；10-03 新增 `codex-official-market`（Codex 官方插件市场板块）；10-05 新增 `ui-sketch`（前端开发，嵌 m3e-canvas；两轮改名：界面草图 → 手机前端UI → 前端开发） |
+| `src/features/` | **85 个域目录**（10-29 实测 `ls -d src/features/*/`；上次记录是 10-05 的 61，中间各线累计新增） | 其中 `settings-*` 按页同构拆分（粒度稳定）；10-03 新增 `codex-official-market`（Codex 官方插件市场板块）；10-05 新增 `ui-sketch`（前端开发，嵌 m3e-canvas；两轮改名：界面草图 → 手机前端UI → 前端开发）；10-29 新增 `skill-usage`（技能使用卡片；渲染层板块，零 IPC） |
 | `src/features/app-state/useHarnessApp.tsx` | 39 行 | 组合根：建 `bag` → 按序调 9 个 part → 合并 return |
 | `src/features/app-state/parts/` | 9 组合根 + 30 子 hook + `types.ts` + `bag-types.ts` | `bag-types.ts` **自动生成，禁手改**（守卫【93】） |
 | `electron/main.ts` | **1171 行**（10-05 实测 `wc -l`；⛔ 行数随域下沉变动，改动后请重测本节；纯副作用 import **5** 行） | 余 5 handler（`theme:apply` + `window:popout-*`×4，已证搬不动）+ 系统托盘（`electron/tray.ts` 接线）+ 启动链 + 模块级单例；10-05 只多了一条 `sketch` 协议的特权声明 |
 | `electron/features/` | **102 个条目**（10-03 实测：101 顶层文件 + 1 子目录 `voice-ipc/`） | IPC handler 实现。⛔ **一个板块 = 一个域前缀**（10-03 用户令）：10 处多前缀欠账已全部拆完，守卫【253】⑥ 棘轮名单清零。域组合表启用 **78 个域**（10-03 实测 `composition.json`） |
 | `electron/ipc-registry.ts` | 账本 | `prefix / count / status(in-main\|in-features\|shell) / file / channels` |
 | `electron/ipc-channels.manifest.json` | **441 个通道**（IPC 桥单一真相源；10-11 实测） | `preload.ts` gen 段 + `vite-env.d.ts` gen 段由它生成：`npm run gen:ipc`（**自动**同步 `count` 并**体检账本登记**，缺了直接打印可粘贴条目）；**生成物禁手改**（守卫【2】22 条）。09-24 起所有 invoke 走 `__ipc`：参数个数校验 + 错误归一化（`[ERR_*]` 消息前缀）+ 通道级超时表 |
-| `src/styles/` | 26 分节（`styles.css` 28 行 `@import`） | 界面区域样式；10-03 新增 `25-codex-official-market.css`；10-05 新增 `26-ui-sketch.css` |
+| `src/styles/` | **52 个分节文件 / `styles.css` 55 行 `@import`**（10-29 实测；编号有重号 37，见下） | 界面区域样式；10-03 新增 `25-codex-official-market.css`；10-05 新增 `26-ui-sketch.css`；10-29 新增 `56-skill-usage.css`（技能使用卡） |
 | 跨域活绑定 | **22 个** `electron/features/*` 从 `../main` 取值 | 架构层真残留，纪律 +【91】守着（见 §8） |
 | `electron/builtin-skills/` | **20 个内置技能**（含元技能 `skill-authoring` / `memory-distill` / `self-review` / `memory-hygiene` / `memory-classify` / `skill-audit`；09-29 新增 `image-generation` 与重写后的 `video-generation`；10-05 新增 `frontend-canvas`（前端开发画布组件手册，44 种字段速查）） | 启动时 `ensureBuiltinSkills` 落盘到 `$CODEX_HOME/skills`（守卫【103】；中文导读与 entries 一一对应，守卫【229】） |
 | **AI 画布工作流板块**（09-29 立，见 §2.1） | 渲染层 `src/features/drama-canvas/` 14 文件 / 3737 行；IPC 域 `drama-canvas` **2** + `video` **7** + `builtin`（生图）；CSS `src/styles/21-drama-canvas.css` **1519 行**；内置技能 `image-generation` / `video-generation`；MCP 工具 `image_generate` / `video_generate` / `video_status` / `video_concat` | **五层全占的独立功能板块**：界面 + 状态 + 存储 + IPC + 引擎工具/技能 |
 | **前端开发板块**（10-05 立；两轮改名：界面草图 → 手机前端UI → 前端开发；10-06 起画布 = 上游钉死提交 + 本仓补丁层，见 AGENTS.md 同名小节） | 渲染层 `src/features/ui-sketch/` 6 文件 / 501 行 + CSS `src/styles/26-ui-sketch.css` 160 行；**零 IPC**（不进 manifest / registry）；宿主侧新协议 `sketch://`（`electron/sketch-protocol.ts` + `boot.ts`）；随包第三方产物 `public/sketch/`（4.2MB，MIT，= 上游 039ec31 + 8 组件补丁；构建器 `scripts/sketch-fork/`）；内置技能 `frontend-canvas`（组件手册） | **嵌第三方静态站的板块样板**：不并源码进仓（克隆到 .workbuddy/tmp + 定点补丁），接缝全在我们这一侧（协议 / CSP / 只读桥 / 挂载 / 预览触发）；守卫【283】162 条 + 验收项 `ui-sketch` 11 条（10-06 重写：三形态探针）。⚠️ 曾接过一版"组件库送进草图"，用户实测后判没用 ⇒ 已整块删除，【283】留负向断言防复活 |
 | 记忆金字塔 | **L0–L7 八层，90% 蒸馏线** | 层表/阈值单一真相源 = `electron/memory-layers.ts`（守卫【104】） |
-| 记忆目录布局 | `<workspace>/.ppcode-harness/memory/` 下 `project/` `lessons/` `logs/` `rollups/` `archive/` | v2 分类分文件夹；v1 散文件由 `migrateLayout()` 搬（守卫【106】） |
+| 记忆目录布局 | `<workspace>/.codex-harness/memory/` 下 `project/` `lessons/` `logs/` `rollups/` `archive/` | v2 分类分文件夹；v1 散文件由 `migrateLayout()` 搬（守卫【106】） |
 | 记忆分类 | `lessons/` 内一个分类一个文件（**用户纠错单独一类**，永不淘汰） | 分类名与判定 = `electron/memory-lessons.ts`（守卫【105】） |
 | 记忆整洁与清理 | 三个动作：`prune-pool` / `tidy-lessons` / `purge-archive`（白名单 + 二次确认） | 规则表与判定 = `electron/memory-hygiene.ts`（守卫【107】） |
 | 技能落点 | 全局 `$CODEX_HOME/skills` + 项目级 `<cwd>/.codex/skills` | 引擎原生发现（`scope:"user"` / `scope:"repo"`），见 §11.2 |
@@ -55,7 +55,7 @@
 
 ### 1.1 主进程新增文件放哪（`electron/features/` 还是 `electron/` 根）★ 判据
 
-09-22 实测缺口：并发写入者把 `electron/memory-prune.ts`、`electron/memory-capture-debug.ts` 放进 `electron/` 根后，**无法判断这算不算"新增域"**。判据如下（按顺序问）：
+09-22 实测缺口：并发写入者把 `electron/memory/memory-prune.ts`、`electron/memory-capture-debug.ts` 放进 `electron/` 根后，**无法判断这算不算"新增域"**。判据如下（按顺序问）：
 
 | 问 | 是 → 放哪 | 否 → 放哪 |
 |---|---|---|
@@ -210,7 +210,7 @@
 
 - 纯函数一律 `src/lib/<名>.mjs` + 同名 `.d.mts`（预检能直接 import 真实现跑断言）。
 - **主进程侧纯函数**（要被 `electron/**` import、且不能引 `../src/lib` —— tsconfig `rootDir = electron/` 会破坏产物结构）
-  放 `electron/<名>.ts`，预检从 `dist-electron/<名>.js` 跑真断言（先例：`electron/voice/wake-match.ts`、【97】的 `electron/memory-prune.ts`）。
+  放 `electron/<名>.ts`，预检从 `dist-electron/<名>.js` 跑真断言（先例：`electron/voice/wake-match.ts`、【97】的 `electron/memory/memory-prune.ts`）。
 - 跨产物路径：`require("字面量")` 是 **tsc 盲区**（不解析模块），路径必须由守卫【96】可解析校验兜住。
 
 ---
@@ -265,7 +265,7 @@
 |---|---|---|
 | `src/features/registry.ts` + `defineFeature` + 插槽 `Slot.tsx` | **未落地**（ARCHITECTURE.md 的目标） | 设置页/顶栏/侧栏仍是硬编码分支（设置页已抽成 26 个 lazy 分节，属半程） |
 | preload/vite-env **自动生成** | ✅ **已落地（09-23）**：`ipc-channels.manifest.json` 单一真相源 + `npm run gen:ipc`，两个生成物与 manifest 逐字节一致由守卫【2】钉住 | 残留：**manifest → 账本是单向校验** —— 加了 handler 忘进 manifest ⇒ 渲染层静默调不到（反向需"是否暴露"标记位，未做） |
-| `electron/features` ↔ `main.ts` **双向依赖**（22 文件取 103 符号） | ⛔ **搬迁方案已实测证否（09-22）** | 现状靠"只在 handler 体内取用"纪律 +【91】兜着。**别再试「把定义搬到 ctx 模块」**：103 符号里 23 个是顶层 `app.getPath("userData")` 路径常量（+ 依赖它们的单例），搬到任何非 main.ts 模块都会被【91】拦（import 早于 `app.setPath` ⇒ 路径静默漂移到 `%APPDATA%\codex-harness-desktop`）；而"先惰性化再搬"的代价实测 = **387 处调用点**（`codexHome` 一个 170 处 / 跨 36 文件）⇒ 成本远超收益。完整踩坑记录见 `.ppcode-harness/memory/lessons/pitfalls.md` |
+| `electron/features` ↔ `main.ts` **双向依赖**（22 文件取 103 符号） | ⛔ **搬迁方案已实测证否（09-22）** | 现状靠"只在 handler 体内取用"纪律 +【91】兜着。**别再试「把定义搬到 ctx 模块」**：103 符号里 23 个是顶层 `app.getPath("userData")` 路径常量（+ 依赖它们的单例），搬到任何非 main.ts 模块都会被【91】拦（import 早于 `app.setPath` ⇒ 路径静默漂移到 `%APPDATA%\codex-harness-desktop`）；而"先惰性化再搬"的代价实测 = **387 处调用点**（`codexHome` 一个 170 处 / 跨 36 文件）⇒ 成本远超收益。完整踩坑记录见 `.codex-harness/memory/lessons/pitfalls.md` |
 | `lib/bus.mjs` 跨域事件总线 / `lib/ipc.ts` 服务访问层 | 未落地 | 域间偶发直连与 `window.codex.*` 直调 |
 | 主进程 `ctx`（deps 契约） | 🟡 **P0/P1/P2 已落地（10-03）**：`electron/context.ts`（Context / Service 式 `provide`+`get` / `inject` / `Fiber` 生命期）+ `electron/ipc-host.ts`（把 `ipcMain` 封成可注入的 `"ipc"` 服务）；**域组合层** = `electron/composition.json` → `npm run gen:domains` → `electron/composition.gen.ts`（生成物只导出 `mountEnabledDomains()`，**域不自挂**；⛔ **10-07 起挂载时机 = 壳在 `app.setPath("userData")` 之后 `process.nextTick` 调用** —— 模块作用域自动挂载会用默认目录的设置做停用域判定并把空对象写进 app-settings 进程缓存 = 用户设置全静默失效，且壳被域间接 require 时 `ENABLED` 表未赋值直接崩；守卫【253】②/【270】钉）。**已迁 69 个域**（10-03 阶段 0：10 处多前缀板块的 56 个前缀全拆成独立板块并插件化；`main.ts` 纯副作用 import 14 → **0** 行，10-07 实测）。⛔ 域仍可从 `electron` 取 `app` / `dialog` 等宿主能力（**只把"注册通道"收进容器**；能力白名单是 P3）；⛔⛔ **域绝不许 import 组合层**（反向 = 成环 ⇒ `plugin` 为 undefined ⇒ 启动即崩，10-03 实测事故）；⛔ **一个板块恒等于一个域前缀**（板块 = `electron/features/` 下的一个顶层文件**或一个顶层目录**；样板 = `features/voice-ipc/`）。10-03 批次 8 已拆掉「一个文件两个前缀」那条**例外**（`skillhub-markets-ipc.ts` → `expert-market-ipc.ts` + `soul-market-ipc.ts`；`screenshot-favorites-ipc.ts` → `screenshot-ipc.ts` + `favorites-ipc.ts`），**10 处历史欠账已全部拆完**（10-03，**56 个前缀**）—— 守卫【253】⑥ 棘轮名单**清零为 0 行**（仍会捕获任何新长出的多前缀板块）。拆分时把跨域共用的辅助函数下沉到基座层（`connector-store` / `openai-vault` / `custom-model-store` / `skill-store`）—— 拆成独立板块后它们不能留在任一域的内部文件里。守卫【252】11 条**跑真产物** `dist-electron/context.js` 验依赖门禁 / 作用域 / 释放语义；【253】9 条验生成物逐字节一致 + 每行 `id` == 域文件 `defineFeature` 的 `id` | 仍缺：**插槽**、**运行时安装 / 卸载**、**白名单能力与权限**。另外两条实测量出的边界：① `【90】` 的"域文件通道数 ≥ 账本 count"是**下界**，抓不到**同前缀改名**（改名只被 preload 死链检测到）——想抓得改成"集合相等"；② 容器改写后，所有按 `ipcMain.handle` 字面量收集 handler 的守卫（`01-build-ipc-css` 死链、`【90】`、`【187】`）必须同轮加上 `ipcHost.handle` 形态，否则假红 |
 
@@ -318,7 +318,7 @@
 
 ### 11.1 记忆金字塔（L0–L7，每层满 90% 往下蒸一层）
 
-**全部落在一个目录** `<workspace>/.ppcode-harness/memory/`，**按层 / 分类分子文件夹**（v2，09-22 起：文件夹保存不会乱）：
+**全部落在一个目录** `<workspace>/.codex-harness/memory/`，**按层 / 分类分子文件夹**（v2，09-22 起：文件夹保存不会乱）：
 
 | 层 | 落点（相对 `memory/`） | 是什么 | 预算 | 谁写 | 满了沉到 |
 |---|---|---|---:|---|---|
@@ -357,7 +357,7 @@
 | **项目级（默认）** | `<cwd>/.codex/skills/<名>/SKILL.md` | `skills/list` → `scope:"repo"`，随项目走（09-22 探针实证） |
 
 ⛔ 项目级**必须**落 `<cwd>/.codex/skills`（与既有 `<cwd>/.codex/commands` 同族约定）：
-   · `.ppcode-harness/skills` 引擎**不认**（实测 `skills/list` 里不出现）；
+   · `.codex-harness/skills` 引擎**不认**（实测 `skills/list` 里不出现）；
    · 引擎原生发现 ⇒ **不要在 AGENTS.md 索引里重复枚举项目技能**（同一技能列两遍 = 看起来像假的）；
    · 项目信任策略只挡 config / hooks / exec 策略，**技能照样加载**。
 
@@ -409,3 +409,120 @@
 **整洁检查（只报告、不自动改）**：`lintLessonLines()` 抓「缺日期 / 缺分类标记 / 超 320 字 / 超 120 行」；`planHygiene()` 汇总「哪层满了 + 格式问题 + 归档过大 + 过期碎片」并由 `suggestedActions()` 映射成可点动作。守卫【107】用真实临时工作区验规则表、纯函数与三个动作。
 
 **加一层 / 加一个动作的 checklist**：改 `CLEANUP_RULES`（层）或 `HYGIENE_ACTIONS` + `HYGIENE_ACTION_LABEL`（动作）→ 执行逻辑落 `memory-layers`/`MemoryStore` → IPC 白名单分支 → UI 按钮（复用二次确认条）→ 同步本表 → 【107】断言。
+
+---
+
+## 12. 交付卫生三条（2026-11-08 用户令，硬性，守卫组 14）
+
+> 用户原话：「有没有前端无效代码，清理；项目里这些字体是不是完全免费可商用的；后端有没有没清理掉的
+> 路由接口，有的话清理一下 —— 以上三点检查一下，而且要写进项目开发规范」；
+> 追加：「给所有函数补好中文注释，AI 很容易漏掉这些，一定要记得人工复核」「记得扫描开源组件的 license」
+> 「还有做漏洞扫描」。
+> 机械判据在 `scripts/guards/14-delivery-hygiene.mjs`（【291】–【295】），**改这三块必先跑它**。
+
+### 12.1 前端死代码：孤儿模块 = 0（【291】）
+
+**判据**：从 `src/main.tsx`（+ `index.html` 的 `<script src>`）沿
+`import` / `export … from` / `import()` / `require()` / CSS `@import` 走可达性，
+`src/` 下任何 `.ts/.tsx/.mts/.css` 都必须可达。
+
+- `.d.mts` / `.d.ts` 是类型声明的伴生文件（类型擦除后没有运行时实体），**不算孤儿**；
+- 新增文件必须**同轮**接进入口（组件被某个板块 import、纯函数被消费方 import），否则预检直接红；
+- ⛔ **不留 demo / playground / 复刻示例**：11-08 实测清掉 5 个零引用文件
+  （`CollapsibleProjectList` / `StreamDemo` / `FlowDiagram` 三个"复刻 WorkBuddy"的样例、
+  被 `11-team-cards` 取代的旧卡片渲染器、一个注释说"多处共用"但根本没人引的状态文案模块）；
+- ⛔ **板块对外出口也是代码**：`features/xxx/index.ts` 若没人从它 import，要么让外部改从出口导入，
+  要么删掉出口 —— 11-08 的 `event-broadcast/index.ts` 就是 AppView 绕过出口直接进子文件而变成孤儿的。
+- 顺手判据（人工）：导出了但**文件内零引用 + 其它文件零引用**的运行时函数 = 真死函数。
+  11-08 实测 23 个，删了 12 个；保留的是「图集坐标表」（同一张表里被守卫钉住的值）与
+  「守卫直接调用的 store API」—— 后两类**不是**死代码，别机械删。
+
+### 12.2 后端死路由：每条通道都要有消费者（【292】）
+
+**四方对账**：`manifest`（契约）→ `preload`（桥）→ 渲染层调用 / 主进程推送（消费者）。
+
+| 情况 | 判定 |
+|---|---|
+| 渲染层调用（`codex.xxx(` 或 `codex["xxx"]` 计算属性） | ✅ 有消费者 |
+| 主进程推送（`sendToWindow("同通道")`） | ✅ 推送类，本来就没有调用方 |
+| 两者都没有 | ❌ **死路由**：删，或登记进 `UNWIRED` 棘轮名单 |
+
+- 名单是**棘轮**：新出现的死路由 → 红；已接线却没从名单删 → 也红（防名单腐烂成永久豁免）；
+- 删除一条通道 = **四处一起删**：handler（含 `ctx.effect` 里的 `removeHandler`）→
+  `ipc-channels.manifest.json`（含 `count`）→ `ipc-registry.ts`（该域 `channels` + `count`）→
+  `npm run gen:ipc` 重生成 `preload.ts` / `vite-env.d.ts` / `harness-api` 技能；
+- ⛔⛔ **危险动词的通道优先查**：`clear` / `delete` / `install` / `uninstall` / `exec` / `write`。
+  11-08 实测删掉 `favorites:clear`（不带 id、无确认、一把清空全部收藏）——
+  它与【129】「删除只认显式 id 列表 + 清空要二次确认」直接冲突，是**后门级**的死路由；
+  渲染层真正的清空走 `deleteFavorites(全部 id)` + 二次确认，所以这条从来没人用。
+- 已知 61 条「桥齐了但界面没接」的功能口登记在 `UNWIRED`（voice 唤醒 / sessionspace / IM 登出 /
+  backup / openfilm / harness-team 用量…）。它们不是"可以随便留"：**要么接上界面，要么删**
+  —— 只允许在名单里**减少**。
+
+### 12.3 字体：只许系统字体族（【293】）
+
+**现状（11-08 实测）**：本项目**不分发任何字体文件** —— `src/` 下 0 个 `.woff/.woff2/.ttf/.otf`，
+没有 `@font-face`，`index.html` 的 CSP 也是 `font-src 'self' data:`。全部走系统字体栈：
+
+```
+"Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif   /* 正文 */
+"Cascadia Code", Consolas, ui-monospace, monospace         /* 等宽（--mono） */
+```
+
+**规则**：
+
+1. `font-family` 只许**系统字体 + 通用族**（白名单在守卫里，`FONT_ALLOW`）。
+   ⛔ 11-08 删掉了 `Inter`：它不是 Windows 系统字体、也没随包、更没 `@font-face`
+   ⇒ 这条永远落空，只留"我们好像用了 Inter"的错觉。
+2. ⛔ **不许远程字体**（`@font-face { src: url(https://…) }`）：离线应用 + CSP 下根本不会被加载，
+   还平白引入第三方请求与授权问题。
+3. 要用品牌字体 = **随包带授权明确的文件**（OFL-1.1 / Apache-2.0 优先），并**同轮**做三件事：
+   - 文件放 `src/assets/fonts/`，`@font-face` 用相对路径；
+   - 加进 `FONT_ALLOW` 白名单；
+   - `THIRD_PARTY_NOTICES.md` 写清名称 / 版本 / 许可 / 来源。
+   ⛔ 商用字体（方正、汉仪、苹方商用版等）**一律不许**进仓。
+
+### 12.4 第三方许可：copyleft 零容忍（【294】）
+
+- **直接依赖**必须是 MIT / Apache-2.0 / ISC / BSD / 0BSD / Unlicense / OFL 这类可商用许可；
+  出现 **GPL / AGPL / SSPL / CC-BY-NC / CPAL / OSL / EUPL / Commons Clause** 直接红。
+- **每个直接依赖都必须能读到 `license` 字段** —— 读不到不等于免费（11-08 全量实测：
+  直接依赖 49 个 = MIT 43 + Apache-2.0 5 + ISC 1；含传递依赖 873 个包、copyleft **0**）。
+- **捆绑的运行时**（`resources/tools/`，不进 node_modules）：11-08 实测 python 包 545 个里有
+  3 个 **LGPL**（`rope` / `pytoolconfig` / `docstring_to_markdown`）—— LGPL 允许商业分发，
+  但**必须**：① 不修改源码；② 随包保留许可证文本；③ 保持可替换（独立目录/进程，不静态链接进本仓产物）。
+  `npm-global` 7 个包 0 copyleft；`ponytail` MIT；7-Zip / ffmpeg 等二进制按各自许可在
+  `THIRD_PARTY_NOTICES.md` 登记。
+- 新增依赖前先看 `license` 字段；升级把 license 换成 copyleft 的，**不许合**。
+
+### 12.5 漏洞扫描（每轮发版前跑一次）
+
+```bash
+npm audit --omit=dev          # 生产依赖（这才是打包进用户的）
+npm audit                     # 含 dev（一般只影响本机开发）
+```
+
+- 有补丁的（`fixAvailable: true`）：加 `overrides` 升到补丁版 —— 11-08 用
+  `follow-redirects ^1.16.2` / `qs ^6.17.1` 收掉 4 条 high/moderate（都来自飞书 SDK 的传递依赖）；
+- **无补丁**的（如 jimp 内嵌的 zod 3，advisory 要求 zod ≥4.6.6 而 jimp 锁 ^3）：
+  写明「为什么可以接受」（本地生成/校验自己产出的图片元数据，不接受网络输入）**而不是**默默放着；
+- Electron 主版本升级单独立项（`compareVersions` 在 `electron/updates.ts`，⛔ 别手写第二份）。
+
+### 12.6 函数中文注释（【295】，只许补不许缺）
+
+**口径**：**导出**函数上方必须有一段含中文的注释 —— 一句「干什么 / 边界在哪 / 什么时候别用」就够。
+⛔ 不是要求写长，⛔ 更不许写和代码不符的套话（错的注释比没有更糟）。
+内部函数不强制（很多就是三行 if），但**领域规则、坑、⛔ 禁忌**必须写在该函数或该段上方。
+
+**现状**：11-08 实测 2,079 个导出函数 / 923 个缺注释。守卫用**棘轮**（`BASELINE`）压住：
+新写的导出函数没注释 → 红；补了一批就把 `BASELINE` 改小（改大 = 回退，直接红）。
+⚠️ 收尾时**人工复核**：扫一遍 `git diff` 的新增注释，确认与实现一致（AI 很容易写出"看起来对"的废话）。
+
+### 12.7 三项检查什么时候做
+
+| 时机 | 做什么 |
+|---|---|
+| 每轮改动本身 | 新增文件必须接进入口；新增通道必须有消费者；新增依赖先看 license |
+| 每轮收尾（预检） | `node scripts/check-preflight.mjs`（组 14 自动跑） |
+| 发版前 | 上面 + `npm audit --omit=dev` + `THIRD_PARTY_NOTICES.md` 与新依赖对账 |
+| 每季度 | 全量复扫一次（死代码 / 死路由 / 许可 / 漏洞 / 导出注释缺口），把棘轮数字往下推 |

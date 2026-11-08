@@ -1,6 +1,6 @@
-# AGENTS.md — PPcode 项目环境速览
+# AGENTS.md — Codex Harness Desktop 项目环境速览
 
-本文件供 Codex 引擎读取：进到本项目（PPcode 桌面应用的源码 / 或本机运行环境）时，先读这里就知道「环境里有什么、缺什么怎么装、怎么调用」。保持简洁，详细手册见 `docs/TOOLCHAIN.md`（若存在）。
+本文件供 Codex 引擎读取：进到本项目（Codex Harness Desktop 桌面应用的源码 / 或本机运行环境）时，先读这里就知道「环境里有什么、缺什么怎么装、怎么调用」。保持简洁，详细手册见 `docs/TOOLCHAIN.md`（若存在）。
 
 > ⛔⛔ **先分清「本地产物」还是「云端界面」—— 搞错一处 = 白干一轮（2026-10-16 用户点名「别老是改错地方，浪费时间」）**
 >
@@ -36,24 +36,23 @@ git diff --cached | grep -nE "([0-9]{1,3}\.){3}[0-9]{1,3}|[0-9a-f]{1,4}(:[0-9a-f
 
 ## 🔁 多仓协作与发版（**AI 协作者必读**：跨仓改动的同步、推送、PPcode 发版全流程）
 
-完整步骤见 **`docs/REPO-WORKFLOW.md`** —— 要点：本仓（PPcode 源码，远端 = `PMZPZM0/PPcode`，源码与发布页**合一**；旧私有仓 ppcode-src 已删，10-13 换仓）与原版仓 `D://Codex Harness Desktop`（= `PMZPZM0/codex-harness-desktop`，开发主线）之间走「原版 diff → 逐文件 apply 预检 → 副本验证」；PPcode 发版 = 版本对齐 4 处 → mac 审计 → check → tag → CI 三端构建发布到本仓 Release；两仓 `AGENTS.md` 逐字镜像（品牌差异行除外），改一边必须同步另一边。
+完整步骤见 **`docs/REPO-WORKFLOW.md`** —— 要点：本仓（主应用源码）与 `D://PPcode`（PPcode 副本，远端 = `PMZPZM0/PPcode`，源码与发布页**合一**；旧私有仓 ppcode-src 已删，10-13 换仓）同步走「主仓 diff → 逐文件 apply 预检 → 副本验证」；PPcode 发版 = 版本对齐 4 处 → mac 审计 → check → tag → CI 三端构建发布到本仓 Release；两仓 `AGENTS.md` 逐字镜像，改一边必须同步另一边。
 
 > ⛔⛔ **改动必须同轮同步全部三个仓（2026-10-13 用户令，对所有 Agent 生效，无例外）**：本产品有三个源码仓 —— 桌面版 `D://Codex Harness Desktop`（开发主线）、PPcode `D://PPcode`、云助手 `D://Codex Assistant`。**在任一仓完成一轮功能改动后，必须在同一轮把同一批改动同步到另外两个仓，并各自推送 `main`**；⛔ 只改一仓就收尾 = 这一轮工作**未完成**（10-13 用户点名「改动你都没有同步给 ppcode 和云助手」）。步骤见 `docs/REPO-WORKFLOW.md` §二：主仓 diff → **逐文件 `git apply --check` 预检**（⛔ 不整包瞎 apply）→ apply → 副本侧 `npm run build` + 受影响守卫 + `check-preflight` 验证 → `feat(sync)` 提交（写明主仓区间与判据）→ 推各仓远端（云助手推 `cloud`，⛔ 它的 `origin` 指向桌面版仓，推错就污染主线）。⛔ **同步面包含 `logs/` 结论档案**：条目文件与 `logs/index.jsonl` 都要跟；补录后各仓必须跑 `node scripts/logs.mjs reindex` 重建索引（sha256 与文件字节绑定，直接拷索引会哈希不符）。
 > ⛔ **`android/`（安卓远控 App 工程，10-28 立）只存在于主仓，⛔ 不进三仓同步面** —— PPcode / 云助手各自不需要 APK 工程；同步 Electron 源码时整目录跳过，别把三份 Android 工程带出来。
 > ⛔⛔ **补丁更新规则（2026-10-25 用户令）**
 > · **补丁更新 = NSIS 差分**：GitHub Release 同时发布完整安装包、`*.exe.blockmap`、`latest.yml`；客户端用 electron-updater 只下载变化块，缺 blockmap / 下载失败自动回退完整包。⛔ 不自制覆盖补丁、不直接改安装目录、不从非 GitHub 仓拉可执行文件。
 > · **国内镜像固定顺序**：`gh-proxy.com → ghfast.top → GitHub 直连`（`electron/gh-mirror.ts` 单一真相源）。`latest.yml`、exe、blockmap 三类资产都走同一候选序；补丁资产请求⛔不带令牌。
-> · **更新面板**（桌面版主仓已落地）：`补丁`（默认）/ `完整包` 可切换，手动与静默下载同口径；本仓当前以完整包为主，若接入补丁必须同样提供这两种选择。
+> · **更新面板**「更新方式」= `补丁`（默认）/ `完整包`；手动下载与后台静默下载都按所选方式执行；只有 Windows NSIS 用补丁，mac / 其它平台走完整包。
 > · **旧版本 blockmap 必须保留**：electron-updater 需要上一版 blockmap 做基线；从没有 blockmap 的旧版升级时允许整包，但⛔不许删/改历史 Release 资产。
 > · **各自 Release 专用**：桌面版 tag `v*`、资产 `Codex.Harness.Desktop-*`；PPcode 用 `PMZPZM0/PPcode` 自己的 Release；云助手 tag `cloud-v*`、资产 `CodexHarnessAssistant-*`。⛔ 永不使用 `/releases/latest`；⛔ 不跨仓复用安装包 / blockmap / latest.yml；不另建第三方补丁仓。
 > · **三仓 GitHub 对应**：主仓 `PMZPZM0/codex-harness-desktop`（推 `origin main`）；PPcode `PMZPZM0/PPcode`（推 `origin main`，源码+发布合一）；云助手 `PMZPZM0/codex-harness-cloud-src`（本地 `D://Codex Assistant`，推 `cloud main`，⛔ `origin` 指主仓）。补丁流水线改动按「三仓同轮同步」推齐，但各仓只更新自己的更新源与资产。
 > ⛔ 生成物（`electron/preload.ts`、`src/vite-env.d.ts`、`electron/composition.gen.ts`、`electron/builtin-skills/14-skill-harness-api.ts`）由**各仓自己**跑 `npm run gen:ipc` + `npm run gen:domains` 产出，⛔ 别直接套主线仓的（三仓通道数各不相同）；`electron/ipc-channels.manifest.json` 与 `electron/ipc-registry.ts` 是**手写源**，分叉处逐项手工合并；行数棘轮（守卫【265】）按各仓实测值更新。
-> ⛔⛔ **品牌基线：本仓 = PPcode（2026-10-25 用户令：「codexharness logo 和 PPcode logo 不要串了」）**
-> · 品牌名恒为 **PPcode**，侧栏单一来源 = `src/features/app-view/AppView/01-sidebar-shell.tsx` 的 `BRAND_NAME = "PPcode"`；
-> · 图标 = **本仓自己的** `public/icon.png` / `build/icon.*`（PP 标），⛔ 不许拷主仓的 CH 图标，也⛔ 不许把本仓图标拷去主仓/云助手；
-> · 窗口标题 `PPcode` / `PPcode — 独立会话`；AUMID `com.ppcode.desktop`；页面标题 `PPcode`；身份基线自称 PPcode（`electron/personalization.ts`）；
-> · 企业微信接入文案、拓展页里的数据目录示例（`%APPDATA%/PPcode`）同属品牌面。
-> ⛔ 同步纪律：从主仓 apply 本仓时，**品牌面差异是故意的** —— 冲突时保留 PPcode 侧，⛔ 不许"统一一下"；改功能不许顺带改品牌。判据：守卫 06【235】（身份基线 + 侧栏/窗口/AUMID/企微/目录示例逐条锚）。
+> ⛔⛔ **品牌不进同步面（2026-10-25 用户令：「codexharness logo 和 PPcode logo 不要串了」）**：三个仓各有自己的身份基线，**同步功能改动时品牌面保持各仓原样**。
+> · 桌面版（本仓）= **Codex Harness Desktop** + CH 图标（`public/icon.png` / `build/icon.*`），窗口标题同此；
+> · PPcode = **PPcode** + PP 图标（自己的 `public/icon.png` / `build/icon.*`），侧栏品牌名单一来源是 `01-sidebar-shell.tsx` 的 `BRAND_NAME = "PPcode"`，窗口标题 `PPcode`、AUMID `com.ppcode.desktop`、身份基线自称 PPcode —— **这些差异是故意的**；
+> · 云助手沿用桌面版品牌（Codex Harness Desktop + CH 图标），不是第三套。
+> ⛔ 具体纪律：① ⛔ 不把任一仓的 `icon.png` / `build/icon*` / 品牌文案拷到另一仓；② 从主仓 apply 到 PPcode 的 diff 若碰到品牌行，**必须保留 PPcode 侧**（冲突时手工合，不许"统一一下"）；③ 侧栏 `brand-name`、窗口标题、AUMID、登录页/启动页、企业微信接入文案、拓展页数据目录示例都算品牌面；④ 发版/截图核对时先确认左上角品牌名与图标属于该应用。PPcode 守卫 06【235】逐条钉住。
 
 ## 📐 架构改造计划（2026-09-21 立项，**已基本完成**：计划与盘点存档见 `docs/archive/`）
 
@@ -306,6 +305,27 @@ Windows nuphus（+ UIA 清单）主 / computer-use 辅。mac 随包、Windows �
 - ⛔ **个性化皮肤已整体删除**（10-01 用户令；09-30 首版单品散绑 → 10-01 套装化 → 当天删）。守卫【234】是负向断言防复活（皮肤文件 / 换肤分支不许回来）；其中「胶囊开关全仓统一走共享 ToggleSwitch」一条与皮肤无关，**独立有效**（新开关不许写散装实现）。localStorage 旧状态由组件库页模块体清理（`ui-skin-state-v2` / `ui-skin-bindings-v1`）。
 - 守卫【235】7 条钉住组件库全部接线。
 
+## 🧹 交付卫生（2026-11-08 用户令，硬性，守卫组 14）
+
+> 全文在 `docs/ARCHITECTURE-RULES.md` §12；这里只放**改代码时当场要守**的部分。
+> ⛔ 用户原话：「AI 很容易漏掉这些，一定要记得人工复核」。
+
+- **前端不许有孤儿**：新增 `src/` 文件必须**同轮**接进入口（从 `src/main.tsx` 沿 import 可达）。
+  ⛔ 不留 demo / playground / 「复刻某某」的示例组件；板块对外出口 `features/xxx/index.ts`
+  没人 import 就说明外部绕过了出口 —— 让外部改走出口，或删掉它。【291】
+- **后端每条通道都要有消费者**：manifest ↔ preload ↔ 渲染层调用/主进程推送**四方对账**；
+  没消费者的算死路由，删或登记进守卫的 `UNWIRED` 棘轮名单（只许缩）。删一条 = handler +
+  manifest(`count`) + registry(`channels`/`count`) + `npm run gen:ipc`**四处一起删**。
+  ⛔ 危险动词（clear/delete/install/uninstall/exec/write）的通道优先查 —— 11-08 就删掉过
+  `favorites:clear`（不带 id、无确认、一把清空收藏，与【129】冲突）。【292】
+- **字体只许系统栈**：本仓**不分发任何字体文件**、不许远程 `@font-face`。`font-family` 只能写
+  系统字体 + 通用族（白名单在守卫里）。要带品牌字体 ⇒ 随包带 OFL/Apache 授权的 woff2 +
+  加白名单 + 写 `THIRD_PARTY_NOTICES.md`，三件一起做。⛔ 商用字体进仓 = 侵权。【293】
+- **许可与漏洞**：直接依赖必须可商用（MIT/Apache/ISC/BSD/OFL…），GPL/AGPL/SSPL/CC-BY-NC 零容忍；
+  发版前跑 `npm audit --omit=dev`，有补丁的用 `overrides` 收掉，无补丁的写明为什么可接受。【294】
+- **导出函数要有中文注释**：一句「干什么 / 边界 / 什么时候别用」即可，⛔ 不写与代码不符的套话。
+  守卫按棘轮压缺口（11-08 基准 923），补一批就把 `BASELINE` 改小。⚠️ 收尾**人工复核** diff。【295】
+
 ## 🎨 视觉规范（2026-09-26 立，守卫【170】）
 
 > **改 UI 前先读根目录 `DESIGN.md`**（色板 / 字体 / 组件约定 / 主题机制，全部实测自 `src/styles/`）。
@@ -425,7 +445,7 @@ node scripts/logs.mjs delete <id...> --confirm <id...|all> --reason "…"   # �
 
 - **长会话滚动 = 顶部/底部双占位 + 5 回合滑动窗口**（10-21，用户定稿「滚轮知道回合条数、自适应滚动条长度」）：打开会话后台用 `thread/turns/list itemsView:"notLoaded"` 拉全量回合元数据（只回 id/startedAt，59 回合实测 7ms）→ `turnHistoryPlan` 用 `windowTail` 取滑动切片；顶部 `.timeline-history-spacer` 与底部 `.timeline-history-bottom-spacer` 都用「隐藏回合数 × 估算回合高」，窗口移动时一增一减、总高度不变。⛔ 渲染**必须用 `historyPlan.visible`**（不是 `visibleTurnWindow` 的尾窗，否则占位区动、内容不动 = 滑进空白）；⛔ DOM 恒 ≈5 个回合，全量加载后切会话不许挂 53 个（实测 2s → 0.5s）；⛔ 只在占位区边界 + 2 屏、且**上滚**时水合（`HISTORY_PAGE=2`；老回合常有巨型工具输出，5 条一页会阻塞主线程十几秒）；下滚走 `slideTurnWindowDown` 本地滑窗；⛔ `contentBottomOf` 只扣**尾部**留白，绝不扣顶部占位区；⛔ 窗口滑动/水合前 `setHistoryPinState` 交接锚点（带 `direction/expectedTail/expectedLength`），layout effect 在 **paint 前**补 scrollTop；⛔ 切回缓存会话恢复阅读位置时 `setScrollUserDetached(true)`（否则 rAF jumpToBottom 落到文档底 = 底部占位区空白）；⛔ `data-history-total` = `hiddenStubs + 已加载回合`（别把已加载隐藏回合重复算）。守卫【14】+ `turnHistoryPlan` 真值表；验收 `scroll-wheel-release` 9 条（含全量加载后切回 DOM≤7/位置保持）。
 - **刻度尺联动**（10-21）：当前阅读位置（`contentOffsetTop` 的 30% 探针，⛔ 不用 `offsetTop`）自动成为波浪中心，`wave-0/1/2` 是 26/18/15px；hover 优先。⛔ **波浪只朝聊天一侧（右）变长：左端 `margin-left` 恒 12px**（用户 10-21：「只有靠近对话框这边有波浪效果，左边不要波浪效果」）。压缩绿线**静止 12px，波浪扫过时与相邻刻度同宽（26/18/15px）**（用户 10-21：「绿线也要跟着波浪变化长短」），且可点击跳到压缩回合；每根刻度都有 `data-turn-id` 且点击走 `jumpToTurnInWindow`（滑窗把目标挂载后用内容坐标对齐到顶部 12px）。守卫【12r】30 条；验收 `ruler-wave` 6 条（宽视口真会话；②/⑤ 真量左端对齐）。
-- **Qoder 式「本轮产物」文件卡 + 右栏文件预览**（10-22，REA 读 Qoder `app.asar/out/renderer` 逆向）：每轮新建文件（`newFile && !deletedFile`）在汇总卡上方渲染卡片，**最多 7 张**、超出折叠「显示其余 N 个文件」；卡片 = 文件图标 + 名 + 类型 + `+N -N` + 打开方式下拉（在右侧栏 / 在编辑器打开 / 默认应用，默认记在 localStorage `output-file-open-target`）+ `…` 菜单（复制路径 / 在文件夹中显示）。点卡片走 `src/lib/right-file.mjs` 事件箱 → `RightFileBridge`（AppView）开右栏、切「文件」页、放宽到 420px、高亮并展开项目树；右栏「文件」页 = 项目树（单击预览 / 双击编辑器）+ `WorkspaceFilePreview`（走 `fs:read`，覆盖 Markdown/代码/图片/PDF/二进制占位）。「默认应用」走新通道 `shell:open`（与 `shell:reveal` 同一道可信根闸）。⛔ 只给新建文件出卡（编辑已有文件仍走汇总卡，不许展示两遍）。**消息正文末尾的内联文件引用**也用同一张卡（`src/components/FileRefCard.tsx`，默认右栏；图片/音视频保留缩略芯片）。⛔ **创建后又删除的文件也要进汇总卡**：最终快照与开始一致时报告会为空 —— 结算必须用最后一次**非空** live 明细把最终快照没有的路径补成 `deleted`（⛔ 空 live 不能清掉这份记录），否则用户看到「我明明改了文件，汇总卡整块消失」。守卫【11p】75 条；验收 `file-cards` 6 条。
+- **Qoder 式「本轮产物」文件卡 + 右栏文件预览**（10-22，REA 读 Qoder `app.asar/out/renderer` 逆向）：每轮新建文件（`newFile && !deletedFile`）在汇总卡上方渲染卡片，**最多 7 张**、超出折叠「显示其余 N 个文件」；卡片 = 文件图标 + 名 + 类型 + `+N -N` + 打开方式下拉（在右侧栏 / 在编辑器打开 / 默认应用，默认记在 localStorage `output-file-open-target`）+ `…` 菜单（复制路径 / 在文件夹中显示）。点卡片走 `src/lib/right-file.mjs` 事件箱 → `RightFileBridge`（AppView）开右栏、切「文件」页、放宽到 420px、高亮并展开项目树；右栏「文件」页 = 项目树（单击预览 / 双击编辑器）+ `WorkspaceFilePreview`（走 `fs:read`，覆盖 Markdown/代码/图片/PDF/二进制占位）。「默认应用」走新通道 `shell:open`（与 `shell:reveal` 同一道可信根闸）。⛔ 只给新建文件出卡（编辑已有文件仍走汇总卡，不许展示两遍）。**消息正文末尾的内联文件引用**也用同一张卡（`src/components/FileRefCard.tsx`，默认右栏；图片/音视频保留缩略芯片）—— 上一轮只改产物卡、正文仍是旧小芯片，用户截图点名「还是这种旧的」。⛔ **创建后又删除的文件也要进汇总卡**：最终快照与开始一致时报告会为空 —— 结算必须用最后一次**非空** live 明细把最终快照没有的路径补成 `deleted`（⛔ 空 live 不能清掉这份记录），否则用户看到「我明明改了文件，汇总卡整块消失」。守卫【11p】75 条；验收 `file-cards` 6 条（⑤⑥ 扫正文引用并点开右栏）。
 - **云账号「登录即用」**（10-22）：登录页与设置页的「一键同步 / 修复」共用 `src/lib/cloud-provision.mjs`（顺序 = 模型 → 知识库 → 记忆 → 生效位；生效位放最后，`onlyIfEmpty` 已配置别的供应商时不抢；⛔ 不无条件 force 重签）。设置页三段式：未登录只有「登录即用」卡；已登录是就绪清单 + 一键同步；重签/测试/上传下载会话等手动流程收进「手动流程 / 高级设置」。新手教程在页内与侧栏「新手教程 → 云账号」各一份。服务器云管理联动：模型走主进程 10 分钟轮询，知识库/记忆由 `CloudAccountSyncBridge` 每 10 分钟只刷新**已接通**的资源。守卫【12q】77 条；验收 `cloud-simple` 5 条。
 - **模型检测必须真推理**（10-21）：`/models` 里有 **≠** 能用 —— `cn.pptoken.cc` 的 `grok-4.7` 在列表里，但 `/responses` 与 `/chat` 都 30s 零字节；旧探活只看列表就报「检测通过」。现在指定模型必须真发一次推理（35s 超时，失败给中文指引）；协议桥 auto 探活 200 但 18s 无数据 / 非 SSE 时回落 chat，显式 responses 也有 120s 空闲看门狗。守卫 06/07 + 测试 `tests/responses-bridge-fallback.test.mjs`。
 - **Codex 日志管理（09-29）**：设置 → 数据管理里的「Codex 日志」管的是引擎写的**会话记录原档**（`codex-home/sessions|archived_sessions/rollout-*.jsonl`，含对话全文），按项目（文件首行 `cwd`）→ 日期两级分组，可勾选批量删除 / 整库清空。⛔ **销毁性功能**：域内通道只认 `rollout-*.jsonl` 且必须落在那两个根目录内（越界/目录一律拒绝、不存在幂等）；删除时**级联剔除 `session_index.jsonl` 对应条目** —— 不剔就是会话列表里一堆打不开的死条目。守卫【200】12 条。
@@ -437,8 +457,7 @@ node scripts/logs.mjs delete <id...> --confirm <id...|all> --reason "…"   # �
 - **搜索 = 当前会话内**（同上 →「搜索改为『当前会话内』」）：顶栏 🔍 只搜当前会话（跨会话实现保留但不接 UI）。⛔ 开关必须复用 `bag.chatSearchOpen` **单一真相源**（Ctrl+Shift+F 也走它）。⛔ `collectMessageTexts` 必须用 `itemText(item)` 按 type 取字段 —— **userMessage 的正文在 `content[]` 里、`item.text` 为空**，只看 `item.text` 会让用户自己发的消息搜不到。守卫【146】。
 - **更新检查的版本比较**（同上 →「审计报告遗漏项补修」）：`updates.ts` 用 `parseVersion`/`compareVersions`，⛔ 不许退回「字符串不等即更新」；stable 通道尊重 `prerelease`（**本地是预发布版时除外**，否则 beta 用户永远收不到更新）。守卫【144】。
 - **守卫的「行为断言」要跑真产物**（同上）：`accelerator.ts` 与收藏夹的判据跑 `dist-electron` 产物（sanitizeAccelerator / acceleratorLabel / 收藏夹 add·删·clear），收藏夹用 `mkdtempSync` 临时目录、**不碰用户真实数据**（守卫【145】）。
-- **办公室场景的遮挡顺序 = 显示器 → 桌 → 人 → 椅**（`docs/CHANGELOG-ROUNDS.md` →「办公室 v10」）：三件物体各按**自己的地面基线 y** 排 zIndex（桌 `v − DESK_DV/2`、椅 `v + CHAIR_DV`、人取座位点）；⛔ 合成一件 Graphics 必错（要么人只露头顶、要么椅子被整个人盖住）。地板纵深 / 行距必须满足 `行距 > 桌纵深 + 椅距`，否则**下排显示器会盖住上排的人**。角色是**纯黑动物剪影 + 彩色项圈**：物种靠耳朵外形（每个成员一种动物、CEO 狮子）、个体靠项圈色，两者都按序号**稳定派生**；⛔ 不加五官 / 描边 / 高光。跑腿目标坐标必须与 `drawAmenities` 的设施坐标**同源**。守卫【169】【176】。
-- **办公室几何两个"放大才看得见"的坑**：① 等距块（`isoPrism`）**只画 4 个可见面、不画底面** —— 俯视下底面被自己的顶面遮住，但它的屏幕位置只比顶面低 `(z1−z0)·k`，画在最后会**盖住顶面上半** ⇒ 白桌面成一大片灰（当时把桌面渐变 alpha 从 0.019 调到 0.005 都不见效，根因就是它）。② 柜面上的物件（咖啡机 / 杯子 / 置物架）必须用 `counterTopY()` 按**柜体前面**定位；用 `wallPoint`（那是 **2D 墙面**坐标、基线恒在地板后边线）会让物件**浮在柜顶上方 39px**。守卫【169】有负向断言 + 变异验证。
+- **办公室预览 = 像素卡通办公室（v19，现行）**：原生 canvas 2D，画布 **960×640**；底图 `assets/bg.webp` + 6 个 CC0 像素角色（每张 112×96、16×32 帧，坐姿列 6）+ 6 个工位。成员由 `office-sim` 从门口走入、坐班/休息/接水，显示器由 `drawScreen` 逐帧绘制（工作/事件/完成屏保），缩放 contain + 指针锚点。⛔ 用户 10-22 明确「删了，还是做成原来那种卡通人物+办公室场景」⇒ 照片场景、3D 白板/3D 工位板全部删除，不许再复活；守卫 11d + 11o + 06 场景块钉。⭐ 10-25 起**每间 6 人、超出自动开下一间**（同一底图/座位；每间一份独立 `OfficeSim`，老员工留在原办公室，切回来位置不重置）；新开一间自动切过去，底部「办公室 N / M」左右键手动切换。⛔ 不许再用 `slice(0,6)` 把多出的成员静默挤掉（守卫 11d 判据组 H）。
 
 ## ⛔ 验收铁律（硬性要求，2026-09-11 起生效，先读这条）
 
@@ -563,9 +582,9 @@ KnifeLemon/Filee MIT：244 种格式本地离线互转；GitHub release 镜像�
 |---|---|---|
 | 引擎本体 | `app-server --listen stdio://` | 会话、工具、插件、钩子、技能全部走它 |
 | 基础运行时 | `resources/tools/{node,python,git,pwsh,vscode-cli,rg,uv,cmake,ninja,sevenzip,jq}` | 开发机本地保留；**打包后仅 node/vscode-cli 内置**，其余开发工具页按需下载（缺 Git 启动自动补装） |
-| 桌面自动化 MCP | `tools/npm-global` 里的 `nuphus`（MCP 服务器名） | 需先装「自动化工具包」，工具前缀 `desktop_*` / `browser_*` |
-| 浏览器自动化 CLI（回落） | `nuphus-call browser_navigate / browser_snapshot / browser_click / …` | ego 未安装时驱动本机默认浏览器；不按会话隔离 Space |
+| 桌面自动化 MCP | `tools/npm-global` 里的 `nuphus`（MCP 服务器名） | 工具前缀 `desktop_*`；浏览器工具经 `nuphus-call browser_*` CLI 调用 |
 | 浏览器自动化首选 | 外部安装的 `ego-browser`（ego lite） | 每个 Codex 会话一个 `codex-<CODEX_THREAD_ID>` TaskSpace；共享登录态、多会话并行；不随包内置。官网 <https://lite.ego.app/zh-cn> · 源码 <https://github.com/citrolabs/ego-lite>（MIT） |
+| 浏览器自动化回落（browse-skills） | `nuphus-call browser_navigate / browser_snapshot / browser_click / …` | ego 未安装时驱动本机默认浏览器；不按会话隔离 Space |
 | 内置技能 | `codex-home/skills/` 的 `desktop-automation`、`browser-skill` | 随应用写入，引导引擎调自动化工具；旧 `browser-automation` 已退役（升级时按指纹自动清理，用户改过的目录不碰） |
 
 ## 会话动态工具（thread/start / thread/resume 注册，可直接调用）
@@ -609,7 +628,7 @@ KnifeLemon/Filee MIT：244 种格式本地离线互转；GitHub release 镜像�
 
 ## 工具链清单
 
-**随包内置（离线可用，勿重复下载）**：Node（安装器引导）、VS Code CLI、**Nuphus 桌面自动化**（`tools/npm-global` 预解压）、⛔ **必须两条 extraResources 映射**：`from=resources/tools/npm-global`（根级 shim）+ `from=resources/tools/npm-global/node_modules`（包体本身）——electron-builder 会**无条件丢弃 `from` 根级的 `node_modules`**，只写一条映射的话包里只剩 shim、包体全无）、**ponytail 插件源**（`tools/ponytail-plugin` 1.6MB）。其余（Python/Git/PowerShell/rg/uv/CMake/Ninja/7-Zip/jq）09-16 起不随包，走「开发工具」页按需下载；**首次启动检测到缺 Git 会自动后台补装**（`autoInstallGitIfNeeded`：仅 Windows、与手动安装互斥、装完 `restartServerWhenIdle` 刷新引擎、失败广播 done 事件不悬挂安装态，下次启动仍缺会再试）。**ponytail 默认不装**（09-27，见【26】）：随包只留安装源，启动**不再自动种**；想用在「开发工具」页手动安装（`runtime:install` id=ponytail），卸载后不会自动装回。
+**随包内置（离线可用，勿重复下载）**：Node（安装器引导）、VS Code CLI、**Nuphus 桌面自动化**（`tools/npm-global` 预解压）、**ponytail 插件源**（`tools/ponytail-plugin` 1.6MB）。⛔ **必须两条 extraResources 映射**：`from=resources/tools/npm-global`（根级 shim）+ `from=resources/tools/npm-global/node_modules`（包体本身）——electron-builder 会**无条件丢弃 `from` 根级的 `node_modules`**，只写一条映射的话包里只剩 shim、包体全无。其余（Python/Git/PowerShell/rg/uv/CMake/Ninja/7-Zip/jq）09-16 起不随包，走「开发工具」页按需下载；**首次启动检测到缺 Git 会自动后台补装**（`autoInstallGitIfNeeded`：仅 Windows、与手动安装互斥、装完 `restartServerWhenIdle` 刷新引擎、失败广播 done 事件不悬挂安装态，下次启动仍缺会再试）。**ponytail 默认不装**（09-27，见【26】）：随包只留安装源，启动**不再自动种**；想用在「开发工具」页手动安装（`runtime:install` id=ponytail），卸载后不会自动装回。
 
 **按需安装（应用内「开发工具」页 或 手动）**：
 
@@ -629,6 +648,7 @@ KnifeLemon/Filee MIT：244 种格式本地离线互转；GitHub release 镜像�
 2. **缺 Nuphus（随包内置能力缺失）**：调用应用内 `runtime:install`（id=`nuphus`，从随包 zip 修复解压），或手动：
    - 解压随包 `tools/automation-tools.zip` 到 `tools/`（内置 python：`python -c "import zipfile; zipfile.ZipFile('automation-tools.zip').extractall('tools')"`），结果得到 `tools/npm-global/`。
    - 重启引擎（或重选一次供应商触发 `applyCustomModel`）→ nuphus MCP 段写入 config.toml。
+3. **缺 Ego Lite**：到「设置 → 开发工具 → Ego Lite 浏览器自动化」点「下载安装」，完成首次引导（CLI 才会进 PATH）；不要自己跑第三方安装脚本。
 4. **缺 ponytail 插件**：默认就没装，要用就走这条安装：`runtime:install`（id=`ponytail`），随包安装源 `tools/ponytail-plugin` 种到 `codex-home/plugins/cache` + 写 `[marketplaces.ponytail]` / `[plugins."ponytail@ponytail"]` / 钩子信任。
 5. **装完统一**：重启引擎生效；插件/技能/钩子状态从 `plugin/list`、`skills/list`、`hooks/list` 读。
 7. ⛔ **写 config.toml 的键值走 `config/value/write` 时必带 `mergeStrategy: "replace"`**（引擎必填；缺了整条请求被拒 `Invalid request: missing field mergeStrategy`，而这些调用普遍 `.catch(() => undefined)` 静默吞掉 → 表现成「开关点了没生效」）。预检【26】有结构守卫：每处调用 600 字符内必须出现该字段。09-16 实测：ponytail 卸载/装回的 enabled 写入漏了它，长期没生效。
@@ -701,13 +721,16 @@ KnifeLemon/Filee MIT：244 种格式本地离线互转；GitHub release 镜像�
 功能名称 / 类型 / 影响范围 / 简要描述 / 提交，六列缺一不可）。该清单是写更新日志、
 GitHub Release Notes、`whats-new-notes.ts` 要点的**唯一权威数据源**——发布时直接从那里搬，
 不重翻 commit。只追加不改写（勘误另起行）；格式与分工说明见该文件头部。漏记 = 工作未完成。
+
 - 近期功能性变更（宿主行为，引擎交互相关）
 - 10-21 长会话滚动条按回合总数撑高 + 按页水合（滚轮不跳 / 不回弹；顶部虚拟占位 + layout effect 首帧锚点补偿）
 - 10-21 长会话滑动窗口（全量加载后仍只挂 5 个回合，切会话不再变慢）+ 刻度尺当前阅读位置波浪 / 绿线等长可点击
+- 10-22 办公室恢复为原像素卡通办公室（用户「删了，还是做成原来那种卡通人物+办公室场景」；照片/3D 白板退役）
+- 10-25 办公室分间：每间 6 人，超出自动开下一间（同底图/座位、每间独立 sim），老员工留在原办公室，底部「办公室 N / M」切换
 - 10-22 右栏标签撤掉「终端」、审阅顶到第二位（终端仍可 Ctrl+J）
 - 10-22 云账号登录即用：登录自动配齐模型/知识库/记忆，页面简化为就绪清单 + 手动流程折叠，新手教程两处入口
 - 10-22 Qoder 式本轮产物文件卡（最多 7 张 / 打开方式下拉）+ 正文文件引用同款卡 + 右栏「工作区文件」树与预览联动
-- 10-24 供应商自动配置大弹窗：中转站/云账号登录或模型页填入地址密钥后自动检测模型 → 勾选（一键全选）→ 保存启用（旧供应商自动停用）→ 倒计时重启；模型页新增大面板入口（守卫 12ac；验收 provider-autosetup）
+- 10-24 供应商自动配置大弹窗：云账号/中转站/OpenAI 订阅/自定义 API 登录后自动检测模型 → 勾选（一键全选）→ 保存启用（旧供应商自动停用）→ 倒计时重启；模型页新增大面板入口（守卫 12ac；验收 provider-autosetup / provider-login-autosetup）
 - 10-24 模型供应商页改版：大卡片网格 + 点击卡片打开二级配置弹窗（测试/添加移到页头；旧小行与常驻表单模板删除，功能不删）
 - 10-24 供应商卡片：卡片内「测试 / 编辑 / 更新模型」；401/403 标出「密钥失效」（云端自动重签并重启，其它提示更新 Key）；云账号「一键同步 / 修复」重启引擎并刷新模型页；自动压缩并进页头工具栏
 - 10-24 外观与体验四页统一版式：控制台/外观/个性化/桌面宠物共用头图 + 分组小标题 + 卡片皮肤，按「常用 → 进阶 → 维护」重排；桌面宠物目录/导入/自制收进高级折叠
@@ -811,12 +834,11 @@ GitHub Release Notes、`whats-new-notes.ts` 要点的**唯一权威数据源**�
 - 🧭 新手引导内容扩容（10-11，用户令「优化新手引导界面里面的内容」+ 走「功能扫描 → 代码图谱 → 写内容 → code review」流程）：`GUIDE_SECTIONS` 5 节 → **7 节** —— 新增 **功能地图**（map：把 AI 变强 / 记住你 / 自动干活 / 派一群 AI / 创作与设计 / 声音陪伴 六组，全部按 settingsNav 页名与侧栏「···更多」实测入口名写，零编造）与 **进阶技巧**（tips：/plan /goal /compact /doctor、按会话独立选模型、任务清单与文件汇总卡、/archive 归档 —— 命令名以 builtinCommandCatalog 为据）；快速上手加「看左边的功能地图」交叉引用、配置模型补「调思考强度（/effort）」步。纯内容改动：组件/CSS/DOM 零变化，守卫 11x 17/17 绿、验收 `newbie-guide` 六条不受影响（默认停「快速上手」/ 三映射 / 日志置底全保留）。判据：check 全绿 + `--only newbie-guide`。
 - 🧭 新手引导扩成「新手 / 高级」双教程（10-18，用户两条令：「前端UI开发、组件库、生图工作流、视频工作流、专家/专家团/子智能体、codex个性化、人格市场…这些你都没写」+「功能拓展那些接口，怎么做自己加自己的功能…基础教程有，高级教程也要有，写好看一点，分新手和高级教程」）：15 → **22 节**，按 `tier` 分两组（新手 12 / 高级 9 / 更新日志不分组置底）：新增 **前端开发**（44 组件 / 三种形态 / 一键预览 / 交给 Codex 实现）、**组件库**（11 类 3802 / 复制代码 / `ui_component_search`）、**生图**（生图插件 / 图像工坊 / 生图工作流 / 改图 vs 重画）、**视频**（8 家厂商 / 异步提交不干等 / 拼接 / 白模与短剧 / HTML→MP4）、**专家团队**（专家 / 专家团 / 子智能体 / 调度 / 办公室）、**记忆知识**、**个性化**（称呼 / 回复风格 / 自定义指令 / 语气自适应）、**拓展开发**（「设置 → 拓展接口」四组；manifest → `npm run gen:ipc` → registry → `ipcHost.handle` → `window.codex.*`；界面 / 工具 / 主题 / 命令扩展；守卫 + 验收 + FEATURE-LEDGER）；重写人格市场口径（写入全局个性化、**下一个新会话**生效，不是在会话里选）。左导航加组标题、正文加层级徽章与 12 条重点提醒卡；守卫 11x **45 条**、验收 `newbie-guide` **11/11**（②a 分组 / ②e 拓展开发真接口名）。
 - 🧠 Laya 局部判断工具（10-18，用户令「给 codex 加一个调用 laya 判断的工具…如果安装了 laya 模型，就再暴露这个工具给 codex」）：新增专用 dynamicTool **`laya_judge`**，**只在 pip 装了 Laya 时注册**（`buildDynamicTools` 读 `layaStatus().installed`；没装连 schema 都不出现；装好后新开会话/切回会话才出现 —— dynamicTools 的既有生效时点）。三档 preset：`knowledge_gate`（知识价值，判据与 `knowledge_add` 共用 `electron/laya-judge.ts` 的常量，⛔ 不许两处各写一份）/ `duplicate`（新内容 vs 已有内容；10-18 探针实测：两段都塞 state 会误判 new 0.94，**已有内容必须放 instructions**，新内容放 state）/ `custom`（模型自定义 2~6 个选项）。输入校验（state ≤4000、reference ≤1500、选项 2~6、阈值 0.5~0.95、等待 3~30s、选项名/含义长度）；低置信返回**「弃权」**文案（⛔ 不把猜测当结论）；执行端**绝不自动安装**，未装明确拒绝、未就绪最多等 15s 并回报「正在预热」（服务后台继续拉起）；`pip show` 30s 缓存（新开会话不反复阻塞）。工具面文案列明适用场景（知识入库前判断/重复判断/意图与分流粗分类）与禁用场景（安全/法律/医疗/财务/不可逆操作/事实核查/长文本/开放生成）；`developer-instructions.ts` 配 `LAYA_INSTRUCTIONS`（带「only if laya_judge is in your tool list」）。通道 `laya:judge`（manifest → registry → gen:ipc → preload），执行端 `layaJudgeForTool`。真机实测（标定环境 `python.fat-laya`）：知识 97% / 闲聊 87% / 重复 55% / 意图 task 98%；本机应用 Python **未装 Laya** ⇒ 验收走未安装分支（3/3，工具按设计不出现、直接调用拒绝且不自动安装）。判据：守卫 **12s-laya-judge 29 条** + 验收 `laya-judge`；云助手与 PPcode 同轮同步。
-
 - 🖥 HTML 实时预览独立板块（10-18，用户令「写 html 文件的时候，自动打开右边浏览器，会话窗口可以自动缩小一点比例，把右边展示全，实时渲染 html 内容」）：新独立域 **`html-preview`**（`electron/features/html-preview-ipc.ts` + `src/features/html-preview/`）。主进程 `html-preview:watch/unwatch` 只盯一个 HTML 文件（**可信根** + `.html/.htm/.xhtml` 白名单；监听**目录**按 basename 过滤，原子保存不跟丢；120ms 防抖；`persistent:false`；换文件/卸载/退出 close），变更广播 harness 事件 **`html-preview:changed`**；主进程**不读正文**（渲染交给 webview）。渲染层 `HtmlPreviewBridge`（`AppView` 主窗口挂一次，独立弹窗不挂）在当前会话的 `turn-file-changes-live` / `turn-file-changes` 里检测 HTML（**只认当前会话回合**，后台专家写 HTML 不抢右栏；seen 集合防累计报告在两个 HTML 间来回跳）⇒ 自动 `openInBrowserPane` + 右栏加宽到窗口 **45%（360~560px）** + 开始 watch。`BrowserPane`（基座）订阅**基座** `src/lib/html-preview-store.mjs`，文件变了用 **`reloadIgnoringCache()`** 重载当前标签（普通 reload 会吃 file:// 缓存；用户导航到别处不抢）。`toFileUrl` 下沉 `src/lib/file-url.mjs`（中文逐段编码 / 盘符冒号保留的 10-17 修复；`helpers/paths.ts` 原位置 re-export，⛔ 不再重复实现）。判据：守卫 **12t-html-preview 33 条**（纯函数真值表 / 可信根 / 目录 watch / 防抖 / 当前会话过滤 / **只认本会话 live 过的回合**（history replay 不自动打开）/ 基座不反向 import 域 / 域不深链 app-state / 组合表与生成物）+ 验收 `html-preview` **8/8**（右栏先收起 → 真回合写 HTML → 自动打开并加载 → 宽度 308→560 → webview guest 标题 v1→v2 实时刷新 → 切走再切回时历史报告重播**不**自动打开已有 HTML）。
+- 🧾 右栏「变更」四个范围实修（10-18，用户截图问「未暂存 / 已暂存 / 全部分支更改 / 上一轮更改是不是真实的」）：**全部分支更改**旧版只是 `git diff HEAD`（与未暂存同类，分支已提交的改动看不到）⇒ 改为「`@{upstream}` → `origin/HEAD` → `main` → `master` → `merge-base` → `git diff`」，含分支已提交 + 工作区；无基准时退回 HEAD 并在面板里说明。Git 缺失 / 不是仓库 / 无 HEAD / 超时都回可操作中文原因；缺 Git 时给「一键安装 Git」（接 `runtime:install`，装完自动刷新）；cwd 过**可信根**闸；四个范围加真实语义提示。坑：`git:diff` 曾因 preload `minArgs` 把 12 条通道拒死 ⇒ 同轮修生成器。判据：守卫 **12u-git-review 25 条** + 验收 `git-review` **7/7**（临时仓库真跑：分支上 +two + 工作区 +three，head 两段都在、unstaged 只后一段、staged 只暂存区）。
 - 🖱 汇总卡 diff 预览悬停不再闪没（10-18，用户实测「鼠标放上去，这个框框闪一下就没了，鼠标放在上面就要一直展示」）：行上 160ms 关闭宽限在指针走到预览面板**之前**就把面板关了 ⇒ 改为 **500ms**，并让面板 `mouseenter` + `mousemove` 持续取消关闭计时（行与面板共用 `keepHoverOpen`）；鼠标离开面板仍立即收起。判据：守卫 11p 加一条（500ms + enter/move 取消）+ 验收 `file-summary` **⑯c**（真悬停预览后 900ms 仍在）；⑰ 移开即关保留。
 - 🧮 压缩后上下文用量归零（10-18，用户：「这个压缩完，跑一会又自动到 50% 了，有点奇怪」）：自动压缩只走宿主 `thread-compacted-host`（当前引擎不发 `thread/compacted` / 压缩 item），10-17 的「作废用量快照 + 清 total/derived」只挂在引擎两条事件上 ⇒ 压缩请求自身那份 ~50 万 `last` 用量继续显示并被重新落盘，面板停在压缩前的 50%。修法：**三条压缩路径统一清理** —— 宿主（新）、压缩 item completed、`thread/compacted`；宿主事件只对 `at` 在 2 分钟内的**新鲜**记录生效（resume 重播历史压缩不清当前用量）；清空时面板给「压缩请求自身用量不算当前占用，下一轮重新统计」的解释，环等下一轮 `tokenUsage` 推送再更新。判据：守卫 **12z-compaction-usage 10 条**。
-- 🔍 回合文件追踪：预算截断修复 + mac 断点诊断（10-07 夜十二轮，用户报「mac 上消息汇总下面的已编辑文件不展示」）：mac 侧链路**全平台同构**、断点藏在静默跳过点里而打包版 stdout 不可见 ⇒ 新增 `electron/turn-files-debug.ts`（诊断落盘 `<userData>/turn-files-diag.log`，JSON 行、512KB 上限）＋ 追踪器六个诊断点（快照跳过含 cwd 不在磁盘 / 根目录读取失败【mac TCC 权限的实锤点：EPERM/EACCES】/ 快照为空 / 收尾无快照 / 每次收尾心跳含 `truncated` 标记）+ boot 注入 `setTurnFileWatchDiag`；`thread/start` 的 cwd 登记改**引擎回执优先**（请求参数空串此前会赢 ⇒ 该线程追踪全程失明）。**同轮挖出真 bug（清档后验收复现）**：全局 4000 文件预算被 `release/win-unpacked`（约 5 万文件）整段吃光 ⇒ 真写的文件进不了快照、深处图标集文件被**误报「已删除」**；修法 = 单目录上限 `MAX_PER_DIR=600`（walk 与 walkLight 同口径）+ IGNORE 补 `release`/`*-unpacked`/`dist-electron` 等构建产物目录 + **截断时抑制删除判定**（截断点随本轮文件数漂移，删除只能"明确扫过却消失"才算）。判据：守卫 11p 扩 **57 条**（含「两处口径一致」「截断抑制 ×2」变异全抓）+ 验收 `file-summary` 31/31（显式断言目标会话 cwd==工作区根 —— 清档重播种后旧写法会点开别目录的老会话、diff 恒 0 假红）。
+- 🔍 回合文件追踪：预算截断修复 + mac 断点诊断（10-07 夜十二轮，用户报「mac 上消息汇总下面的已编辑文件不展示」）：mac 侧链路**全平台同构**、断点藏在静默跳过点里而打包版 stdout 不可见 ⇒ 新增 `electron/debug/turn-files-debug.ts`（诊断落盘 `<userData>/turn-files-diag.log`，JSON 行、512KB 上限）＋ 追踪器六个诊断点（快照跳过含 cwd 不在磁盘 / 根目录读取失败【mac TCC 权限的实锤点：EPERM/EACCES】/ 快照为空 / 收尾无快照 / 每次收尾心跳含 `truncated` 标记）+ boot 注入 `setTurnFileWatchDiag`；`thread/start` 的 cwd 登记改**引擎回执优先**（请求参数空串此前会赢 ⇒ 该线程追踪全程失明）。**同轮挖出真 bug（清档后验收复现）**：全局 4000 文件预算被 `release/win-unpacked`（约 5 万文件）整段吃光 ⇒ 真写的文件进不了快照、深处图标集文件被**误报「已删除」**；修法 = 单目录上限 `MAX_PER_DIR=600`（walk 与 walkLight 同口径）+ IGNORE 补 `release`/`*-unpacked`/`dist-electron` 等构建产物目录 + **截断时抑制删除判定**（截断点随本轮文件数漂移，删除只能"明确扫过却消失"才算）。判据：守卫 11p 扩 **57 条**（含「两处口径一致」「截断抑制 ×2」变异全抓）+ 验收 `file-summary` 31/31（显式断言目标会话 cwd==工作区根 —— 清档重播种后旧写法会点开别目录的老会话、diff 恒 0 假红）。
 - 🎬 550C 开机动画（10-12，用户「我也想要这种启动动画」+ 拍板「完整 16 秒 / 琥珀 / 设置页一行 + 预览」）：移植 DSH 插件 **dsh-550c-boot@0.3.3**（MIT；动画与 HTML 原稿 Voidpoket，工程与移植 Ziyang Song）—— **逐字移植**其样式表 / 标记 / 驱动（`assets.ts` 的 CSS_550C + ENHANCE_CSS + BOOT_MARKUP + APP_MARKUP、`show.mjs` 只加 `export`）。落点 = 外观域下属 `src/features/settings-appearance/boot550c/`（Shadow DOM 隔离；⛔ 不新建顶层域 —— 用户指定归「外观」）+ 纯函数 `src/lib/boot-intro.mjs`（档位 simple/full/off + 配色 amber/green/cyan/white）+ `36-boot-550c.css` + 外观页「开机动画」段（档位三选一 + 配色四选一 + 预览）。三个「看起来接好了、其实会出事」的坑（全钉在实现 + 守卫）：① ⛔ 宿主必须 **portal 到 body** —— 祖先带 transform / filter / backdrop-filter 会成为 containing block，把 `fixed` 从「相对视口」降级成「相对该祖先」（实测预览只盖住设置内容列，**截图抓到而断言全绿**）；② ⛔ 挂载必须 **useLayoutEffect** —— `useEffect` 在首帧绘制之后才跑 ⇒ **先闪一帧主界面**再被片头盖住（用户实测报障），宿主底色同色是第二道保险；③ 四套配色的 CSS 在**增强层 ENHANCE_CSS** 里（只搬 CSS_550C 会丢配色），且必须**排在移植 CSS 之后**注入。启动首帧 = 动画底色纯黑（上游同款口径：做不到早于 Electron 窗口首帧）；`?pet=1` / 减弱动效 / 关闭档 三条不播判据。判据：守卫 **20-boot-intro 34 条**（含 7 处变异全抓）+ 新验收项 **boot-intro 八条**（影子树成形 / 铺满视口且挂 body / 驱动真在描边 / Esc 跳过 / 档位落盘）；e2e harness 钉 `boot-intro=off`（否则 16 秒片头盖住整套验收）。
-- 🌐 汇总卡「网页来源」条（10-12 立）：回合右下角 favicon 圆标 ≤3 + 「···」全量弹层（portal body / Esc / 点外关），点条目走 openExternal 默认浏览器。数据 = 纯函数 `src/lib/turn-web-sources.mjs` 从回合 items 提取（webSearch query/结果 + 工具参数 + 命令行 URL；⛔ 不扫工具输出防噪音；host 去重 + 滤本机地址）；零文件改动的纯检索回合也显示（独立条形态）。favicon 链 favicon.im → google s2 → 首字母色块（国内可达性实测：google s2 直连不通、favicon.im 走 Cloudflare 可达）。判据：守卫 **12g 17 条**（真值表 + 接线 + CSS；6 处变异全抓）+ 验收项 **web-sources 4 条**（真回合 4 curl → 3 圆标 + 弹层 ≥4 条 + Esc 关）。同轮顺手解锁 check 链四笔并行会话存量红：11s 技能通道 12→14 对账 / 11z 通知断言 CRLF 兼容（autocrlf 检出后 
-\n}\n 失配抓空）/ 12e 更新镜像锚点跟 releases LIST API / 删 12f 已 revert 的死链引用 + UpdateReadyToast 死导入。
+- 🌐 汇总卡「网页来源」条（10-12 立）：回合右下角 favicon 圆标 ≤3 + 「···」全量弹层（portal body / Esc / 点外关），点条目走 openExternal 默认浏览器。数据 = 纯函数 `src/lib/turn-web-sources.mjs` 从回合 items 提取（webSearch query/结果 + 工具参数 + 命令行 URL；⛔ 不扫工具输出防噪音；host 去重 + 滤本机地址）；零文件改动的纯检索回合也显示（独立条形态）。favicon 链 favicon.im → google s2 → 首字母色块（国内可达性实测：google s2 直连不通、favicon.im 走 Cloudflare 可达）。判据：守卫 **12g 17 条**（真值表 + 接线 + CSS；6 处变异全抓）+ 验收项 **web-sources 4 条**（真回合 4 curl → 3 圆标 + 弹层 ≥4 条 + Esc 关）。同轮顺手解锁 check 链四笔并行会话存量红：11s 技能通道 12→14 对账 / 11z 通知断言 CRLF 兼容（autocrlf 检出后 \n}\n 失配抓空）/ 12e 更新镜像锚点跟 releases LIST API / 删 12f 已 revert 的死链引用 + UpdateReadyToast 死导入。
 - 🎨 壁纸主题色适配 + 星野替代 3D 背景（10-11，用户三连报：「3D 背景跟自定义的主题有些没做主题色适配，太丑了」「必须完全主题色适配」→「**黑夜→星空；白天→动态点；点之间不要连线**」→「**都要动态星空、跟着鼠标动，不是静态的**」）：① ⛔ **vanta/three 整体退役** —— vanta NET 的形态就是「点+连线」的网，**调参调不出「无连线的点阵」**；改成 `WallpaperLayer.tsx` 自绘 2D canvas **星野**（零依赖、零连线、ResizeObserver 跟尺寸、DPR 缩放、减动效只画一帧），配色取 `--text`（深色=浅色星带缓慢明灭 / 浅色=深色点稳定可见），**鼠标缓动视差 + 纵深系数**（近层位移大、远层小，实测指针两角重心位移 dx≈55px）＋缓速自漂（⛔ 鼠标不动也不静止）；模式 id `vanta` → `stars` 且**旧值自动迁移**（老档案存着 vanta 的用户不会突然没壁纸）。② **自定义图 / 精选渐变的「雾」按主题分档**（深色 82%→54%，浅色保持 46%→18%）—— 浅色预设不再把深色界面染成米黄。③ **粒子档**接上那个写着却没人用的 `useThemeColor`（原来切主题不换色）。判据：守卫 14-wallpaper **37 条**（含「canvas 里不许出现 moveTo/lineTo/stroke」与「vanta 不许复活」两条负向；5 处变异全抓）＋渲染探针实拍（深浅两档 + 指针两角位移实证视差）。⛔ **「你这也叫修好了？」那次真因 = 我只同步了源码没重建 dist**（用户跑的是旧产物）⇒ 流程已补「收尾默认重建 dist」。

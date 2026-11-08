@@ -31,6 +31,7 @@ import { RegisterPanel } from "./RegisterPanel";
 import { useRef, useState, useLayoutEffect, useEffect, useCallback, KeyboardEvent } from "react";
 import { useEscapeLayer } from "../../hooks/useEscapeLayer";
 
+/** 表单字段的帮助气泡：点问号弹出，自动选上下方并夹在视口内。 */
 export function FieldHelp({ text }: { text: string }) {
   const anchorRef = useRef<HTMLElement | null>(null);
   const popRef = useRef<HTMLDivElement | null>(null);
@@ -108,6 +109,7 @@ export function FieldHelp({ text }: { text: string }) {
 const DEFAULT_GATEWAY = "https://api.pptoken.cc";
 const LOGO_SRC = `${import.meta.env.BASE_URL}pptoken-logo.png`;
 
+/** 登录页：默认只列几种登录方式（小卡），点一张才展开表单。 */
 export function LoginScreen({ onSkip, onLogin, onCloudReady }: { onSkip: () => void; onLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string; saved?: any; models?: string[] }) => Promise<boolean>; onCloudReady?: (info: { username?: string }) => Promise<boolean> }) {
   const [tab, setTab] = useState<"login" | "register">("login");
   /* 10-31 用户：「ppcode 也是一样，做这种两段效果」—— 默认只列登录方式，点一条展开表单；

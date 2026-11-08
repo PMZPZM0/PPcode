@@ -62,6 +62,7 @@ export function loadAffiliateCode(now = Date.now()): string {
   }
 }
 
+/** 清掉本机记住的推广码（用户换账号或手动清除时调）。 */
 export function clearAffiliateCode(): void {
   try { window.localStorage.removeItem(AFF_STORAGE_KEY); } catch { /* 忽略 */ }
 }

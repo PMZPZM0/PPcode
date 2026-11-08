@@ -37,10 +37,12 @@ function relayGroupRate(overview: any, groupId: number | null | undefined): numb
   return Number.isFinite(rate) ? rate : undefined;
 }
 
+/** 读本机中转账号的「已激活」快照；没有或坏掉返回 null。 */
 export function readRelayActive(): RelayActive | null {
   try { return JSON.parse(localStorage.getItem("relay-active-v1") ?? "null"); } catch { return null; }
 }
 
+/** 写本机中转账号的「已激活」快照；传 null 就删掉这条记录。 */
 export function writeRelayActive(active: RelayActive | null) {
   if (active) localStorage.setItem("relay-active-v1", JSON.stringify(active));
   else localStorage.removeItem("relay-active-v1");

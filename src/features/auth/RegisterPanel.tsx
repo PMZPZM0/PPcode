@@ -42,6 +42,7 @@ type Props = {
   onBack: () => void;
 };
 
+/** 注册面板：邮箱 + 验证码 + 密码两步注册（PP 产品线专用）。 */
 export function RegisterPanel({ baseUrl, username, onUsernameChange, cloudCenterUrl, onLogin, onBack }: Props) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");

@@ -828,7 +828,7 @@ const catalog = [
   ok(/export function sanitizeForEnvelope/.test(talkSrc) && /群聊上下文\\u200b/.test(talkSrc)
     && /sanitizeForEnvelope\(text\)/.test(talkSrc),
     "群消息原文进信封前消毒（⛔ 正文带【群聊上下文结束】/ 行首 --- 会把信封提前截断、指令漏进云同步/记忆）");
-  ok(/effectiveReplyMode === "process" && String\(run\.text \?\? ""\)\.trim\(\)/.test(viewSrc),
+  ok(/(?:effectiveReplyMode|replyMode) === "process" && String\(run\.text \?\? ""\)\.trim\(\)/.test(viewSrc),
     "占位模式不显示流式正文（流式卡跟着回复模式分叉）");
   ok(/res\?\.ok \|\| res\?\.reason === "idle"/.test(storeSrc),
     "停止返回 idle 也复位 busy/live（⛔ 原来只在 ok 时清，停止键会卡死）");

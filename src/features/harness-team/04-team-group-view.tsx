@@ -1172,7 +1172,7 @@ export function TeamGroupView({
                     ) : (
                       <>
                         {/* ⛔ 11-08 审查：占位模式不展示流式正文（两种回复模式必须分叉） */}
-                        {effectiveReplyMode === "process" && String(run.text ?? "").trim()
+                        {replyMode === "process" && String(run.text ?? "").trim()
                           ? <div className="markdown"><Markdown>{stripVoiceScript(String(run.text).slice(0, 40000))}</Markdown></div>
                           : <p className="team-msg__thinking">正在思考…</p>}
                         {run.status === "running" && <span className="team-msg__caret" aria-hidden />}

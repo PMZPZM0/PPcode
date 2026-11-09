@@ -340,8 +340,14 @@ export function createTeamPopoutWindow(): { ok: boolean; focused: boolean } {
     process.platform === "win32" ? "icon.ico" : "icon.png",
   );
   const win = new BrowserWindow({
-    width: 980,
-    height: 720,
+    /* ⛔ 11-09 用户：「工作伙伴的群聊弹窗默认太小了，做成跟主界面尺寸一样大」——
+       以主窗口当前尺寸为默认，主窗口不可用才退回 1280×800。
+       ⛔ 本仓的 window-factory 有自己的品牌/标题定制（守卫【235】），⛔ 别再整文件从主仓覆盖。 */
+    ...(() => {
+      const alive = mutableState.mainWindow;
+      const usable = alive && !alive.isDestroyed();
+      return { width: usable ? alive.getBounds().width : 1280, height: usable ? alive.getBounds().height : 800 };
+    })(),
     minWidth: 560,
     minHeight: 460,
     resizable: true,

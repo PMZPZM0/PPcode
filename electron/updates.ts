@@ -22,6 +22,7 @@ import { shell } from "electron";
 import { URL } from "node:url";
 import { DEFAULT_UPDATE_REPO, readUpdateSource, type UpdateSourceConfig } from "./update-source";
 import { mirrorCandidates } from "./gh-mirror";
+import { guardedFetch } from "./net-guard";
 
 /** GitHub 仓库（**内置默认**更新源，走 Releases API）——PPcode 的**公开**仓库
  *  （10-12：源码已合并进本仓，一个仓既是源码也是发布页；此前是私有仓 + 跨仓发布）。
@@ -98,46 +99,17 @@ function githubHeaders(token: string): Record<string, string> {
   return headers;
 }
 
-function requestJson(
+/** 读取更新元数据；走 Chromium 网络栈，避免 Node TLS 写入竞态。 */
+async function requestJson(
   url: string,
   timeoutMs = 8000,
   extraHeaders: Record<string, string> = {}
-): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }> {
-  return new Promise((resolve, reject) => {
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      reject(new Error("invalid_url"));
-      return;
-    }
-    const req = https.request(
-      {
-        method: "GET",
-        hostname: parsed.hostname,
-        port: parsed.port || 443,
-        path: parsed.pathname + parsed.search,
-        timeout: timeoutMs,
-        headers: { "User-Agent": "CodexHarness/0.1", ...extraHeaders },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () =>
-          resolve({
-            status: res.statusCode ?? 0,
-            body: Buffer.concat(chunks).toString("utf8"),
-            headers: res.headers,
-          })
-        );
-      }
-    );
-    req.on("error", reject);
-    req.on("timeout", () => {
-      req.destroy(new Error("timeout"));
-    });
-    req.end();
-  });
+): Promise<{ status: number; body: string; headers: Record<string, string> }> {
+  const response = await guardedFetch(url, {
+    method: "GET",
+    headers: { "User-Agent": "CodexHarness/0.1", ...extraHeaders },
+  }, { timeoutMs });
+  return { status: response.status, body: await response.text(), headers: Object.fromEntries(response.headers) };
 }
 
 /** 归一化后的「候选版本」——两个取源（GitHub Releases / 自定义清单）都产出这个形状。 */

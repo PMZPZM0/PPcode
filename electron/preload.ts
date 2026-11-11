@@ -1102,10 +1102,6 @@ contextBridge.exposeInMainWorld("codex", {
   relayPublicSettings: (input?: { baseUrl?: string }) => __ipc("relay:public-settings", 0, [input]),
   /* 注册邮箱验证码（sub2api `POST /api/v1/auth/send-verify-code`）：开了邮箱验证的站点注册必经这一步；图形验证码站点在此返回可读错误，渲染层降级为外链注册 */
   relaySendCode: (input: { baseUrl?: string; email: string }) => __ipc("relay:send-code", 1, [input]),
-  /* 读更新源配置（私有仓时代）：仓库 / 只读令牌**掩码** / 自定义清单地址。⛔ 全量令牌绝不回渲染层 */
-  updateSourceGet: () => __ipc("updates:source-get", 0, []),
-  /* 写更新源配置（部分更新；空串 = 清除该项）⇒ userData/update-source.json（0600）。发布仓私有：令牌 fine-grained Contents:Read-only 即可；或改走自定义清单（令牌留服务端） */
-  updateSourceSave: (patch: { repo?: string; token?: string; manifestUrl?: string }) => __ipc("updates:source-save", 1, [patch]),
   /* ═══ gen:end ═══ */
 
   /* 桌面宠物：主进程归约好的九态推送（浮窗订阅它驱动动画；首帧另用 petState() 补水）。

@@ -35,6 +35,8 @@ import { TeamModePanel } from "../../../../harness-team";
 
 /* 云账号（10-16）：自包含设置页 —— ⛔ 不吃 app props（板块之间保持独立，也不动 bag）。 */
 const CloudAccountSection = lazy(() => import("../../../../settings-cloud/CloudAccountSection").then((m) => ({ default: m.CloudAccountSection })));
+const OpenaiSubscriptionPage = lazy(() => import("../../../../openai").then((m) => ({ default: m.OpenaiSubscriptionPage })));
+const ArtifactPanel = lazy(() => import("../../../../artifact-archive").then((m) => ({ default: m.ArtifactPanel })));
 const BossGroupsSection = lazy(() => import("../../../../settings-boss-groups/BossGroupsSection").then((m) => ({ default: m.BossGroupsSection })));
 const ModelSettingsSection = lazy(() => import("../../../../settings-model/ModelSettingsSection").then((m) => ({ default: m.ModelSettingsSection })));
 const McpSettingsSection = lazy(() => import("../../../../settings-mcp/McpSettingsSection").then((m) => ({ default: m.McpSettingsSection })));
@@ -502,6 +504,8 @@ export function settingsPagesOf(app: HarnessAppApi): Partial<Record<SettingsPage
     "component-library": { render: () => <ComponentLibrarySection /> },
     "soul-market": { render: () => <SoulMarketSection onNotice={(m) => setNotice(m)} /> },
     "knowledge-base": { render: () => <KnowledgeBaseSection workspace={workspace} setNotice={(m) => setNotice(m)} /> },
+    /* 11-12：settingsNav 里一直有「产物归档」但注册表漏配（ArtifactPanel 成了孤儿）⇒ 补上。 */
+    artifacts: { render: () => <ArtifactPanel workspace={workspace} /> },
     "app-lock": { render: () => <AppLockSettingsSection onNotice={setNotice} /> },
     favorites: { render: () => <FavoritesSettingsSection
       favorites={favorites}
@@ -523,6 +527,8 @@ export function settingsPagesOf(app: HarnessAppApi): Partial<Record<SettingsPage
     voice: { render: () => <VoiceSettingsSection onNotice={setNotice} /> },
     relay: { render: () => <RelayCenterPage busy={relayBusy} activeProvider={customModel?.provider} onActivate={relayActivate} onNotice={setNotice} onOpenModelSettings={() => { setSettingsPage("model"); }} openAppConfirm={openAppConfirm} /> },
     cloud: { render: () => <CloudAccountSection /> },
+    /* 11-12：settingsNav 里一直有「OpenAI 订阅」但注册表漏配 ⇒ 点进去空白。补上（与主仓同款入口）。 */
+    openai: { render: () => <OpenaiSubscriptionPage activeProvider={customModel?.provider} onActivate={(models) => activateOfficialProvider(models)} onNotice={setNotice} onActiveChange={setOpenaiActiveAcct} onRefreshActive={refreshActive} openAppConfirm={openAppConfirm} /> },
     "boss-groups": { render: () => <BossGroupsSection openAppConfirm={openAppConfirm} onNotice={setNotice} /> },
     model: { render: () => <ModelSettingsSection refreshActive={refreshActive} autoCompactRatio={autoCompactRatio} setAutoCompactRatio={setAutoCompactRatio} setNotice={setNotice} providersList={providersList} pptokenCardOff={pptokenCardOff} editingProvider={editingProvider} setCustomDraft={setCustomDraft} setEditingProvider={setEditingProvider} uniqueModelCount={uniqueModelCount} customModel={customModel} setPptokenCardOff={setPptokenCardOff} setProviderEnabled={setProviderEnabled} currentProvider={currentProvider} probingProvider={probingProvider} probeActiveProvider={probeActiveProvider} providerAutoOpenRef={providerAutoOpenRef} customDraft={customDraft} savingSettings={savingSettings} openAppConfirm={openAppConfirm} removeProvider={removeProvider} LOCAL_MODEL_PRESETS={LOCAL_MODEL_PRESETS} showApiKey={showApiKey} setShowApiKey={setShowApiKey} probeProvider={probeProvider} saveCustomDraft={saveCustomDraft} switchingModel={switchingModel} probeOneModel={probeOneModel} openModelEditor={openModelEditor} providerStatus={providerStatus} showToast={showToast} saveCustomModel={saveCustomModel} modelEditor={modelEditor} setModelEditor={setModelEditor} targetProviderHint={targetProviderHint} applyModelIdInput={applyModelIdInput} modelSuggestions={modelSuggestions} saveModelEditor={saveModelEditor} /> },
     memory: { render: () => <MemoryCenterSection app={app} memoryEnabled={memoryEnabled} setMemoryEnabled={setMemoryEnabled} memories={memories} memoryGroups={memoryGroups} memoryLayers={memoryLayers} memoryMode={memoryMode} workspaceMemoryEnabled={workspaceMemoryEnabled} threads={threads} scheduledTasks={scheduledTasks} localSkills={localSkills} memoryStatus={memoryStatus} memoryConfigOpen={memoryConfigOpen} memoryGateway={memoryGateway} setMemoryGateway={setMemoryGateway} memoryGatewayAction={memoryGatewayAction} setMemoryConfigOpen={setMemoryConfigOpen} testMemoryGateway={testMemoryGateway} saveMemoryGateway={saveMemoryGateway} setMemoryPreview={setMemoryPreview} openThread={openThread} /> },

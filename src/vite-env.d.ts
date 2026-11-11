@@ -1514,10 +1514,6 @@ interface Window {
     relayPublicSettings(input?: { baseUrl?: string }): Promise<{ siteName: string; siteSubtitle: string; siteLogo: string; registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; promoCodeEnabled: boolean; affiliateEnabled: boolean; captchaRequired: boolean; emailSuffixWhitelist: string[]; apiBaseUrl: string; contactInfo: string }>;
     /* 注册邮箱验证码（sub2api `POST /api/v1/auth/send-verify-code`）：开了邮箱验证的站点注册必经这一步；图形验证码站点在此返回可读错误，渲染层降级为外链注册 */
     relaySendCode(input: { baseUrl?: string; email: string }): Promise<{ message: string; countdown: number }>;
-    /* 读更新源配置（私有仓时代）：仓库 / 只读令牌**掩码** / 自定义清单地址。⛔ 全量令牌绝不回渲染层 */
-    updateSourceGet(): Promise<{ ok: boolean; repo?: string; manifestUrl?: string; hasToken?: boolean; tokenHint?: string; filePath?: string; error?: string }>;
-    /* 写更新源配置（部分更新；空串 = 清除该项）⇒ userData/update-source.json（0600）。发布仓私有：令牌 fine-grained Contents:Read-only 即可；或改走自定义清单（令牌留服务端） */
-    updateSourceSave(patch: { repo?: string; token?: string; manifestUrl?: string }): Promise<{ ok: boolean; repo?: string; manifestUrl?: string; hasToken?: boolean; tokenHint?: string; filePath?: string; error?: string }>;
 /* ═══ gen:end ═══ */
 
     /** 桌面宠物状态推送（主进程归约九态 → 浮窗；浮窗首帧另用 petState() 补水） */

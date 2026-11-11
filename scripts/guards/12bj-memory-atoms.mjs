@@ -145,7 +145,7 @@ evidence:
 
 /* ── ⑤ 存储：路径常量与原子写 ─────────────────────────────── */
 {
-  ok(String(store.atomsRootOf("D:/x")).replace(/\\/g, "/").endsWith(".codex-harness/memory/atoms"),
+  ok(/\.(codex|ppcode)-harness\/memory\/atoms$/.test(String(store.atomsRootOf("D:/x")).replace(/\\/g, "/")),
     "存储根 = <workspace>/.codex-harness/memory/atoms");
   /* 源码里必须能看到 tmp+rename（半截文件 = 解析失败 = 那条记忆静默消失）。 */
   const src = readFileSync(join(distDir, "atoms-store.js"), "utf8");

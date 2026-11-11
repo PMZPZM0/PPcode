@@ -1094,6 +1094,8 @@ contextBridge.exposeInMainWorld("codex", {
   harnessTeamThreadUsage: (threadId: string) => __ipc("harness-team:thread-usage", 1, [threadId]),
   /* 11-09 自媒体工作台：开源 dsh-media-desk 原样嵌入；返回本地服务地址（只监听 127.0.0.1），渲染层用 iframe 打开 */
   mediaDeskEndpoint: () => __ipc("media-desk:endpoint", 0, []),
+  /* 11-11 用户令：入口挪到侧栏「工作伙伴」下面；开独立窗口（尺寸跟随主窗口，单例） */
+  mediaDeskPopout: () => __ipc("media-desk:popout", 0, []),
   /* 11-11 产物归档：只读清单（按 日期-任务短名 分目录），设置页「产物归档」用它 */
   listArtifactArchives: (workspace?: string) => __ipc("artifact:list", 0, [workspace]),
   /* 站点公开设置（sub2api `GET /api/v1/settings/public`，免鉴权）：注册流程站点可配 —— 邮箱验证/邀请码/优惠码/图形验证码/邮箱后缀白名单都以它为准，⛔ 别写死 */

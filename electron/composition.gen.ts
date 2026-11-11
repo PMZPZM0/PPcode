@@ -57,6 +57,7 @@ import { gitFeature as feat_git } from "./features/git-ipc";
 import { historySearchFeature as feat_history } from "./features/history-search-ipc";
 import { hooksFeature as feat_hooks } from "./features/hooks-ipc";
 import { htmlPreviewFeature as feat_html_preview } from "./features/html-preview-ipc";
+import { htmlVideoFeature as feat_html_video } from "./features/html-video-ipc";
 import { imageLabFeature as feat_image_lab } from "./features/image-lab";
 import { journalFeature as feat_journal } from "./features/journal-ipc";
 import { dataAccessFeature as feat_dataaccess } from "./features/data-access-ipc";
@@ -120,6 +121,7 @@ import { fileeFeature as feat_filee } from "./features/filee-ipc";
 import { taskMonitorFeature as feat_monitor } from "./features/task-monitor";
 import { sessionAliasFeature as feat_session_alias } from "./features/session-alias-ipc";
 import { harnessTeamFeature as feat_harness_team } from "./features/harness-team-ipc";
+import { artifactArchiveFeature as feat_artifact } from "./features/artifact-archive-ipc";
 
 import { app } from "electron";
 import { readAppSettingsSync } from "./app-settings";
@@ -183,6 +185,7 @@ export const ENABLED: EnabledDomain[] = [
   { id: "history", plugin: feat_history as Plugin<unknown>, config: null },
   { id: "hooks", plugin: feat_hooks as Plugin<unknown>, config: null },
   { id: "html-preview", plugin: feat_html_preview as Plugin<unknown>, config: null },
+  { id: "html-video", plugin: feat_html_video as Plugin<unknown>, config: null },
   { id: "image-lab", plugin: feat_image_lab as Plugin<unknown>, config: null },
   { id: "journal", plugin: feat_journal as Plugin<unknown>, config: null },
   { id: "dataaccess", plugin: feat_dataaccess as Plugin<unknown>, config: null },
@@ -246,6 +249,7 @@ export const ENABLED: EnabledDomain[] = [
   { id: "monitor", plugin: feat_monitor as Plugin<unknown>, config: null },
   { id: "session-alias", plugin: feat_session_alias as Plugin<unknown>, config: null },
   { id: "harness-team", plugin: feat_harness_team as Plugin<unknown>, config: null },
+  { id: "artifact", plugin: feat_artifact as Plugin<unknown>, config: null },
 ];
 
 /**

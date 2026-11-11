@@ -11,7 +11,7 @@ description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当
 
 # 宿主接口清单与可拓展能力（自动生成，勿手改）
 
-数据源：electron/ipc-channels.manifest.json（114 个能力域 / 653 个通道），由 scripts/gen-capability-skill.mjs 生成。
+数据源：electron/ipc-channels.manifest.json（116 个能力域 / 662 个通道），由 scripts/gen-capability-skill.mjs 生成。
 
 ## 怎么用
 
@@ -55,10 +55,6 @@ description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当
 
 ## 能力域
 
-### boss-groups（15 通道）
-创世 boss 群编排：建群/派活/独立评审/打回换人/预算闸（成员各自一个常驻会话，浏览器用 ego lite 独立 TaskSpace）
-通道：boss-groups:list, boss-groups:status, boss-groups:create, boss-groups:delete, boss-groups:assign, boss-groups:review, boss-groups:escalate, boss-groups:browser, boss-groups:member, boss-groups:pin, boss-groups:say, boss-groups:pool, boss-groups:rebind, boss-groups:session, boss-groups:memory
-
 ### feishu-cli（6 通道）
 飞书官方 CLI（@larksuite/cli）：安装（约 51MB，npm 国内镜像）、飞书应用配置（config init）、用户登录授权（device flow）与命令执行；安装/登录在「设置 → 开发工具 → 飞书 CLI」完成，Codex 通过 feishu_cli 工具调用
 通道：feishu-cli:status, feishu-cli:setup-start, feishu-cli:login-start, feishu-cli:logout, feishu-cli:cancel, feishu-cli:run
@@ -90,6 +86,10 @@ Laya 智能判断（GitHub NandhaKishorM/laya，Apache-2.0，非自回归决策�
 ### team-runs（1 通道）
 专家团运行记录查询
 通道：team-runs:list
+
+### boss-groups（15 通道）
+创世 boss 群编排：建群/派活/独立评审/打回换人/预算闸（成员各自一个常驻会话，浏览器用 ego lite 独立 TaskSpace）
+通道：boss-groups:list, boss-groups:status, boss-groups:create, boss-groups:delete, boss-groups:assign, boss-groups:review, boss-groups:escalate, boss-groups:browser, boss-groups:member, boss-groups:pin, boss-groups:say, boss-groups:pool, boss-groups:rebind, boss-groups:session, boss-groups:memory
 
 ### close-confirm（1 通道）
 关闭确认弹窗的回包（最小化到托盘 / 完全退出 / 取消，可勾不再询问）
@@ -201,7 +201,7 @@ QQ 通道
 
 ### relay（18 通道）
 账号库（OpenAI 账号多账号管理：导入/切换/启停/用量概览）
-通道：relay:login, relay:load-account, relay:accounts, relay:toggle-account, relay:switch-account, relay:remove-account, relay:overview, relay:create-key, relay:select, relay:key-billing, relay:register, relay:payment-plans, relay:open-purchase, relay:keys-all, relay:public-settings, relay:send-code, relay:delete-key, relay:update-key-group
+通道：relay:login, relay:load-account, relay:accounts, relay:toggle-account, relay:switch-account, relay:remove-account, relay:overview, relay:create-key, relay:select, relay:key-billing, relay:register, relay:payment-plans, relay:open-purchase, relay:keys-all, relay:delete-key, relay:update-key-group, relay:public-settings, relay:send-code
 
 ### openfilm（12 通道）
 OpenFilm 视频剪辑（第三方开源 github.com/openfilm/openfilm，MIT + 商标条款）对接：设置 → 工具页可**按需下载**命令行与渲染引擎（npm 走 npmmirror、Chromium 走 cdn.npmmirror，失败自动回官方），可卸载、可查最新版（自动更新三档）。数据面只有状态/安装/卸载/查版本；⛔ 不内置上游二进制，卸载只删运行时、不碰用户 film 目录
@@ -219,7 +219,7 @@ OpenAI 账号鉴权（登录/凭据/额度）
 内置终端（创建/输入/缩放/重启）
 通道：terminal:input, terminal:list, terminal:ready, terminal:resize, terminal:restart
 
-### updates（6 通道）
+### updates（8 通道）
 应用自更新（检查/下载/安装，GitHub Release 单源）
 通道：updates:check, updates:download, updates:reveal, updates:install, updates:download-silent, updates:restart-install, updates:source-get, updates:source-save
 
@@ -233,9 +233,9 @@ OpenAI 账号鉴权（登录/凭据/额度）
 插件卸载入口
 通道：plugin:validate
 
-### harness-team（37 通道）
-团队模式：应用内的群（伙伴成员 / 上下级委派白名单 / 群护栏 / 消息投影），打开一个群就能 @ 伙伴派活
-通道：harness-team:list, harness-team:create, harness-team:rename, harness-team:rename-member, harness-team:add-partner, harness-team:remove-partner, harness-team:mute, harness-team:set-avatar, harness-team:set-guard, harness-team:project, harness-team:messages, harness-team:append-message, harness-team:dispatch, harness-team:delete, harness-team:set-memory, harness-team:set-files, harness-team:set-manager, harness-team:add-note, harness-team:remove-note, harness-team:set-menu, harness-team:set-menu-placement, harness-team:set-message-layout, harness-team:set-reply-mode, harness-team:set-message-form, harness-team:set-dialog-flow, harness-team:set-schedule, harness-team:run-schedule, harness-team:clear-messages, harness-team:set-workspace, harness-team:running, harness-team:log-usage, harness-team:ledger, harness-team:stop, harness-team:queue-start, harness-team:thread-usage, harness-team:talk-threads, harness-team:set-admin
+### harness-team（38 通道）
+团队模式：应用内的群（伙伴成员 / 上下级委派白名单 / 群护栏 / 消息投影）,打开一个群就能 @ 伙伴派活
+通道：harness-team:list, harness-team:create, harness-team:rename, harness-team:rename-member, harness-team:add-partner, harness-team:remove-partner, harness-team:mute, harness-team:set-avatar, harness-team:set-guard, harness-team:project, harness-team:messages, harness-team:append-message, harness-team:dispatch, harness-team:clear-messages, harness-team:delete, harness-team:set-memory, harness-team:set-workspace, harness-team:running, harness-team:set-files, harness-team:set-manager, harness-team:set-admin, harness-team:group-progress, harness-team:add-note, harness-team:remove-note, harness-team:set-menu, harness-team:set-menu-placement, harness-team:set-message-layout, harness-team:set-reply-mode, harness-team:set-message-form, harness-team:set-dialog-flow, harness-team:set-schedule, harness-team:run-schedule, harness-team:log-usage, harness-team:ledger, harness-team:stop, harness-team:queue-start, harness-team:thread-usage, harness-team:talk-threads
 
 ### remote（12 通道）
 远程会话（手机/网页端远程接入宿主）
@@ -276,6 +276,10 @@ Bot 会话（Bot 与会话的绑定与消息注入）
 ### model-viewer（1 通道）
 **3D 模型预览**（10-05）：read(path) 读会话工作区里的 .glb / .gltf 模型（可信根内、≤256MB，字节直传给预览弹窗）。通常不直接调 —— 引擎侧走 harness_tools 网关的 \`preview_3d\` 在应用内弹出可旋转的 3D 预览；本域通道是渲染层弹窗的取数后端
 通道：model-viewer:read
+
+### html-video（1 通道）
+**本地 HTML→MP4**（10-11，P1）：render(source, seconds?, fps?, width?, height?, outPath?) 把一段 HTML/CSS 动画在本地渲成 MP4 —— Chromium 抓帧 + 运行时自带 MP4 编码器，**零 ffmpeg 依赖、不联网、不花厂商额度**。source = 可信根内的 .html 绝对路径或 http(s) URL（其余一律拒）；outPath 同样过可信根闸，不传落 <userData>/renders/。模型侧走 harness_tools 网关的 \`video_render_html\`。典型用法：把工作区里做好的界面/动画/分镜 HTML 成品化成 mp4
+通道：html-video:render
 
 ### image-lab（5 通道）
 **图像工坊**（10-09，Windows/Mac 同一份实现）：read(path) 读图片字节（可信根内、图片扩展名白名单、≤128MB，直传给浮层预览）。⛔ 模型侧不直接调这条通道 —— 四个工具是**各自独立的 dynamicTool**（不走 harness_tools 网关），且各有一条自己的 IPC：\`image_generate\`→image-lab:generate（**唯一要生图插件凭证的**）、\`image_edit\`→image-lab:edit（修图：缩放 / 裁剪 / 旋转 / 翻转 / 转格式 / 明暗对比 / 灰度·棕褐 / 模糊 / 马赛克 / 水印合成 / 加英文文字——中文会画成空白；**零凭证**，产出不覆盖原图）、\`image_info\`→image-lab:info（读尺寸·格式·透明·字节数）、\`image_view\`→image-lab:view（应用内弹浮层给用户看）。改「形」用 image_edit、改「意」（换主体/风格）用 image_generate；只做小改动前先 agent_ask 问用户。生成与编辑都会弹「图像工坊」浮层，工具调用结束自动收起。⛔ 编辑引擎是 jimp（纯 JS），不许换成 sharp/canvas 这类原生库
@@ -325,13 +329,13 @@ MCP 服务器管理（配置/状态）
 个性化（昵称/自定义指令，落 personalization.json 并写入引擎 AGENTS.md）
 通道：personalization:mark-greeted, personalization:read, personalization:save, personalization:save-identity, personalization:setNickname, personalization:verify
 
-### app-lock（6 通道）
-应用密码锁（设置 → 应用锁，默认关闭）：开启时生成随机或自定义解锁密码，明文只展示一次、磁盘只存 scrypt 加盐哈希；应用启动/重新显示时先锁屏。错误次数落盘，连续 10 次错误会清空应用数据并重置。⛔ 这是界面门禁，不是磁盘加密；模型侧不调用它
-通道：app-lock:status, app-lock:prepare, app-lock:enable, app-lock:cancel, app-lock:verify, app-lock:disable
-
 ### vault（4 通道）
 本机**密码本**（输入框左侧竖条 → 密码本）：list 列条目 / save 新增或改（password 省略即保留原密码）/ remove 删除 / copy 把某条密码写入系统剪贴板（30 秒后若还是这条就自动清空）。⛔ 密码用系统 safeStorage 加密落 userData/vault.json，**明文永不落盘、渲染层与模型侧都拿不到**；加密不可用时拒绝保存。模型侧用不到它
 通道：vault:copy, vault:list, vault:remove, vault:save
+
+### extensions（2 通道）
+竖条与功能入口菜单的**可扩展目录**（extensions:catalog）：内置四项面板 + userData/extensions.json 里用户自建项，渲染层据此渲染，不改代码就能多一个入口。⛔ 扩展项只能声明封闭动作集（http(s) 链接 / 跳到某个设置页 / 纯说明文字）—— 没有「执行命令」这类动作
+通道：extensions:catalog, extensions:menu-set
 
 ### journal（6 通道）
 **开发日记**（竖条 → 开发日记）：按天一个 Markdown 文件（userData/dev-journal/YYYY-MM-DD.md）—— list 列日期与摘要 / read 看当天全文 / save 整篇覆盖 / append 追加一条「## HH:mm 标题 + 正文」/ remove 删当天 / search 全文检索。⛔ 与会话归档、项目工作日志是三件不同的事
@@ -345,13 +349,13 @@ MCP 服务器管理（配置/状态）
 键盘快捷键统一读口（10-28）：应用内快捷键存 userData/shortcuts.json，弹窗与「设置 → 控制台 → 键盘快捷键」读写同一份；截图/语音的全局键仍存各自设置文件（它们的 setter 要先注册成功 globalShortcut 再落盘），本域只读来聚合展示。⛔ 模型侧不调用它——改键是用户界面动作，不是工具能力
 通道：shortcuts:read, shortcuts:reset, shortcuts:save
 
-### extensions（2 通道）
-竖条与功能入口菜单的**可扩展目录**（extensions:catalog）：内置四项面板 + userData/extensions.json 里用户自建项，渲染层据此渲染，不改代码就能多一个入口。⛔ 扩展项只能声明封闭动作集（http(s) 链接 / 跳到某个设置页 / 纯说明文字）—— 没有「执行命令」这类动作
-通道：extensions:catalog, extensions:menu-set
-
 ### appSettings（2 通道）
 应用级开关（联网搜索/桌面自动化/下载源等，写 app-settings.json）
 通道：appSettings:read, appSettings:save
+
+### app-lock（6 通道）
+应用密码锁（设置 → 应用锁，默认关闭）：开启时生成随机或自定义解锁密码，明文只展示一次、磁盘只存 scrypt 加盐哈希；应用启动/重新显示时先锁屏。错误次数落盘，连续 10 次错误会清空应用数据并重置。⛔ 这是界面门禁，不是磁盘加密；模型侧不调用它
+通道：app-lock:status, app-lock:prepare, app-lock:enable, app-lock:cancel, app-lock:verify, app-lock:disable
 
 ### model-specs（1 通道）
 模型规格（effort 档位等引擎参数）
@@ -433,17 +437,17 @@ SkillHub **人格市场**（skillhub.cn/soul，16 套现成人格）：list 浏�
 IM 通道 Bot（把某个会话接到 IM 机器人上）
 通道：channel-bot:read, channel-bot:save, channel-bot:test
 
-### memory（31 通道）
+### memory（35 通道）
 记忆金字塔全链路（L0~L7 分层读写、召回、蒸馏、清理计划/执行、云端网关、工作区开关、记忆后端**三选一**：内置金字塔 / 本地 MCP 记忆服务 / 云端 memapi）
-通道：memory:backend:read, memory:backend:set, memory:delete, memory:distill, memory:fabric-entries, memory:fabric-namespaces, memory:fabric-write, memory:gateway:read, memory:gateway:save, memory:gateway:test, memory:hygiene:apply, memory:hygiene:plan, memory:layers:context, memory:layers:read, memory:layers:write, memory:list, memory:mcp:install, memory:mcp:uninstall, memory:mcp:verify, memory:mode-read, memory:mode-set, memory:recall, memory:reset, memory:role-context, memory:role-sessions, memory:save, memory:scale:read, memory:scale:set, memory:search, memory:workspace-enabled:read, memory:workspace-enabled:set
-
-### session-alias（3 通道）
-会话笔名与上下级（10-31）：每个会话自动分配一个两字笔名（主会话对外是「XX主管」，用户是总经理），被调度会话知道自己的上级主管；用户可改笔名（两字中文、全局不重名），改完主进程广播，子会话那边的上级身份随之更新。⛔ 职级与笔名是展示层与指令层共用的同一份真相源
-通道：session-alias:ensure, session-alias:set, session-alias:snapshot
+通道：memory:atoms:forget, memory:atoms:list, memory:atoms:recall, memory:atoms:save, memory:backend:read, memory:backend:set, memory:delete, memory:distill, memory:fabric-entries, memory:fabric-namespaces, memory:fabric-write, memory:gateway:read, memory:gateway:save, memory:gateway:test, memory:hygiene:apply, memory:hygiene:plan, memory:layers:context, memory:layers:read, memory:layers:write, memory:list, memory:mcp:install, memory:mcp:uninstall, memory:mcp:verify, memory:mode-read, memory:mode-set, memory:recall, memory:reset, memory:role-context, memory:role-sessions, memory:save, memory:scale:read, memory:scale:set, memory:search, memory:workspace-enabled:read, memory:workspace-enabled:set
 
 ### monitor（1 通道）
 任务监控（右栏「监控」页，10-30）：按会话读每轮的技能 / MCP / 插件使用与本轮产物，以及本会话模型产出的「自我改进建议」。建议可编辑、可重生成，一键「进化」会带 self-review 技能直接发回对话。⛔ 全部按 threadId 隔离，一个会话看不到另一个会话的记录
 通道：monitor:read
+
+### session-alias（3 通道）
+会话笔名与上下级（10-31）：每个会话自动分配一个两字笔名（主会话对外是「XX主管」，用户是总经理），被调度会话知道自己的上级主管；用户可改笔名（两字中文、全局不重名），改完主进程广播，子会话那边的上级身份随之更新。⛔ 职级与笔名是展示层与指令层共用的同一份真相源
+通道：session-alias:ensure, session-alias:set, session-alias:snapshot
 
 ### rpa（4 通道）
 RPA 配方（录制好的桌面自动化流程）
@@ -478,8 +482,12 @@ RPA 配方（录制好的桌面自动化流程）
 通道：favorites:list, favorites:add, favorites:update, favorites:delete, favorites:touch, favorites:to-memory
 
 ### media-desk（1 通道）
-自媒体工作台（设置 → 能力与内容，11-09）：灵感墙 → 一键成稿 → 本地排期 → 数据记录 → 写作风格；生图走 OpenAI 兼容接口。⛔ 排期只是本地计划、不自动发布；数据是手动记录，不接平台 API
+自媒体工作台（设置 → 能力与内容，11-09）：灵感墙（文字/链接，链接抓标题摘要封面）→ 一键成稿（计划、口播脚本、封面与黑白分镜）→ 本地排期 → 数据记录 → 写作风格。文本模型用工作台设置或应用当前供应商；生图走用户配置的 OpenAI 兼容 /images/generations。⛔ 排期只是本地计划、不自动发布；数据是手动记录，不接平台 API
 通道：media-desk:endpoint
+
+### artifact（1 通道）
+产物归档（11-11）：设置 → 数据 →「产物归档」按 artifacts/YYYYMMDD-任务短名/ 列出每次任务的成品，可一键在资源管理器打开目录。只读清单；归档动作由模型经 harness_tools 的 artifact_archive 完成（只复制不删原文件、同名自动 -r2 迭代、写 manifest 与总台账），历史散落文件用 scripts/artifacts-migrate.mjs 归位（默认 dry-run）
+通道：artifact:list
 
 ### history（1 通道）
 跨会话历史搜索（全文检索会话与消息，命中按会话分组）

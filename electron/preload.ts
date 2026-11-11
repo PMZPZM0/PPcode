@@ -407,6 +407,8 @@ contextBridge.exposeInMainWorld("codex", {
   htmlPreviewUnwatch: () => __ipc("html-preview:unwatch", 0, []),
   /* HTML 实时预览：开始监听一个 HTML 文件（可信目录 + 扩展名白名单；120ms 防抖；变更推 harness 事件 html-preview:changed） */
   htmlPreviewWatch: (input: unknown) => __ipc("html-preview:watch", 1, [input]),
+  /* P1（10-11）：把本地 HTML/URL 动画在本地渲成 MP4 —— Chromium 抓帧 + 运行时自带 MP4 编码器，零 ffmpeg 依赖；源须为 http(s) 或可信根内 .html */
+  htmlVideoRender: (input: { source?: string; seconds?: number; fps?: number; width?: number; height?: number; outPath?: string }) => __ipc("html-video:render", 1, [input]) as Promise<any>,
   /* 修图执行端（10-09 从 agents:dispatch-call 拆出）：**零凭证**，纯本地 jimp（20 种 ops）。先亮源图 → 换产物 → 自动收起。⛔ 输出不覆盖原图（产出 <名字>-edit.<ext>），天然可回退 */
   imageEdit: (input: unknown) => __ipc("image-lab:edit", 1, [input]),
   /* 生图执行端（10-09 从 agents:dispatch-call 拆出）：**唯一需要生图插件凭证的**通道（读 builtin-plugins.json 的 image 段 → 打外部网关）。调用时弹「图像工坊」浮层，完成自动收起。⛔ 与 image-lab:edit 分属两条通道 —— 用户明确要求「生成和编辑的 IPC 彻底分开」 */
@@ -417,6 +419,14 @@ contextBridge.exposeInMainWorld("codex", {
   readImage: (path: string) => __ipc("image-lab:read", 1, [{ path }]),
   /* 在应用内弹「图像工坊」浮层给用户看一张图。只读展示、**不自动收起**（由用户自己关）。零凭证 */
   imageView: (input: unknown) => __ipc("image-lab:view", 1, [input]),
+  /* 追加一条 */
+  journalAppend: (date: string, title: string, body: string) => __ipc("journal:append", 3, [date, title, body]),
+  journalList: () => __ipc("journal:list", 0, []),
+  journalRead: (date: string) => __ipc("journal:read", 1, [date]),
+  journalRemove: (date: string) => __ipc("journal:remove", 1, [date]),
+  /* 整篇覆盖 */
+  journalSave: (date: string, content: string) => __ipc("journal:save", 2, [date, content]),
+  journalSearch: (query: string) => __ipc("journal:search", 1, [query]),
   addKnowledgeFiles: (input: { workspace?: string; paths?: string[] }) => __ipc("kb:add-files", 1, [input]),
   addKnowledgeText: (input: { workspace?: string; title?: string; text?: string; source?: string }) => __ipc("kb:add-text", 1, [input]),
   /* 读取知识库后端：local=项目本地库 / cloud=云端 weknora（MCP） */
@@ -473,6 +483,14 @@ contextBridge.exposeInMainWorld("codex", {
   /* 常驻记忆（L 层）；threadId 仅供注入审计（隔离仍按工作区） */
   readMemoryContext: (workspace?: string, includeWorkspace = true, threadId?: string) => __ipc("memory:layers:context", 0, [workspace, includeWorkspace, threadId]),
   readMemoryLayers: (workspace?: string) => __ipc("memory:layers:read", 0, [workspace]),
+  /* 记忆原子：列出条目 + 索引（新记忆界面的唯一数据源） */
+  listMemoryAtoms: (workspace?: string) => __ipc("memory:atoms:list", 0, [workspace]),
+  /* 记忆原子：预览「这句话会注入哪些记忆」—— 与真实注入用同一套打分（⛔ 不是前端假过滤） */
+  recallMemoryAtoms: (workspace: string, query: string, seat?: string) => __ipc("memory:atoms:recall", 2, [workspace, query, seat]),
+  /* 记忆原子：保存一条（手动编辑用；内容相同返回 same，算成功） */
+  saveMemoryAtoms: (workspace: string, input: { id: string; scope?: string; summary?: string; body: string; type?: string }) => __ipc("memory:atoms:save", 2, [workspace, input]),
+  /* 11-11 四个记忆板块的批量作废：逐条复用 memory_forget（标 superseded、文件保留可查、重建索引） */
+  forgetMemoryAtoms: (workspace: string, ids: string[]) => __ipc("memory:atoms:forget", 2, [workspace, ids]),
   writeMemoryLayer: (input: { scope: "user" | "background" | "project" | "lessons"; content: string; workspace?: string }) => __ipc("memory:layers:write", 1, [input]),
   listMemory: (category?: string) => __ipc("memory:list", 0, [category]),
   /* 一键安装 MCP 记忆服务（主进程用应用自带 node 跑安装器；新电脑无需预装 Node） */
@@ -647,14 +665,10 @@ contextBridge.exposeInMainWorld("codex", {
   relayOpenPurchase: () => __ipc("relay:open-purchase", 0, []),
   relayOverview: (id?: string) => __ipc("relay:overview", 0, [id]),
   relayPaymentPlans: () => __ipc("relay:payment-plans", 0, []),
-  /* 站点公开设置（sub2api `GET /api/v1/settings/public`，免鉴权）：注册流程站点可配 —— 邮箱验证/邀请码/优惠码/图形验证码/邮箱后缀白名单都以它为准，⛔ 别写死 */
-  relayPublicSettings: (input?: { baseUrl?: string }) => __ipc("relay:public-settings", 0, [input]),
   /* 注册中转站账号（sub2api `POST /api/v1/auth/register`）：body 带 verify_code（站点开邮箱验证时必填）与 aff_code（邀请归因）；成功后立刻用同套凭据登录并落多账号库 ⇒ 真正的「注册完自动登录」 */
   relayRegister: (input: { baseUrl: string; email: string; password: string; affCode?: string; verifyCode?: string }) => __ipc("relay:register", 1, [input]),
   relayRemoveAccount: (id: string) => __ipc("relay:remove-account", 1, [id]),
   relaySelect: (input: { mode: "balance" | "plan"; groupId: number | null; keyId?: number; keyName?: string }) => __ipc("relay:select", 1, [input]),
-  /* 注册邮箱验证码（sub2api `POST /api/v1/auth/send-verify-code`）：开了邮箱验证的站点注册必经这一步；图形验证码站点在此返回可读错误，渲染层降级为外链注册 */
-  relaySendCode: (input: { baseUrl?: string; email: string }) => __ipc("relay:send-code", 1, [input]),
   relaySwitchAccount: (id: string) => __ipc("relay:switch-account", 1, [id]),
   relayToggleAccount: (input: { id: string; disabled: boolean }) => __ipc("relay:toggle-account", 1, [input]),
   /* 改已有密钥的分组（上游 PUT /api/v1/keys/:id）。⛔ 上游对 group_id=null 是「不修改」⇒ 解绑成无分组做不到，UI 只提供分组间切换；改当前生效密钥时同步 selectedGroupId */
@@ -705,6 +719,11 @@ contextBridge.exposeInMainWorld("codex", {
   screenshotSettingsSet: (patch: unknown) => __ipc("screenshot:settings-set", 1, [patch]),
   shellOpen: (target: string) => __ipc("shell:open", 1, [target]),
   shellReveal: (target: string) => __ipc("shell:reveal", 1, [target]),
+  windowClose: () => __ipc("shell:window-close", 0, []),
+  /* 窗口控制（无边框窗自定义按钮；只作用于调用者自己的窗口） */
+  windowMinimize: () => __ipc("shell:window-minimize", 0, []),
+  windowState: () => __ipc("shell:window-state", 0, []),
+  windowToggleMaximize: () => __ipc("shell:window-toggle-maximize", 0, []),
   skillDisciplineGet: () => __ipc("skill-discipline:get", 0, []),
   /* 内置技能的独立开关（10-06）：读某内置技能**全局**是否生效（设置 → 控制台用；与 skill-pool 同一真相源） */
   getBuiltinSkillSwitch: (input: { name: string }) => __ipc("skills:builtin-switch-get", 1, [input]),
@@ -817,11 +836,14 @@ contextBridge.exposeInMainWorld("codex", {
   /* 10-13 后台静默下载 / 重启安装 */
   updateRestartInstall: () => __ipc("updates:restart-install", 0, []),
   updateReveal: (filePath: string) => __ipc("updates:reveal", 1, [filePath]) as Promise<{ ok: boolean }>,
-  /* 读更新源配置（私有仓时代）：仓库 / 只读令牌**掩码** / 自定义清单地址。⛔ 全量令牌绝不回渲染层 */
-  updateSourceGet: () => __ipc("updates:source-get", 0, []),
-  /* 写更新源配置（部分更新；空串 = 清除该项）⇒ userData/update-source.json（0600）。发布仓私有：令牌 fine-grained Contents:Read-only 即可；或改走自定义清单（令牌留服务端） */
-  updateSourceSave: (patch: { repo?: string; token?: string; manifestUrl?: string }) => __ipc("updates:source-save", 1, [patch]),
   getUsername: () => __ipc("user:name", 0, []),
+  /* 主进程解密后直写剪贴板（明文不返回渲染层） */
+  vaultCopy: (id: string) => __ipc("vault:copy", 1, [id]),
+  /* 密码本列表（不含明文，只有 hasSecret） */
+  vaultList: () => __ipc("vault:list", 0, []),
+  vaultRemove: (id: string) => __ipc("vault:remove", 1, [id]),
+  /* 保存/更新一条；password 省略=保留原密码 */
+  vaultSave: (input: Record<string, unknown>) => __ipc("vault:save", 1, [input]),
   /* 按顺序合并视频片段成一条成片（整片导出）：先 -c copy，失败回落统一重编码；输出 <workspace>/.drama-canvas/export/ */
   videoConcat: (input: { workspace: string; name: string; files: string[]; width?: number; height?: number; fps?: number }) => __ipc("video:concat", 1, [input]) as Promise<{ path: string; bytes: number; mode: "copy" | "reencode"; parts: number }>,
   /* 各厂商凭证（userData/video-providers.json） */
@@ -921,21 +943,6 @@ contextBridge.exposeInMainWorld("codex", {
   workLogsRead: (input: { path: string }) => __ipc("work-logs:read", 1, [input]),
   /* 扫各项目的**工作日志与项目记忆**（<项目>/.ppcode-harness/memory/**：长期记忆 / 坑与纪律 / logs 日报 / archive / project）。项目清单来自 rollout 扫出的 cwd 集合。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事 */
   workLogsScan: () => __ipc("work-logs:scan", 0, []),
-  /* 密码本列表（不含明文，只有 hasSecret） */
-  vaultList: () => __ipc("vault:list", 0, []),
-  /* 保存/更新一条；password 省略=保留原密码 */
-  vaultSave: (input: Record<string, unknown>) => __ipc("vault:save", 1, [input]),
-  vaultRemove: (id: string) => __ipc("vault:remove", 1, [id]),
-  /* 主进程解密后直写剪贴板（明文不返回渲染层） */
-  vaultCopy: (id: string) => __ipc("vault:copy", 1, [id]),
-  journalList: () => __ipc("journal:list", 0, []),
-  journalRead: (date: string) => __ipc("journal:read", 1, [date]),
-  /* 整篇覆盖 */
-  journalSave: (date: string, content: string) => __ipc("journal:save", 2, [date, content]),
-  /* 追加一条 */
-  journalAppend: (date: string, title: string, body: string) => __ipc("journal:append", 3, [date, title, body]),
-  journalRemove: (date: string) => __ipc("journal:remove", 1, [date]),
-  journalSearch: (query: string) => __ipc("journal:search", 1, [query]),
   /* 竖条 + 功能入口菜单的可扩展目录 */
   extensionsCatalog: () => __ipc("extensions:catalog", 0, []),
   /* 10-29 保存功能入口的自定义设置页条目（整表覆盖 menu 字段，rail 保留；url/settings 白名单，40 条上限） */
@@ -999,11 +1006,6 @@ contextBridge.exposeInMainWorld("codex", {
   feishuCliRun: (input: unknown) => __ipc("feishu-cli:run", 1, [input]),
   /* 10-30 任务监控：按会话读每轮技能/MCP/插件/产物（⛔ 只认传入的 threadId） */
   readTaskMonitor: (threadId: unknown) => __ipc("monitor:read", 1, [threadId]),
-  windowClose: () => __ipc("shell:window-close", 0, []),
-  /* 窗口控制（无边框窗自定义按钮；只作用于调用者自己的窗口） */
-  windowMinimize: () => __ipc("shell:window-minimize", 0, []),
-  windowState: () => __ipc("shell:window-state", 0, []),
-  windowToggleMaximize: () => __ipc("shell:window-toggle-maximize", 0, []),
   /* 10-31：会话笔名全量快照（threadId → alias/上级/寓意） */
   sessionAliasSnapshot: () => __ipc("session-alias:snapshot", 0, []),
   /* 11-01：会话改名（= 改笔名，唯一入口）—— 校验后落盘 + 写穿引擎会话名 + 广播快照；allowDuplicate 供系统自动命名用 */
@@ -1030,6 +1032,8 @@ contextBridge.exposeInMainWorld("codex", {
   harnessTeamSetAvatar: (groupId: string, memberId: string, avatar: string) => __ipc("harness-team:set-avatar", 3, [groupId, memberId, avatar]),
   /* 团队模式 P0 */
   harnessTeamSetGuard: (groupId: string, guard: Record<string, unknown>) => __ipc("harness-team:set-guard", 2, [groupId, guard]),
+  /* 团队模式：清空群聊天记录（只清投影日志，子会话不动） */
+  harnessTeamClearMessages: (groupId: string) => __ipc("harness-team:clear-messages", 1, [groupId]),
   /* 团队模式 P0 */
   harnessTeamProject: (sources: unknown) => __ipc("harness-team:project", 1, [sources]),
   /* 团队模式 P0b（群消息日志） */
@@ -1042,12 +1046,18 @@ contextBridge.exposeInMainWorld("codex", {
   harnessTeamDelete: (groupId: string) => __ipc("harness-team:delete", 1, [groupId]),
   /* 团队模式：群记忆 / 群文件 */
   harnessTeamSetMemory: (groupId: string, text: string) => __ipc("harness-team:set-memory", 2, [groupId, text]),
+  /* 团队模式：群项目地址（派活时作为子会话 cwd） */
+  harnessTeamSetWorkspace: (groupId: string, workspace: string) => __ipc("harness-team:set-workspace", 2, [groupId, workspace]),
+  /* 团队模式：本群此刻正在跑的伙伴（面板重开时恢复处理中/已输出） */
+  harnessTeamRunning: (groupId: string) => __ipc("harness-team:running", 1, [groupId]),
   /* 团队模式：群记忆 / 群文件 */
   harnessTeamSetFiles: (groupId: string, files: unknown) => __ipc("harness-team:set-files", 2, [groupId, files]),
   /* 团队模式：上下级（委派白名单） */
   harnessTeamSetManager: (groupId: string, memberId: string, managerId: string) => __ipc("harness-team:set-manager", 3, [groupId, memberId, managerId]),
   /* 团队模式：管理员（普通群「用户没 @ 时由谁接话推进进度」；专家团群不启用，由团主理人兜底） */
   harnessTeamSetAdmin: (groupId: string, memberId: string) => __ipc("harness-team:set-admin", 2, [groupId, memberId]),
+  /* 团队模式：群内任务进度（总数/未完成/已完成/在等回话）—— 群头部进度条用它，⛔ 别再让用户靠读消息猜进度 */
+  harnessTeamGroupProgress: (groupId: string) => __ipc("harness-team:group-progress", 1, [groupId]),
   /* 团队模式：记忆条目 / 菜单 / 用量账本 */
   harnessTeamAddNote: (groupId: string, note: Record<string, unknown>) => __ipc("harness-team:add-note", 2, [groupId, note]),
   /* 团队模式：记忆条目 / 菜单 / 用量账本 */
@@ -1068,12 +1078,6 @@ contextBridge.exposeInMainWorld("codex", {
   harnessTeamSetSchedule: (groupId: string, list: unknown) => __ipc("harness-team:set-schedule", 2, [groupId, list]),
   /* 团队模式：立刻运行一条定时任务 */
   harnessTeamRunSchedule: (groupId: string, scheduleId: string) => __ipc("harness-team:run-schedule", 2, [groupId, scheduleId]),
-  /* 团队模式：清空群聊天记录（只清投影日志，子会话不动） */
-  harnessTeamClearMessages: (groupId: string) => __ipc("harness-team:clear-messages", 1, [groupId]),
-  /* 团队模式：群项目地址（派活时作为子会话 cwd） */
-  harnessTeamSetWorkspace: (groupId: string, workspace: string) => __ipc("harness-team:set-workspace", 2, [groupId, workspace]),
-  /* 团队模式：本群此刻正在跑的伙伴（面板重开时恢复处理中/已输出） */
-  harnessTeamRunning: (groupId: string) => __ipc("harness-team:running", 1, [groupId]),
   /* 团队模式：记忆条目 / 菜单 / 用量账本 */
   harnessTeamLogUsage: (entry: Record<string, unknown>) => __ipc("harness-team:log-usage", 1, [entry]),
   /* 团队模式：记忆条目 / 菜单 / 用量账本 */
@@ -1086,6 +1090,16 @@ contextBridge.exposeInMainWorld("codex", {
   harnessTeamThreadUsage: (threadId: string) => __ipc("harness-team:thread-usage", 1, [threadId]),
   /* 11-09 自媒体工作台：开源 dsh-media-desk 原样嵌入；返回本地服务地址（只监听 127.0.0.1），渲染层用 iframe 打开 */
   mediaDeskEndpoint: () => __ipc("media-desk:endpoint", 0, []),
+  /* 11-11 产物归档：只读清单（按 日期-任务短名 分目录），设置页「产物归档」用它 */
+  listArtifactArchives: (workspace?: string) => __ipc("artifact:list", 0, [workspace]),
+  /* 站点公开设置（sub2api `GET /api/v1/settings/public`，免鉴权）：注册流程站点可配 —— 邮箱验证/邀请码/优惠码/图形验证码/邮箱后缀白名单都以它为准，⛔ 别写死 */
+  relayPublicSettings: (input?: { baseUrl?: string }) => __ipc("relay:public-settings", 0, [input]),
+  /* 注册邮箱验证码（sub2api `POST /api/v1/auth/send-verify-code`）：开了邮箱验证的站点注册必经这一步；图形验证码站点在此返回可读错误，渲染层降级为外链注册 */
+  relaySendCode: (input: { baseUrl?: string; email: string }) => __ipc("relay:send-code", 1, [input]),
+  /* 读更新源配置（私有仓时代）：仓库 / 只读令牌**掩码** / 自定义清单地址。⛔ 全量令牌绝不回渲染层 */
+  updateSourceGet: () => __ipc("updates:source-get", 0, []),
+  /* 写更新源配置（部分更新；空串 = 清除该项）⇒ userData/update-source.json（0600）。发布仓私有：令牌 fine-grained Contents:Read-only 即可；或改走自定义清单（令牌留服务端） */
+  updateSourceSave: (patch: { repo?: string; token?: string; manifestUrl?: string }) => __ipc("updates:source-save", 1, [patch]),
   /* ═══ gen:end ═══ */
 
   /* 桌面宠物：主进程归约好的九态推送（浮窗订阅它驱动动画；首帧另用 petState() 补水）。
@@ -1111,17 +1125,19 @@ onRuntimeProgress: (listener: (event: unknown) => void) =>
      ⛔ 不在这里判定任何东西 —— payload 就是 readMemoryBackend() 的同一份快照。 */
   onMemoryBackendChanged: (listener: (status: unknown) => void) =>
     __on("memory:backend-changed", listener, (listener) => (_e: unknown, payload: unknown) => listener(payload)),
-  /* 播报归属推送（voice 域，10-21）：逐窗口定制发送 —— `owner` 已是「本窗口是不是播报窗口」。 */
+  /* 播报归属推送（voice 域，10-21）：多窗口时**逐窗口定制**发送 —— payload 里的 `owner`
+     已经是「本窗口是不是播报窗口」，渲染层不需要（也拿不到）自己的 webContents.id。
+     触发点：焦点切换 / 窗口增减。推送类手写桥，不在 gen 段。 */
   onAnnounceOwnerChanged: (listener: (state: { owner: boolean; reason: string }) => void) =>
     __on("voice:announce-owner-changed", listener, (listener) => (_e: unknown, payload: unknown) => listener(payload as { owner: boolean; reason: string })),
-  /* 全局静音闩锁推送（10-21）：任一窗口按停 ⇒ 全窗口静默（一个扬声器一个用户）。 */
+  /* 全局静音闩锁推送（10-21）：任一窗口按「停止播报」⇒ 全窗口静默（一个扬声器一个用户）。
+     ⛔ 与本地 mutedRef 的区别：这条是**跨窗口事实**，收到就要真的拦，不能只当提示。 */
   onAnnounceMuted: (listener: (state: { muted: boolean }) => void) =>
     __on("voice:announce-muted", listener, (listener) => (_e: unknown, payload: unknown) => listener(payload as { muted: boolean })),
-  /* 通话状态推送（10-21，所有窗口）：弹窗据此避让主窗口的通话 TTS（voice:event 只发主窗口）。 */
+  /* 通话状态推送（10-21，**所有窗口**）：`voice:event` 只发主窗口，弹窗靠这条知道
+     「主窗口在通话」⇒ 非通话播报必须避让（否则两条音轨抢同一个扬声器）。 */
   onVoiceCallState: (listener: (state: { state: string; active: boolean }) => void) =>
     __on("voice:call-state", listener, (listener) => (_e: unknown, payload: unknown) => listener(payload as { state: string; active: boolean })),
-
-
   /* 3D 预览弹窗打开推送（model-viewer 域，10-05）：引擎 harness_tools preview_3d → 主进程
      sendToWindow("model-viewer:open") → 渲染层 ModelViewerBridge 弹窗。推送类手写桥，不在 gen 段。 */
   onModelViewerOpen: (listener: (event: { path: string; title: string }) => void) =>
@@ -1158,7 +1174,7 @@ onConnectorOAuth: (listener: (event: unknown) => void) =>
   updateOnProgress: (callback: (percent: number) => void) => {
     __on("updates:download-progress", callback, (callback) => (_event: unknown, percent: number) => callback(percent));
   },
-  // ⛔ 10-13：后台静默下载完成事件（渲染层可能压根没开设置页，只能靠事件弹窗）。
+  // ⛔ 10-12：后台静默下载完成事件。渲染层可能压根没开设置页，只能靠事件弹窗。
   updateOnReady: (callback: (info: { version?: string; path?: string }) => void) => {
     __on("updates:ready", callback, (callback) => (_event: unknown, payload: { version?: string; path?: string }) => callback(payload ?? {}));
   },

@@ -35,25 +35,6 @@ type CustomModelState = {
 
 type ProviderSummary = CustomModelState;
 
-/** 一个「CLI 智能体」定义（10-29 新板块；真相源在 electron/cli-agents.ts 的内置表 + userData/cli-agents.json） */
-type CliAgentEntry = {
-  id: string;
-  name: string;
-  /** coding 编码 CLI / agent 通用智能体 CLI / custom 自建·其他 */
-  category: string;
-  /** PATH 上的可执行名（检测与派活提示都用它） */
-  bin: string;
-  /** 官方安装命令；空串 = 没有可复制的一键命令，按官方文档装 */
-  installCmd: string;
-  docs: string;
-  description: string;
-  promptHint: string;
-  enabled: boolean;
-  /** 派活权限档（11-07）：safe 只读 / standard 可改文件（默认） / full 连命令一起放行 */
-  permissionTier?: "safe" | "standard" | "full";
-  builtin: boolean;
-  createdAt: number;
-};
 type SubAgentEntry = {
   id: string;
   name: string;
@@ -69,6 +50,26 @@ type SubAgentEntry = {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+/** 一个「CLI 智能体」定义（10-29 新板块；真相源在 electron/cli-agents.ts 的内置表 + userData/cli-agents.json） */
+type CliAgentEntry = {
+  id: string;
+  name: string;
+  /** coding 编码 CLI / agent 通用智能体 CLI / custom 自建·其他（分类表由 cliagents:list 一起下发） */
+  category: string;
+  /** PATH 上的可执行名（检测与派活提示都用它） */
+  bin: string;
+  /** 官方安装命令；空串 = 没有可复制的一键命令，按官方文档装 */
+  installCmd: string;
+  docs: string;
+  description: string;
+  promptHint: string;
+  enabled: boolean;
+  /** 派活权限档（11-07）：safe 只读 / standard 可改文件（默认） / full 连命令一起放行 */
+  permissionTier?: "safe" | "standard" | "full";
+  builtin: boolean;
+  createdAt: number;
 };
 
 /** 记忆分层快照（L1.5 坑与纪律 / L0 用户档案 / L1 项目记忆 / L2 每日日志） */
@@ -189,6 +190,10 @@ type DispatchTargetEntry = {
   memberId?: string;
   /** 专家团目标的成员数（不含主理人）：面板「专家总数」用它 +1（主理人）求和。 */
   memberCount?: number;
+  /** CLI 智能体：本机是否已安装（主进程检测；false ⇒ @ 列表里置灰不可选，不隐藏） */
+  installed?: boolean;
+  /** 置灰原因（@ 面板）：kind-off = 本会话没开这一类；cli-missing = 没装 */
+  disabledReason?: "kind-off" | "cli-missing";
 };
 
 /** 被调度产生的临时会话登记记录（侧栏标记 / 归档都读它） */
@@ -396,32 +401,31 @@ type FavoriteItem = {
 };
 type FavoriteDeleteResult = { items: FavoriteItem[]; removed: number };
 
-/* ── 自媒体工作台（11-09）类型面：与 electron/features/media-desk/store.ts 同形 ─────────── */
-type MediaDeskPlan = { title: string; angle: string; points: string[]; coverText: string; shots: Array<{ text: string }> };
-type MediaDeskSettings = {
-  assistant: { baseUrl: string; model: string; apiKey: string };
-  image: { baseUrl: string; model: string; apiKey: string; size: string; quality: string };
-  imageCount: number;
-  shotCount: number;
-  language: string;
-};
-type MediaDeskState = {
-  inspirations: Array<{ id: string; text: string; url?: string; title?: string; desc?: string; image?: string; tags: string[]; createdAt: number }>;
-  posts: Array<{ id: string; title: string; platform: string; kind: string; status: string; inspirationIds: string[]; styleId?: string; plan?: MediaDeskPlan | null; script: string; cover?: string; images: Array<{ id: string; label: string; path: string }>; createdAt: number; updatedAt: number }>;
-  schedules: Array<{ id: string; postId?: string; title: string; when: number; platform: string; status: string }>;
-  styles: Array<{ id: string; name: string; description: string; prompt: string; createdAt: number }>;
-  metrics: Array<{ id: string; postId?: string; date: string; views: number; likes: number; comments: number; shares: number; note?: string }>;
-  settings: MediaDeskSettings;
-  hasAssistantKey?: boolean;
-  hasImageKey?: boolean;
-};
-type MediaDeskSettingsPatch = Partial<MediaDeskSettings> & {
-  assistant?: Partial<MediaDeskSettings["assistant"]>;
-  image?: Partial<MediaDeskSettings["image"]>;
+/* ── 自媒体工作台（11-09）类型面：与 electron/features/media-desk/store.ts 同形 ─────────── */
+type MediaDeskPlan = { title: string; angle: string; points: string[]; coverText: string; shots: Array<{ text: string }> };
+type MediaDeskSettings = {
+  assistant: { baseUrl: string; model: string; apiKey: string };
+  image: { baseUrl: string; model: string; apiKey: string; size: string; quality: string };
+  imageCount: number;
+  shotCount: number;
+  language: string;
+};
+type MediaDeskState = {
+  inspirations: Array<{ id: string; text: string; url?: string; title?: string; desc?: string; image?: string; tags: string[]; createdAt: number }>;
+  posts: Array<{ id: string; title: string; platform: string; kind: string; status: string; inspirationIds: string[]; styleId?: string; plan?: MediaDeskPlan | null; script: string; cover?: string; images: Array<{ id: string; label: string; path: string }>; createdAt: number; updatedAt: number }>;
+  schedules: Array<{ id: string; postId?: string; title: string; when: number; platform: string; status: string }>;
+  styles: Array<{ id: string; name: string; description: string; prompt: string; createdAt: number }>;
+  metrics: Array<{ id: string; postId?: string; date: string; views: number; likes: number; comments: number; shares: number; note?: string }>;
+  settings: MediaDeskSettings;
+  hasAssistantKey?: boolean;
+  hasImageKey?: boolean;
+};
+type MediaDeskSettingsPatch = Partial<MediaDeskSettings> & {
+  assistant?: Partial<MediaDeskSettings["assistant"]>;
+  image?: Partial<MediaDeskSettings["image"]>;
 };
 
 /* 输入框竖条 / 密码本 / 开发日记 / 扩展目录的类型统一定义在 src/lib/rail-ipc-types.d.ts（跨进程单一来源）。 */
-
 /** 写入记忆金字塔的层：user=L0 用户档案 · project=L1 项目记忆 · background=L3 项目背景 · lessons=L2 纪律 */
 type MemoryLayerScope = "user" | "project" | "background" | "lessons";
 type FavoritesToMemoryResult = { ok: boolean; written: number; error?: string };
@@ -447,7 +451,7 @@ type PetPackage = {
   source: "builtin" | "user" | "codex" | "petdex";
   /** 30fps 动画包：每态一对动画 WebP + 静帧（存在时不使用 spritesheet） */
   animationSet?: Record<string, { animatedSrc: string; stillSrc: string }>;
-  /** GIF/动图包：每态一张动图（GIF/动画 WebP/APNG）；单张 gif 会映射全部状态 */
+  /** 动图包：每态一张动图（推荐动画 WebP，GIF/APNG 兼容）；单张 `webp`/`gif` 会映射全部状态 */
   gifSet?: Record<string, string>;
   gifStillSet?: Record<string, string>;
   /** 关节包（机器人宠物）：头像 → 调色板 → 九态姿态图（渲染层用 CSS 动作） */
@@ -815,6 +819,8 @@ interface Window {
     htmlPreviewUnwatch(): Promise<{ ok: boolean }>;
     /* HTML 实时预览：开始监听一个 HTML 文件（可信目录 + 扩展名白名单；120ms 防抖；变更推 harness 事件 html-preview:changed） */
     htmlPreviewWatch(input: { path: string }): Promise<{ ok: boolean; path?: string; error?: string }>;
+    /* P1（10-11）：把本地 HTML/URL 动画在本地渲成 MP4 —— Chromium 抓帧 + 运行时自带 MP4 编码器，零 ffmpeg 依赖；源须为 http(s) 或可信根内 .html */
+    htmlVideoRender(input: { source?: string; seconds?: number; fps?: number; width?: number; height?: number; outPath?: string }): Promise<any>;
     /* 修图执行端（10-09 从 agents:dispatch-call 拆出）：**零凭证**，纯本地 jimp（20 种 ops）。先亮源图 → 换产物 → 自动收起。⛔ 输出不覆盖原图（产出 <名字>-edit.<ext>），天然可回退 */
     imageEdit(input: { path?: string; paths?: string[]; ops: unknown[]; output?: string; format?: string; quality?: number }): Promise<{ ok: boolean; output: string; error?: string }>;
     /* 生图执行端（10-09 从 agents:dispatch-call 拆出）：**唯一需要生图插件凭证的**通道（读 builtin-plugins.json 的 image 段 → 打外部网关）。调用时弹「图像工坊」浮层，完成自动收起。⛔ 与 image-lab:edit 分属两条通道 —— 用户明确要求「生成和编辑的 IPC 彻底分开」 */
@@ -825,6 +831,14 @@ interface Window {
     readImage(path: string): Promise<{ data: Uint8Array; size: number }>;
     /* 在应用内弹「图像工坊」浮层给用户看一张图。只读展示、**不自动收起**（由用户自己关）。零凭证 */
     imageView(input: { path: string; title?: string }): Promise<{ ok: boolean; output: string; error?: string }>;
+    /* 追加一条 */
+    journalAppend(date: string, title: string, body: string): Promise<{ days: JournalDay[]; date: string }>;
+    journalList(): Promise<{ days: JournalDay[]; dir: string; today: string }>;
+    journalRead(date: string): Promise<{ date: string; content: string }>;
+    journalRemove(date: string): Promise<{ days: JournalDay[] }>;
+    /* 整篇覆盖 */
+    journalSave(date: string, content: string): Promise<{ days: JournalDay[]; date: string }>;
+    journalSearch(query: string): Promise<{ hits: { date: string; lines: string[] }[] }>;
     addKnowledgeFiles(input: { workspace?: string; paths?: string[] }): Promise<{ imported: { title: string; id: string }[]; failures: string[] }>;
     addKnowledgeText(input: { workspace?: string; title?: string; text?: string; source?: string }): Promise<KbDocMeta>;
     /* 读取知识库后端：local=项目本地库 / cloud=云端 weknora（MCP） */
@@ -881,6 +895,14 @@ interface Window {
     /* 常驻记忆（L 层）；threadId 仅供注入审计（隔离仍按工作区） */
     readMemoryContext(workspace?: string, includeWorkspace?: boolean, threadId?: string): Promise<{ text: string; stats: { chars: number; over: boolean } }>;
     readMemoryLayers(workspace?: string): Promise<MemoryLayersSnapshot>;
+    /* 记忆原子：列出条目 + 索引（新记忆界面的唯一数据源） */
+    listMemoryAtoms(workspace?: string): Promise<{ ok: boolean; index?: string; stats?: { total: number; active: number; broken: number }; entries?: Array<{ id: string; summary: string; type: string; scope: string; status: string; confidence: string; updated: string; tags: string[]; group?: string; body: string }>; history?: Array<{ at: string; op: string; id: string; by: string; summary: string }>; broken?: string[]; policies?: Array<{ label: string; writable: string[]; supersede: string; render: string; recallLimit: number; inject: string[] }>; error?: string }>;
+    /* 记忆原子：预览「这句话会注入哪些记忆」—— 与真实注入用同一套打分（⛔ 不是前端假过滤） */
+    recallMemoryAtoms(workspace: string, query: string, seat?: string): Promise<{ ok: boolean; text?: string; recalled?: string[]; conflicts?: Array<[string, string]>; error?: string }>;
+    /* 记忆原子：保存一条（手动编辑用；内容相同返回 same，算成功） */
+    saveMemoryAtoms(workspace: string, input: { id: string; scope?: string; summary?: string; body: string; type?: string }): Promise<{ ok: boolean; outcome?: string; error?: string }>;
+    /* 11-11 四个记忆板块的批量作废：逐条复用 memory_forget（标 superseded、文件保留可查、重建索引） */
+    forgetMemoryAtoms(workspace: string, ids: string[]): Promise<{ ok: boolean; done: number; failed: number; error?: string }>;
     writeMemoryLayer(input: { scope: "user" | "background" | "project" | "lessons"; content: string; workspace?: string }): Promise<MemoryLayersSnapshot>;
     listMemory(category?: string): Promise<any[]>;
     /* 一键安装 MCP 记忆服务（主进程用应用自带 node 跑安装器；新电脑无需预装 Node） */
@@ -1055,14 +1077,10 @@ interface Window {
     relayOpenPurchase(): Promise<{ ok: boolean; url: string }>;
     relayOverview(id?: string): Promise<{ baseUrl: string; email: string; balance: number; subscriptions: any[]; keys: any[]; groups: any[]; selectedMode: "balance" | "plan" | null; selectedGroupId: number | null; selectedKeyId: number | null; selectedKeyName: string | null }>;
     relayPaymentPlans(): Promise<any[]>;
-    /* 站点公开设置（sub2api `GET /api/v1/settings/public`，免鉴权）：注册流程站点可配 —— 邮箱验证/邀请码/优惠码/图形验证码/邮箱后缀白名单都以它为准，⛔ 别写死 */
-    relayPublicSettings(input?: { baseUrl?: string }): Promise<{ siteName: string; siteSubtitle: string; siteLogo: string; registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; promoCodeEnabled: boolean; affiliateEnabled: boolean; captchaRequired: boolean; emailSuffixWhitelist: string[]; apiBaseUrl: string; contactInfo: string }>;
     /* 注册中转站账号（sub2api `POST /api/v1/auth/register`）：body 带 verify_code（站点开邮箱验证时必填）与 aff_code（邀请归因）；成功后立刻用同套凭据登录并落多账号库 ⇒ 真正的「注册完自动登录」 */
     relayRegister(input: { baseUrl: string; email: string; password: string; affCode?: string; verifyCode?: string }): Promise<{ email: string; baseUrl: string; balance: number }>;
     relayRemoveAccount(id: string): Promise<{ ok: boolean; activeId: string | null; removed?: boolean; deactivated?: boolean }>;
     relaySelect(input: { mode: "balance" | "plan"; groupId: number | null; keyId?: number; keyName?: string }): Promise<{ ok: boolean }>;
-    /* 注册邮箱验证码（sub2api `POST /api/v1/auth/send-verify-code`）：开了邮箱验证的站点注册必经这一步；图形验证码站点在此返回可读错误，渲染层降级为外链注册 */
-    relaySendCode(input: { baseUrl?: string; email: string }): Promise<{ message: string; countdown: number }>;
     relaySwitchAccount(id: string): Promise<{ ok: boolean; baseUrl: string; email: string }>;
     relayToggleAccount(input: { id: string; disabled: boolean }): Promise<{ ok: boolean; disabled: boolean; deactivated?: boolean }>;
     /* 改已有密钥的分组（上游 PUT /api/v1/keys/:id）。⛔ 上游对 group_id=null 是「不修改」⇒ 解绑成无分组做不到，UI 只提供分组间切换；改当前生效密钥时同步 selectedGroupId */
@@ -1113,6 +1131,11 @@ interface Window {
     screenshotSettingsSet(patch: Partial<ScreenshotSettings>): Promise<ScreenshotSettingsSnapshot>;
     shellOpen(target: string): Promise<void>;
     shellReveal(target: string): Promise<void>;
+    windowClose(): Promise<{ ok: boolean }>;
+    /* 窗口控制（无边框窗自定义按钮；只作用于调用者自己的窗口） */
+    windowMinimize(): Promise<{ ok: boolean }>;
+    windowState(): Promise<{ maximized: boolean }>;
+    windowToggleMaximize(): Promise<{ maximized: boolean }>;
     skillDisciplineGet(): Promise<{ present: boolean; section: string }>;
     /* 内置技能的独立开关（10-06）：读某内置技能**全局**是否生效（设置 → 控制台用；与 skill-pool 同一真相源） */
     getBuiltinSkillSwitch(input: { name: string }): Promise<{ name: string; enabled: boolean; available: boolean; error?: string }>;
@@ -1225,11 +1248,14 @@ interface Window {
     /* 10-13 后台静默下载 / 重启安装 */
     updateRestartInstall(): Promise<{ ok: boolean; error?: string }>;
     updateReveal(filePath: string): Promise<{ ok: boolean }>;
-    /* 读更新源配置（私有仓时代）：仓库 / 只读令牌**掩码** / 自定义清单地址。⛔ 全量令牌绝不回渲染层 */
-    updateSourceGet(): Promise<{ ok: boolean; repo?: string; manifestUrl?: string; hasToken?: boolean; tokenHint?: string; filePath?: string; error?: string }>;
-    /* 写更新源配置（部分更新；空串 = 清除该项）⇒ userData/update-source.json（0600）。发布仓私有：令牌 fine-grained Contents:Read-only 即可；或改走自定义清单（令牌留服务端） */
-    updateSourceSave(patch: { repo?: string; token?: string; manifestUrl?: string }): Promise<{ ok: boolean; repo?: string; manifestUrl?: string; hasToken?: boolean; tokenHint?: string; filePath?: string; error?: string }>;
     getUsername(): Promise<string>;
+    /* 主进程解密后直写剪贴板（明文不返回渲染层） */
+    vaultCopy(id: string): Promise<{ ok: boolean; reason?: string }>;
+    /* 密码本列表（不含明文，只有 hasSecret） */
+    vaultList(): Promise<{ items: VaultItem[]; encrypted: boolean }>;
+    vaultRemove(id: string): Promise<{ items: VaultItem[] }>;
+    /* 保存/更新一条；password 省略=保留原密码 */
+    vaultSave(input: { id?: string; title?: string; username?: string; url?: string; note?: string; password?: string }): Promise<{ items: VaultItem[] }>;
     /* 按顺序合并视频片段成一条成片（整片导出）：先 -c copy，失败回落统一重编码；输出 <workspace>/.drama-canvas/export/ */
     videoConcat(input: { workspace: string; name: string; files: string[]; width?: number; height?: number; fps?: number }): Promise<{ path: string; bytes: number; mode: "copy" | "reencode"; parts: number }>;
     /* 各厂商凭证（userData/video-providers.json） */
@@ -1329,21 +1355,6 @@ interface Window {
     workLogsRead(input: { path: string }): Promise<{ path: string; text: string; bytes: number; mtime: number }>;
     /* 扫各项目的**工作日志与项目记忆**（<项目>/.ppcode-harness/memory/**：长期记忆 / 坑与纪律 / logs 日报 / archive / project）。项目清单来自 rollout 扫出的 cwd 集合。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事 */
     workLogsScan(): Promise<{ projects: Array<{ cwd: string; name: string; memoryDir: string; exists: boolean; bytes: number; files: Array<{ path: string; rel: string; kind: string; bytes: number; mtime: number }> }> }>;
-    /* 密码本列表（不含明文，只有 hasSecret） */
-    vaultList(): Promise<{ items: VaultItem[]; encrypted: boolean }>;
-    /* 保存/更新一条；password 省略=保留原密码 */
-    vaultSave(input: { id?: string; title?: string; username?: string; url?: string; note?: string; password?: string }): Promise<{ items: VaultItem[] }>;
-    vaultRemove(id: string): Promise<{ items: VaultItem[] }>;
-    /* 主进程解密后直写剪贴板（明文不返回渲染层） */
-    vaultCopy(id: string): Promise<{ ok: boolean; reason?: string }>;
-    journalList(): Promise<{ days: JournalDay[]; dir: string; today: string }>;
-    journalRead(date: string): Promise<{ date: string; content: string }>;
-    /* 整篇覆盖 */
-    journalSave(date: string, content: string): Promise<{ days: JournalDay[]; date: string }>;
-    /* 追加一条 */
-    journalAppend(date: string, title: string, body: string): Promise<{ days: JournalDay[]; date: string }>;
-    journalRemove(date: string): Promise<{ days: JournalDay[] }>;
-    journalSearch(query: string): Promise<{ hits: { date: string; lines: string[] }[] }>;
     /* 竖条 + 功能入口菜单的可扩展目录 */
     extensionsCatalog(): Promise<{ rail: RailPanelSpec[]; menu: MenuEntrySpec[]; file: string }>;
     /* 10-29 保存功能入口的自定义设置页条目（整表覆盖 menu 字段，rail 保留；url/settings 白名单，40 条上限） */
@@ -1407,11 +1418,6 @@ interface Window {
     feishuCliRun(input: { args: string[]; cwd?: string }): Promise<{ ok: boolean; code: number; stdout: string; stderr: string; error?: string }>;
     /* 10-30 任务监控：按会话读每轮技能/MCP/插件/产物（⛔ 只认传入的 threadId） */
     readTaskMonitor(threadId?: string): Promise<{ threadId: string; turns: any[]; ongoingTurnId: string }>;
-    windowClose(): Promise<{ ok: boolean }>;
-    /* 窗口控制（无边框窗自定义按钮；只作用于调用者自己的窗口） */
-    windowMinimize(): Promise<{ ok: boolean }>;
-    windowState(): Promise<{ maximized: boolean }>;
-    windowToggleMaximize(): Promise<{ maximized: boolean }>;
     /* 10-31：会话笔名全量快照（threadId → alias/上级/寓意） */
     sessionAliasSnapshot(): Promise<Record<string, any>>;
     /* 11-01：会话改名（= 改笔名，唯一入口）—— 校验后落盘 + 写穿引擎会话名 + 广播快照；allowDuplicate 供系统自动命名用 */
@@ -1438,6 +1444,8 @@ interface Window {
     harnessTeamSetAvatar(groupId: string, memberId: string, avatar: string): Promise<{ ok: boolean; group?: any; error?: string }>;
     /* 团队模式 P0 */
     harnessTeamSetGuard(groupId: string, guard: Record<string, unknown>): Promise<{ ok: boolean; group?: any; issues?: string[] }>;
+    /* 团队模式：清空群聊天记录（只清投影日志，子会话不动） */
+    harnessTeamClearMessages(groupId: string): Promise<{ ok: boolean; cleared: number; error?: string }>;
     /* 团队模式 P0 */
     harnessTeamProject(sources: unknown): Promise<{ rows: any[] }>;
     /* 团队模式 P0b（群消息日志） */
@@ -1450,12 +1458,18 @@ interface Window {
     harnessTeamDelete(groupId: string): Promise<{ ok: boolean; id?: string; error?: string; removedThreads?: number; totalThreads?: number; failed?: string[] }>;
     /* 团队模式：群记忆 / 群文件 */
     harnessTeamSetMemory(groupId: string, text: string): Promise<{ ok: boolean; group?: any; issues?: string[]; error?: string }>;
+    /* 团队模式：群项目地址（派活时作为子会话 cwd） */
+    harnessTeamSetWorkspace(groupId: string, workspace: string): Promise<{ ok: boolean; group?: any; error?: string }>;
+    /* 团队模式：本群此刻正在跑的伙伴（面板重开时恢复处理中/已输出） */
+    harnessTeamRunning(groupId: string): Promise<{ ok: boolean; runs: any[]; error?: string }>;
     /* 团队模式：群记忆 / 群文件 */
     harnessTeamSetFiles(groupId: string, files: unknown): Promise<{ ok: boolean; group?: any; issues?: string[]; error?: string }>;
     /* 团队模式：上下级（委派白名单） */
     harnessTeamSetManager(groupId: string, memberId: string, managerId: string): Promise<{ ok: boolean; group?: any; changed?: boolean; error?: string; reason?: string }>;
     /* 团队模式：管理员（普通群「用户没 @ 时由谁接话推进进度」；专家团群不启用，由团主理人兜底） */
     harnessTeamSetAdmin(groupId: string, memberId: string): Promise<{ ok: boolean; group?: any; issues?: string[]; error?: string }>;
+    /* 团队模式：群内任务进度（总数/未完成/已完成/在等回话）—— 群头部进度条用它，⛔ 别再让用户靠读消息猜进度 */
+    harnessTeamGroupProgress(groupId: string): Promise<{ ok: boolean; total?: number; open?: number; done?: number; waiting?: number; items?: Array<{ id: string; title: string; toName: string; fromName: string; at: number }>; error?: string }>;
     /* 团队模式：记忆条目 / 菜单 / 用量账本 */
     harnessTeamAddNote(groupId: string, note: Record<string, unknown>): Promise<{ ok: boolean; group?: any; issues?: string[]; dropped?: string[]; error?: string }>;
     /* 团队模式：记忆条目 / 菜单 / 用量账本 */
@@ -1476,12 +1490,6 @@ interface Window {
     harnessTeamSetSchedule(groupId: string, list: unknown): Promise<{ ok: boolean; group?: any; error?: string }>;
     /* 团队模式：立刻运行一条定时任务 */
     harnessTeamRunSchedule(groupId: string, scheduleId: string): Promise<{ ok: boolean; sent?: number; error?: string; runKind?: string }>;
-    /* 团队模式：清空群聊天记录（只清投影日志，子会话不动） */
-    harnessTeamClearMessages(groupId: string): Promise<{ ok: boolean; cleared: number; error?: string }>;
-    /* 团队模式：群项目地址（派活时作为子会话 cwd） */
-    harnessTeamSetWorkspace(groupId: string, workspace: string): Promise<{ ok: boolean; group?: any; error?: string }>;
-    /* 团队模式：本群此刻正在跑的伙伴（面板重开时恢复处理中/已输出） */
-    harnessTeamRunning(groupId: string): Promise<{ ok: boolean; runs: any[]; error?: string }>;
     /* 团队模式：记忆条目 / 菜单 / 用量账本 */
     harnessTeamLogUsage(entry: Record<string, unknown>): Promise<{ ok: boolean; count?: number; error?: string }>;
     /* 团队模式：记忆条目 / 菜单 / 用量账本 */
@@ -1494,20 +1502,41 @@ interface Window {
     harnessTeamThreadUsage(threadId: string): Promise<{ ok: boolean; tokens?: { input: number; cached: number; output: number; total: number } | null; error?: string }>;
     /* 11-09 自媒体工作台：开源 dsh-media-desk 原样嵌入；返回本地服务地址（只监听 127.0.0.1），渲染层用 iframe 打开 */
     mediaDeskEndpoint(): Promise<string>;
+    /* 11-11 产物归档：只读清单（按 日期-任务短名 分目录），设置页「产物归档」用它 */
+    listArtifactArchives(workspace?: string): Promise<{ ok: boolean; rows?: Array<{ dir: string; task: string; at: number; source?: string; note?: string; path?: string; files: Array<{ name: string; from: string; bytes: number }> }>; error?: string }>;
+    /* 站点公开设置（sub2api `GET /api/v1/settings/public`，免鉴权）：注册流程站点可配 —— 邮箱验证/邀请码/优惠码/图形验证码/邮箱后缀白名单都以它为准，⛔ 别写死 */
+    relayPublicSettings(input?: { baseUrl?: string }): Promise<{ siteName: string; siteSubtitle: string; siteLogo: string; registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; promoCodeEnabled: boolean; affiliateEnabled: boolean; captchaRequired: boolean; emailSuffixWhitelist: string[]; apiBaseUrl: string; contactInfo: string }>;
+    /* 注册邮箱验证码（sub2api `POST /api/v1/auth/send-verify-code`）：开了邮箱验证的站点注册必经这一步；图形验证码站点在此返回可读错误，渲染层降级为外链注册 */
+    relaySendCode(input: { baseUrl?: string; email: string }): Promise<{ message: string; countdown: number }>;
+    /* 读更新源配置（私有仓时代）：仓库 / 只读令牌**掩码** / 自定义清单地址。⛔ 全量令牌绝不回渲染层 */
+    updateSourceGet(): Promise<{ ok: boolean; repo?: string; manifestUrl?: string; hasToken?: boolean; tokenHint?: string; filePath?: string; error?: string }>;
+    /* 写更新源配置（部分更新；空串 = 清除该项）⇒ userData/update-source.json（0600）。发布仓私有：令牌 fine-grained Contents:Read-only 即可；或改走自定义清单（令牌留服务端） */
+    updateSourceSave(patch: { repo?: string; token?: string; manifestUrl?: string }): Promise<{ ok: boolean; repo?: string; manifestUrl?: string; hasToken?: boolean; tokenHint?: string; filePath?: string; error?: string }>;
 /* ═══ gen:end ═══ */
 
     /** 桌面宠物状态推送（主进程归约九态 → 浮窗；浮窗首帧另用 petState() 补水） */
     onPetSignal(listener: (signal: PetSignal) => void): () => void;
 
+
     /** 桌面宠物配置推送（当前宠物包 + 设置）：换宠物 / 改缩放时用它让已开着的浮窗立刻跟上 */
     onPetConfig(listener: (config: PetStatus) => void): () => void;
     onPetHover(listener: (inside: boolean) => void): () => void;
 
+
     onQueueTimerDue(listener: (event: { threadId: string; queuedSubmissionId: string }) => void): () => void;
+
 
     onRemotePairRequest(handler: (request: { rid: string; deviceId: string; name: string }) => void): () => void;
 
+
     onBotPairRequest(handler: (request: { rid: string; channel: string; chatId: string; name: string }) => void): () => void;
+    /* 关闭确认弹窗（10-13）：主进程拦截 X 后推「要不要关」，渲染层画应用内卡片并回包 */
+    onCloseConfirmAsk(handler: (payload: { busy: number; appName: string }) => void): () => void;
+
+    /* 10-16 主题变更广播：主进程 theme:apply 后推给所有窗口 ——
+       独立会话弹窗的界面主题实时跟随主界面（preload 手写桥，不在 manifest 清单） */
+    onThemeChanged(listener: (theme: string) => void): () => void;
+
 
 
 
@@ -1529,13 +1558,17 @@ interface Window {
 
 
 
+
     onRemoteCommand(listener: (payload: { command: string; device: { id: string; name: string } }) => void): () => void;
+
 
     onRemoteDevice(listener: (device: { id: string; name: string }) => void): () => void;
 
 
 
+
     onConnectorOAuth(listener: (event: ConnectorOAuthEvent) => void): () => void;
+
 
     /** 粘贴的长文本（超过阈值）落盘成 .txt，返回绝对路径；空文本返回 null。按内容哈希去重。 */
 
@@ -1548,7 +1581,9 @@ interface Window {
 
     onSshData(listener: (payload: { data: string }) => void): () => void;
 
+
     onSshExit(listener: (payload: { code?: number; signal?: string; error?: string }) => void): () => void;
+
 
     /** 本地协议桥状态：引擎只发 Responses，上游只支持 Chat 时由桥转换（port/running/各 provider 实际协议） */
 
@@ -1560,6 +1595,7 @@ interface Window {
 
 
     onRuntimeProgress(listener: (event: { id: string; message?: string; percent?: number; stage?: string; speed?: string; done?: boolean; failed?: boolean; auto?: boolean; /** 已取消（10-07）：主进程杀完子进程清完临时文件后推来的收尾事件，≠ failed */ cancelled?: boolean }) => void): () => void;
+
     /** 记忆后端 / 云端开通状态变化推送（10-20）：手写桥（非 gen 段）。主进程在变化点广播，
      *  界面订阅后重新读一次状态：切后端、确认开通、登录 / 登出 / 换账号。 */
     onMemoryBackendChanged(listener: (status: { backend: "builtin" | "mcp" | "cloud"; effective: "builtin" | "mcp" | "cloud"; installed: boolean; serverPath: string; installRoot: string; installCommand: string; fallbackReason: string | null; cloudActivation: { state: "active" | "inactive" | "unknown"; reason: string; entitled: boolean; applied: boolean; checkedAt: number; reasonText: string } }) => void): () => void;
@@ -1577,14 +1613,18 @@ interface Window {
     /** 3D 预览弹窗打开推送（model-viewer 域，10-05）：手写桥（非 gen 段），引擎 preview_3d 触发 */
     onModelViewerOpen(listener: (event: { path: string; title: string }) => void): () => void;
 
+
     /** 壁纸应用推送（wallpaper 域，10-06）：手写桥，引擎 wallpaper_set 触发 */
     onWallpaperApply(listener: (event: { mode: string; pattern: string; opacity: number; image: string }) => void): () => void;
+
 
     /** 图像工坊浮层推送（image-lab 域，10-09）：手写桥（非 gen 段），单通道三态
      *  open（弹出）/ update（换状态与图）/ close（收起）。引擎 image_generate / image_edit / image_view 触发。 */
     onImageLabEvent(listener: (event: { phase: "open" | "update" | "close"; taskId: string; mode?: "generate" | "edit"; title?: string; status?: "running" | "done" | "error"; images?: string[]; note?: string }) => void): () => void;
 
+
     onTerminalData(listener: (id: string, data: string) => void): () => void;
+
 
     /** 「当前能力链路」：同一件事有多个后端时，现在实际走哪条（唯一来源见 electron/capability-registry.ts） */
 
@@ -1607,7 +1647,9 @@ interface Window {
     /** 引擎重启被闸门推迟/已补做：渲染层提示「改动将在当前任务结束后生效」。 */
     onEngineRestartDeferred(listener: (event: { waiting: boolean; reason?: string; activeTurns?: number }) => void): () => void;
 
+
     onEngineUpdateProgress(listener: (event: { stage: string; detail?: string; percent?: number }) => void): () => void;
+
 
     /** 截图完成（快捷键或设置页「试试截图」触发）。**渲染层唯一插入路径**：
      *  成功截图一定会走这里 ⇒ 输入框把图放进草稿；不要再按 invoke 的返回值各插一次。 */
@@ -1615,17 +1657,15 @@ interface Window {
 
 
 
+
     onEvent(listener: (event: CodexEvent) => void): () => void;
+
 
     onChannelBotEvent(listener: (event: any) => void): () => void;
 
-    onHarnessEvent(listener: (event: any) => void): () => void;
-    /* 10-13 关闭确认弹窗：主进程推送「有任务在跑」时弹应用内确认卡（preload 手写桥，不在 manifest 清单） */
-    onCloseConfirmAsk(handler: (payload: { busy: number; appName: string }) => void): () => void;
 
-    /* 10-16 主题变更广播：主进程 theme:apply 后推给所有窗口 ——
-       独立会话弹窗的界面主题实时跟随主界面（preload 手写桥，不在 manifest 清单） */
-    onThemeChanged(listener: (theme: string) => void): () => void;
+    onHarnessEvent(listener: (event: any) => void): () => void;
+
 
     // ---- 语音通话（本机离线识别与合成，旁挂新增） ----
 
@@ -1648,10 +1688,13 @@ interface Window {
 
 
 
+
     onVoiceEvent(listener: (event: any) => void): () => void;
 
 
+
     onVoiceHotkey(listener: (event: { accelerator: string }) => void): () => void;
+
 
 
     /** 只回「命中没命中」：识别文本与匹配都在主进程做 */
@@ -1665,13 +1708,12 @@ interface Window {
     /** 订阅下载进度（0~1），返回取消订阅函数 */
     updateOnProgress(callback: (percent: number) => void): () => void;
 
+
     /**
-     * 订阅「更新包已就绪」（10-13 后台静默下载完成）。
+     * 订阅「更新包已就绪」（10-12 后台静默下载完成）。
      * ⛔ 与设置页无关 —— 用户可能压根没打开设置页，只能靠事件弹窗。
      */
     updateOnReady(callback: (info: { version?: string; path?: string }) => void): () => void;
-
-
   };
 }
 

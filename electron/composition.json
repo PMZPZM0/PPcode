@@ -352,6 +352,13 @@
       "config": null
     },
     {
+      "id": "html-video",
+      "enabled": true,
+      "file": "features/html-video-ipc.ts",
+      "export": "htmlVideoFeature",
+      "config": null
+    },
+    {
       "id": "image-lab",
       "enabled": true,
       "file": "features/image-lab.ts",
@@ -790,6 +797,13 @@
       "enabled": true,
       "file": "features/harness-team-ipc.ts",
       "export": "harnessTeamFeature",
+      "config": null
+    },
+    {
+      "id": "artifact",
+      "enabled": true,
+      "file": "features/artifact-archive-ipc.ts",
+      "export": "artifactArchiveFeature",
       "config": null
     }
   ]

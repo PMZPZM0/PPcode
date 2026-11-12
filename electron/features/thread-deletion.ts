@@ -24,7 +24,7 @@ import { healRolloutLineageAsync, purgeRolloutFilesAsync } from "../rollout-pool
 //   而 thread/list 带 rollout 兜底扫描（见下面的 thread/list 分支），它把「索引里没有、
 //   磁盘上有」的会话当权威源合回侧栏 ⇒ 删掉的会话重启后又冒出来。
 //   用户机实测：state 库 11 条、磁盘 18 个 rollout，其中 12 条「已从索引删除但文件还在」，
-//   侧栏那 7 个分组名与它们的 cwd 一一对应（D:\2 四条、D:\PPcode 五条…）。
+//   侧栏那 7 个分组名与它们的 cwd 一一对应（D:\2 四条、D:\Codex Harness Desktop 五条…）。
 //
 //   收尾两件事，缺一不可：
 //     ① 删掉磁盘 rollout —— 真正的清理，不删就永远会复活；
@@ -37,7 +37,7 @@ import { healRolloutLineageAsync, purgeRolloutFilesAsync } from "../rollout-pool
 // ⛔ 不能写成模块顶层 `const deletedThreadsFile = path.join(app.getPath("userData"), …)`（09-22 code review 抓出）：
 //    本模块在 main.ts 的 **import 期**求值，而 `app.setPath("userData", …)` 是 main.ts 的**模块体语句**
 //    （编译产物里 require 在前、setPath 在后）⇒ 顶层求值拿到默认 userData `%APPDATA%\<package.json name>`，
-//    而应用真正用的是 setPath 之后的 `%APPDATA%\PPcode` ⇒ 墓碑会写进另一个目录，
+//    而应用真正用的是 setPath 之后的 `%APPDATA%\Codex Harness Desktop` ⇒ 墓碑会写进另一个目录，
 //    旧目录里已有的墓碑被忽略 = 「删掉的会话重启复活」这个 bug 会复发。惰性求值（同 electron/personalization.ts 约定）。
 function deletedThreadsFile(): string {
   return path.join(app.getPath("userData"), "deleted-threads.json");
@@ -160,6 +160,60 @@ async function forgetDeletedThreads(ids: string[]) {
   if (!changed) return;
   deletedThreadOrder = deletedThreadOrder.filter((value) => !targets.has(value));
   await fs.writeFile(deletedThreadsFile(), JSON.stringify(deletedThreadOrder, null, 2), "utf8").catch(() => undefined);
+}
+
+/**
+ * ⛔⛔ 11-12 用户令「后续也不准有残留」：每次启动按**墓碑**对账一次，
+ * 把任何以已删 threadId 为键的落盘清掉。这是删群同步清理之外的兜底，
+ * 也覆盖旧版本删群留下的历史孤儿（实测曾留 6 个账本 + 64 条线程登记）。
+ * ⛔ 幂等：只动墓碑命中的条目；⛔ 不动 rollout（血缘守卫可能故意保留源文件）。
+ */
+export async function reconcileDeletedThreadArtifacts(): Promise<{ runs: number; keys: number }> {
+  await loadDeletedThreads();
+  const ids = new Set([...deletedThreadIds].map(String));
+  if (!ids.size) return { runs: 0, keys: 0 };
+  const root = app.getPath("userData");
+  let runs = 0;
+  let keys = 0;
+  const runsDir = path.join(root, "team-runs");
+  try {
+    for (const name of await fs.readdir(runsDir)) {
+      if (!name.endsWith(".json") || !ids.has(name.slice(0, -5))) continue;
+      await fs.unlink(path.join(runsDir, name)).catch(() => undefined);
+      runs += 1;
+    }
+  } catch { /* 目录不存在 = 已清 */ }
+  /* 以 threadId 为键的登记：thread-runtime / session-workspaces(records) /
+     role-memory-index / team-threads(threads|leads|members)。 */
+  for (const file of ["thread-runtime.json", "session-workspaces.json", "role-memory-index.json", "team-threads.json"]) {
+    const p = path.join(root, file);
+    try {
+      const raw = JSON.parse(await fs.readFile(p, "utf8")) as Record<string, any>;
+      let changed = 0;
+      const scopes = file === "session-workspaces.json" ? [raw.records]
+        : file === "team-threads.json" ? [raw.threads, raw.leads]
+          : [raw];
+      for (const obj of scopes) {
+        if (!obj || typeof obj !== "object") continue;
+        for (const k of Object.keys(obj)) {
+          if (!ids.has(k)) continue;
+          delete obj[k];
+          changed += 1;
+        }
+      }
+      if (file === "team-threads.json" && raw.members && typeof raw.members === "object") {
+        for (const [k, v] of Object.entries(raw.members)) {
+          if (!ids.has(String(v))) continue;
+          delete (raw.members as Record<string, unknown>)[k];
+          changed += 1;
+        }
+      }
+      if (!changed) continue;
+      await fs.writeFile(p, JSON.stringify(raw), "utf8");
+      keys += changed;
+    } catch { /* 文件不存在 / 损坏：跳过，不阻塞启动 */ }
+  }
+  return { runs, keys };
 }
 
 export { DELETED_THREADS_LIMIT, deletedThreadIds, forgetDeletedThreads, healRolloutLineage, loadDeletedThreads, purgeDeletedThread, rememberDeletedThread };

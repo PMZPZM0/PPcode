@@ -207,22 +207,25 @@ ok(
 );
 
 /* ── ⑪ 首启登录页也有「云账号」入口（用户 10-16 实测「我还没看见登录界面」）──
-   ⛔ 只做设置页不够：**首启看到的是 LoginScreen**，那里没有入口 = 新用户根本发现不了这套能力。 */
+   ⛔ 只做设置页不够：**首启看到的是 LoginScreen**，那里没有入口 = 新用户根本发现不了这套能力。
+   ⛔ 品牌差异（PPcode）：主仓用顶层 `mode` + 「云账号」选项卡；PPcode 是两段式登录方式的
+   `method`（中转站 / 云管理账号）。这条只判「首启有云入口 + 选中态绑 expanded」，两种形态都收。 */
 const loginSrc = read("src/features/auth/LoginScreen.tsx");
 ok(
-  /mode === "cloud"/.test(loginSrc) && /"openai" \| "cloud"/.test(loginSrc),
-  '首启登录页有 cloud 模式（mode 联合类型含 "cloud"）',
+  (/mode === "cloud"/.test(loginSrc) && /"openai" \| "cloud"/.test(loginSrc))
+  || (/method === "cloud"/.test(loginSrc) && /"relay" \| "cloud"/.test(loginSrc)),
+  '首启登录页有 cloud 模式（主仓 mode / PPcode method，品牌差异）',
 );
 ok(
-  /login-option-title">云账号</.test(loginSrc),
-  "首启登录页有「云账号」选项卡（缺了 ⇒ 新用户看不到这套能力）",
+  /login-option-title">云账号/.test(loginSrc) || /<b>云管理账号<\/b>/.test(loginSrc),
+  "首启登录页有「云账号 / 云管理账号」入口（缺了 ⇒ 新用户看不到这套能力）",
 );
 /* ⛔⛔ 10-31 用户截图（PPcode 登录页）：「没有选中的时候不要亮着」——
-   登录方式卡片的选中态原来只看 `mode`（默认 pptoken），所以**收起态第一张永远是亮的**，
+   登录方式卡片的选中态原来只看当前方式（默认 pptoken / relay），所以**收起态第一张永远是亮的**，
    看起来像已经被选中、可表单根本没展开。选中态必须与 `expanded` 同时成立。 */
 ok(
-  !/\$\{mode === "(pptoken|openai|relay|custom|cloud)" \? "active" : ""\}/.test(loginSrc)
-  && (loginSrc.match(/expanded && mode === "(pptoken|openai|relay|custom|cloud)" \? "active"/g) || []).length >= 5,
+  !/\$\{(mode|method) === "(pptoken|openai|relay|custom|cloud)" \? "(active|on)" : ""\}/.test(loginSrc)
+  && (loginSrc.match(/expanded && (mode|method) === "(pptoken|openai|relay|custom|cloud)" \? "(active|on)"/g) || []).length >= 2,
   "登录方式卡的选中态绑定 expanded：收起态一张都不亮（只列选项时不该有\"已选中\"的观感）",
 );
 /* ⛔ 同轮：云管理登录页不要放外链注册入口（用户：「注册界面有就行」）——

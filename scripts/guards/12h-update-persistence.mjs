@@ -98,6 +98,8 @@ ok(/detached: true/.test(rs) && /\.unref\(\)/.test(rs),
   "安装包 detached + unref（不 detach 会等它结束 = 永远不退出）");
 ok(!/^\s*(await\s+)?server\??\.stop/m.test(rs),
   "⛔ 不在这里手写引擎收尾（before-quit 已统一做，重复执行反而出事；且 server 上无 stop 方法）");
+ok(/spawn\(lastVerifiedUpdatePath, \["--updated", "\/S"\]/.test(rs),
+  "完整包必须带 --updated + /S（缺 /S 会弹交互向导——用户实测「应用关了、安装提醒一闪、版本没变」；缺 --updated 装完不会自动拉起新版本）");
 ok(/path_not_verified|no_verified_update/.test(ui.slice(0, ui.indexOf('handle("updates:restart-install"'))) ||
    /lastVerifiedUpdatePath/.test(rs),
   "restart-install 只认主进程已校验过的那个包（不接受渲染层传路径）");

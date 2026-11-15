@@ -193,8 +193,12 @@ export const updatesFeature = defineFeature<null>({
       try {
         // ⚠️ 等一小会儿让调用方（渲染层）先把 toast 收起来，否则退出瞬间还在闪。
         await new Promise((r) => setTimeout(r, 120));
+        /* ⛔⛔ 11-15（同步主仓 809b8fa93）：`--updated` + `/S` 两个参数缺一不可 ——
+           `/S` = 静默（本仓 nsis.oneClick=false，不带它就会弹交互式 NSIS 向导 + UAC，
+           而应用同时退出 ⇒ 向导被挡在后面/被当垃圾关掉 ⇒ 用户看到「应用关了、提醒一闪、版本没变」）；
+           `--updated` = 告诉 electron-builder 的 installer.nsh「这是覆盖更新」，装完自动拉起新版本。 */
         // ⛔ spawn 不 wait：安装包是独立进程，等它结束就等于永远不退出。
-        spawn(lastVerifiedUpdatePath, [], { detached: true, stdio: "ignore" }).unref();
+        spawn(lastVerifiedUpdatePath, ["--updated", "/S"], { detached: true, stdio: "ignore" }).unref();
         // ⛔ 引擎与各子进程的收尾**不在这里手写**：`app.quit()` 会触发 main.ts 的
         //    `before-quit`，那里已经统一做 cleanupAll / 停看门狗 / 断 SSH / 销毁语音工作线程。
         //    （原先这里写了一个 `server.stop?.().catch()` —— `server` 上根本没有 stop 方法，

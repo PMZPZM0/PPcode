@@ -408,6 +408,10 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     updateRestarting,
     dismissUpdateReady,
     restartAndInstall,
+    /* 11-15（同步主仓 0c0e31f5a）：自动安装（默认开）—— 提示条改成「空闲时自动安装并重启」。 */
+    autoInstallUpdate,
+    setAutoInstallUpdate,
+    autoInstallBlockedBy,
     userAvatar,
     username,
     viewTab,
@@ -1073,6 +1077,13 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                       <div className="account-menu-row"><span className="account-menu-label">构建</span><span className="account-menu-value mono" title="构建期写进包体的指纹（YYYYMMDD-HHmm）">{buildStamp}</span></div>
                       <div className="account-menu-row"><span className="account-menu-label">产物</span><span className="account-menu-value mono" title="正在执行的渲染层 bundle（含内容 hash）">{bundleFile}</span></div>
                       <div className="account-menu-row"><span className="account-menu-label">更新地址</span><span className="account-menu-value">GitHub Releases</span></div>
+                      {/* 11-15：自动安装（默认开）——下载完成后在空闲时静默装并重启，不需要用户点。 */}
+                      <div className="account-menu-row"><span className="account-menu-label">自动安装</span>
+                        <span className="update-mode-switch" role="group" aria-label="自动安装更新">
+                          <button type="button" className={autoInstallUpdate ? "active" : ""} onClick={() => { setAutoInstallUpdate(true); showToast("已开启自动安装更新", "下载完成后会在你空闲时自动安装并重启"); }}>自动</button>
+                          <button type="button" className={!autoInstallUpdate ? "active" : ""} onClick={() => { setAutoInstallUpdate(false); showToast("已关闭自动安装更新", "改回手动确认：更新就绪后点「重启安装」"); }}>手动</button>
+                        </span>
+                      </div>
                     </div>
                     <button className="account-menu-item" onClick={() => void copyBuildDiagnostics()}>
                       <ClipboardList size={15} /><span>复制诊断信息</span>
@@ -1119,6 +1130,8 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
       <UpdateReadyToast
         version={updateReadyVersion}
         restarting={updateRestarting}
+        auto={autoInstallUpdate}
+        blockedBy={typeof autoInstallBlockedBy === "function" ? autoInstallBlockedBy() : ""}
         onCancel={dismissUpdateReady}
         onRestartInstall={() => void restartAndInstall()}
       />

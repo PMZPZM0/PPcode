@@ -333,6 +333,16 @@ nuphus 的桌面定位是「截屏 → 本地 OCR → 像素坐标」，窗口�
 - ⛔ **个性化皮肤已整体删除**（10-01 用户令；09-30 首版单品散绑 → 10-01 套装化 → 当天删）。守卫【234】是负向断言防复活（皮肤文件 / 换肤分支不许回来）；其中「胶囊开关全仓统一走共享 ToggleSwitch」一条与皮肤无关，**独立有效**（新开关不许写散装实现）。localStorage 旧状态由组件库页模块体清理（`ui-skin-state-v2` / `ui-skin-bindings-v1`）。
 - 守卫【235】7 条钉住组件库全部接线。
 
+### 🎨 设计参考库（awesome-design-md；`electron/design-md-library.ts` + `features/design-md-ipc.ts` + `src/features/design-library/`，11-15 立）
+
+用户给了 <https://github.com/VoltAgent/awesome-design-md>（84 份真实网站的品牌 DESIGN.md，Google Stitch 格式：YAML tokens + 主题/排版/组件/布局/Do&Don't/响应式/迭代指南，MIT）：
+
+- **数据随包**：`resources/design-md/library.json`（生成物，`node scripts/sync-design-md.mjs --force` 从上游**整包 tarball** 重建，镜像序 gh-proxy → ghfast → 直连；⛔ 不逐个打 GitHub API）+ `LICENSE` 原文。打包走 `build.files` 的 `resources/design-md/**`（⛔ 不另占 extraResources）。
+- **三类出口同一份实现**：Codex 工具 **`design_md`**（`list` / `search` / `get`，走 `harness_tools` 网关；常驻指令**第 20 条**）、设置 → 能力与内容 →「**设计参考**」页（`design-library`：搜索 + **分类下拉** + 卡片分页；详情默认**中文导读**，可切「英文原文」；复制 / 导出 / 交给 Codex 一律英文原文；导出目标可选项目） 、内置技能 **`design-md-library`**（+ 中文导读）。
+- **导出落点** = `<项目>/design-references/<slug>.md`，⛔ 不覆盖项目根 `DESIGN.md`；「交给 Codex」= 填进输入框，不自动发送。
+- ⛔ **合规**：MIT 原文与版权头随包；只作**风格参考** —— 不复制品牌 logo / 商标 / 图片 / 专有字体。工具描述、技能、页面文案、`THIRD_PARTY_NOTICES.md` 四处都写明。
+- 判据：守卫 **`12bs-design-md`（67 条：数据真值与中文导读全覆盖 / 三通道 / slug 白名单 / 工具+指令+技能 / 页面五处注册 / 中英文预览与色板分组真值表 / 分类下拉与导出项目选择 / 打包与合规）** + 验收 **`design-library`（8 条：84 份加载（中文导读 + 分类下拉）/ 搜索 / 中文导读色值 / 英文原文页签 / 复制回执 / 导出目标可选 / 真导出 / 交给 Codex 填输入框）**。
+
 ## 🧹 交付卫生（2026-11-08 用户令，硬性，守卫组 14）
 
 > 全文在 `docs/ARCHITECTURE-RULES.md` §12；这里只放**改代码时当场要守**的部分。
@@ -786,6 +796,7 @@ GitHub Release Notes、`whats-new-notes.ts` 要点的**唯一权威数据源**�
 不重翻 commit。只追加不改写（勘误另起行）；格式与分工说明见该文件头部。漏记 = 工作未完成。
 
 - 近期功能性变更（宿主行为，引擎交互相关）
+- 11-15 设计参考库：84 份品牌 DESIGN.md 随包（工具 design_md + 设置页「设计参考」浏览/预览/导出/交给 Codex）（见「### 🎨 设计参考库」）
 - 10-21 长会话滚动条按回合总数撑高 + 按页水合（滚轮不跳 / 不回弹；顶部虚拟占位 + layout effect 首帧锚点补偿）
 - 10-21 长会话滑动窗口（全量加载后仍只挂 5 个回合，切会话不再变慢）+ 刻度尺当前阅读位置波浪 / 绿线等长可点击
 - 10-22 办公室恢复为原像素卡通办公室（用户「删了，还是做成原来那种卡通人物+办公室场景」；照片/3D 白板退役）

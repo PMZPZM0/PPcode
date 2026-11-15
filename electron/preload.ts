@@ -1150,6 +1150,12 @@ contextBridge.exposeInMainWorld("codex", {
   relayPublicSettings: (input?: { baseUrl?: string }) => __ipc("relay:public-settings", 0, [input]),
   /* 注册邮箱验证码（sub2api `POST /api/v1/auth/send-verify-code`）：开了邮箱验证的站点注册必经这一步；图形验证码站点在此返回可读错误，渲染层降级为外链注册 */
   relaySendCode: (input: { baseUrl?: string; email: string }) => __ipc("relay:send-code", 1, [input]),
+  /* 11-15 设计参考库（VoltAgent/awesome-design-md，MIT，84 份品牌 DESIGN.md）：列表/搜索不带正文，设置页「设计参考」与工具 design_md 共用 */
+  designMdList: (input: { category?: string; query?: string; limit?: number }) => __ipc("design-md:list", 1, [input]),
+  /* 11-15 取一份完整 DESIGN.md（YAML tokens + 设计规则原文）；slug 白名单校验，取不到返回 null */
+  designMdGet: (slug: string) => __ipc("design-md:get", 1, [slug]),
+  /* 11-15 把设计规范导出到项目目录（design-references/<slug>.md；⛔ 不覆盖项目自己的 DESIGN.md；目录须为绝对路径） */
+  designMdExport: (input: { slug?: string; dir?: string }) => __ipc("design-md:export", 1, [input]),
   /* ═══ gen:end ═══ */
 
   /* 桌面宠物：主进程归约好的九态推送（浮窗订阅它驱动动画；首帧另用 petState() 补水）。

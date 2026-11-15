@@ -343,6 +343,10 @@ nuphus 的桌面定位是「截屏 → 本地 OCR → 像素坐标」，窗口�
 - ⛔ **合规**：MIT 原文与版权头随包；只作**风格参考** —— 不复制品牌 logo / 商标 / 图片 / 专有字体。工具描述、技能、页面文案、`THIRD_PARTY_NOTICES.md` 四处都写明。
 - 判据：守卫 **`12bs-design-md`（74 条：数据真值与中文导读全覆盖 / 三通道 / slug 白名单 / 工具+指令+技能 / 页面五处注册 / 中英文预览与色板分组真值表 / 分类下拉与导出项目选择 / 打包与合规）** + 验收 **`design-library`（8 条：84 份加载（中文导读 + 分类下拉）/ 搜索 / 中文导读色值 / 英文原文页签 / 复制回执 / 导出目标可选 / 真导出 / 交给 Codex 填输入框）**。
 
+### 🖼 PhotoCraft 专业图像后期（11-15）
+
+（详见主仓同节；本仓同构。）按需下载官方便携包（约 137MB，镜像序 + SHA256SUMS）→ 开发工具「PhotoCraft 图像编辑」卡；Codex 工具 `photocraft`（status/commands/info/run/convert/batch/open，命令白名单 + 路径闸 + 不覆盖原图）；安装后写 `[mcp_servers.photocraft]`（roots=userData/photocraft-io，harness 所属段，卸载直接删段并重启）；图片卡「在 PhotoCraft 中编辑」打开原生窗口。⛔ 只下载官方发行物、不重打包、不冒充 ArtCraft 官方。判据：守卫 12bt 48 条 + 验收 photocraft。
+
 ## 🧹 交付卫生（2026-11-08 用户令，硬性，守卫组 14）
 
 > 全文在 `docs/ARCHITECTURE-RULES.md` §12；这里只放**改代码时当场要守**的部分。
@@ -796,6 +800,7 @@ GitHub Release Notes、`whats-new-notes.ts` 要点的**唯一权威数据源**�
 不重翻 commit。只追加不改写（勘误另起行）；格式与分工说明见该文件头部。漏记 = 工作未完成。
 
 - 近期功能性变更（宿主行为，引擎交互相关）
+- 11-15 PhotoCraft 专业图像后期：按需下载 + photocraft 工具 + MCP 连接器 + 图片卡 GUI 编辑（见「### 🖼 PhotoCraft 专业图像后期」）
 - 11-15 设计参考库：84 份品牌 DESIGN.md 随包（工具 design_md + 设置页「设计参考」浏览/预览/导出/交给 Codex）（见「### 🎨 设计参考库」）
 - 10-21 长会话滚动条按回合总数撑高 + 按页水合（滚轮不跳 / 不回弹；顶部虚拟占位 + layout effect 首帧锚点补偿）
 - 10-21 长会话滑动窗口（全量加载后仍只挂 5 个回合，切会话不再变慢）+ 刻度尺当前阅读位置波浪 / 绿线等长可点击

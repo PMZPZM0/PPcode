@@ -20,20 +20,13 @@
  */
 import { app, shell } from "electron";
 import path from "node:path";
+import { statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { defineFeature } from "../context";
 import type { IpcHost } from "../ipc-host";
 import { sendToWindow } from "./window-bus";
 
-import {
-  checkLatestUpdate,
-  defaultDownloadDir,
-  pruneOldInstallers,
-  downloadUpdate,
-  fileExists,
-  installUpdate,
-  UPDATE_CHANNEL,
-} from "../updates";
+import { checkLatestUpdate, defaultDownloadDir, pruneOldInstallers, downloadUpdate, fileExists, installUpdate, UPDATE_CHANNEL, downloadUpdateDifferential, hasPendingDifferential, quitAndInstallDifferential } from "../updates";
 
 /** handler 里用到的发送端形状（⛔ 不写 any：只需要 sender.send 这一个能力）。 */
 type UpdateSender = { sender: { send(channel: string, payload: unknown): void } };
@@ -61,6 +54,23 @@ export const updatesFeature = defineFeature<null>({
 
     let lastUpdateInfo: { downloadUrl?: string; sha256?: string; version?: string; filename?: string } | null = null;
     let lastVerifiedUpdatePath = "";
+    /** 11-15 方案 A：更新一律先交给 electron-updater —— 差分基线只有它安装时才登记；
+     *  它彻底不可用（镜像全挂 / 无 latest.yml）才回退自建整包下载。 */
+    const tryDifferential = async (onProgress?: (percent: number) => void) => {
+      const version = lastUpdateInfo?.version;
+      if (!version) return null;
+      try {
+        const result = await downloadUpdateDifferential(
+          { version, tag: (lastUpdateInfo as { tag?: string })?.tag },
+          ({ percent }) => onProgress?.(percent),
+        );
+        lastVerifiedUpdatePath = result.path;
+        return { ...result, bytes: statSync(result.path).size };
+      } catch (error: any) {
+        console.warn("[updates] 差分/updater 下载失败，回退整包：", error?.message ?? error);
+        return null;
+      }
+    };
     /** 10-12：静默下载并发闸（重复触发时不重复下几百 MB）。 */
     let silentDownloading = false;
 
@@ -85,6 +95,12 @@ export const updatesFeature = defineFeature<null>({
         // 而且无论如何都会被 downloadUpdate 的 https + sha256 双重校验挡住。
         const url = lastUpdateInfo?.downloadUrl || input?.downloadUrl;
         if (!url) return { ok: false, error: "没有可用的更新地址（请先检查更新）" };
+        let pushed = -1;
+        const differential = await tryDifferential((percent) => {
+          const pct = Math.round(percent * 100);
+          if (pct !== pushed && (pct - pushed >= 2 || pct >= 100)) { pushed = pct; sender.sender.send("updates:download-progress", percent); }
+        });
+        if (differential) return { ok: true, path: differential.path, bytes: differential.bytes, differential: true };
         const dir = defaultDownloadDir(app.getPath("downloads"));
         const safeName = String(input?.filename || lastUpdateInfo?.filename || "codex-harness-update.bin").replace(/[\\/:*?"<>|]/g, "_");
         const dest = path.join(dir, safeName);
@@ -164,6 +180,8 @@ export const updatesFeature = defineFeature<null>({
       try {
         const dir = defaultDownloadDir(app.getPath("downloads"));
         const safeName = String(lastUpdateInfo?.filename || "codex-harness-update.bin").replace(/[\\/:*?"<>|]/g, "_");
+        const silentDifferential = await tryDifferential();
+        if (silentDifferential) return { ok: true, version: lastUpdateInfo?.version, path: silentDifferential.path, differential: true };
         const info = await downloadUpdate(url, path.join(dir, safeName), undefined, lastUpdateInfo?.sha256);
         lastVerifiedUpdatePath = info.path;
         // ⛔ 主动推一条事件：渲染层可能没打开设置页，只能靠事件弹窗（需求 3）。
@@ -193,6 +211,15 @@ export const updatesFeature = defineFeature<null>({
       try {
         // ⚠️ 等一小会儿让调用方（渲染层）先把 toast 收起来，否则退出瞬间还在闪。
         await new Promise((r) => setTimeout(r, 120));
+        /* 11-15 方案 A：差分/整包都由 updater 下过 ⇒ 交给它静默装 + 自启（基线也随之登记）。 */
+        if (hasPendingDifferential()) {
+          try {
+            quitAndInstallDifferential();
+            return { ok: true, via: "differential" };
+          } catch (error: any) {
+            console.warn("[updates] 差分静默安装失败，回退拉起安装包：", error?.message ?? error);
+          }
+        }
         /* ⛔⛔ 11-15（同步主仓 809b8fa93）：`--updated` + `/S` 两个参数缺一不可 ——
            `/S` = 静默（本仓 nsis.oneClick=false，不带它就会弹交互式 NSIS 向导 + UAC，
            而应用同时退出 ⇒ 向导被挡在后面/被当垃圾关掉 ⇒ 用户看到「应用关了、提醒一闪、版本没变」）；

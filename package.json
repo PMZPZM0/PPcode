@@ -51,6 +51,7 @@
     "@xterm/xterm": "^6.0.0",
     "@xyflow/react": "^12.12.1",
     "dingtalk-stream": "^2.1.6-beta.1",
+    "electron-updater": "^6.8.11",
     "hls.js": "^1.7.4",
     "jimp": "^1.6.1",
     "katex": "^0.19.1",

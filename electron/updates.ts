@@ -516,3 +516,72 @@ export async function installUpdate(filePath: string): Promise<boolean> {
 export function fileExists(p: string): boolean {
   return existsSync(p);
 }
+
+/* ── 11-15 差分更新（同步主仓 21:29 方案 A）─────────────────────────────────
+   electron-updater + NSIS blockmap：无基线时下整包并登记基线，有基线时只下变化块。
+   ⛔ 安装必须由这个 updater 实例 quitAndInstall 完成（基线就在安装时写入缓存），
+      换进程 spawn pending.exe 只会弹交互向导（主仓 11-15 已实证）。 */
+let differentialUpdater: { quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void; version: string } | null = null;
+
+/** 本次会话是否已有「差分包下载完、只等重启安装」的版本（安装入口据此优先走 updater）。 */
+export function hasPendingDifferential(): boolean {
+  return Boolean(differentialUpdater);
+}
+
+/** 让 electron-updater 静默安装并自动重启（⛔ 换进程 spawn pending exe 只会弹交互向导）。 */
+export function quitAndInstallDifferential(): void {
+  const updater = differentialUpdater;
+  if (!updater) throw new Error("no_pending_differential");
+  updater.quitAndInstall(true, true);
+}
+
+export type DifferentialDownloadResult = { path: string; version: string; differential: true };
+
+/**
+ * 差分更新下载（NSIS blockmap）：无基线时下整包并登记基线，有基线时只下变化块。
+ * ⛔ 仅 Windows；镜像候选逐个试，全部失败抛错由调用方回退自建整包下载。
+ */
+export async function downloadUpdateDifferential(
+  info: { version?: string; tag?: string },
+  onProgress?: (info: { receivedBytes: number; totalBytes: number; percent: number }) => void,
+): Promise<DifferentialDownloadResult> {
+  if (process.platform !== "win32") throw new Error("differential_unsupported_platform");
+  const version = String(info?.version ?? "").trim();
+  if (!version) throw new Error("differential_no_version");
+  const releaseBase = `https://github.com/${GITHUB_REPO}/releases/download/${String(info?.tag ?? `v${version}`)}`;
+  const { autoUpdater } = await import("electron-updater");
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.allowDowngrade = false;
+  let lastError: unknown = new Error("differential_failed");
+  for (const feedUrl of mirrorCandidates(releaseBase)) {
+    try {
+      autoUpdater.setFeedURL({ provider: "generic", url: feedUrl });
+      const check = await autoUpdater.checkForUpdates();
+      const remoteVersion = String(check?.updateInfo?.version ?? "");
+      if (remoteVersion && compareVersions(remoteVersion, version) !== 0) {
+        throw new Error(`latest.yml 版本 ${remoteVersion} 与 Release ${version} 不一致`);
+      }
+      const onDownload = (progress: any) => {
+        onProgress?.({
+          receivedBytes: Number(progress?.transferred ?? 0),
+          totalBytes: Number(progress?.total ?? 0),
+          percent: Math.max(0, Math.min(1, Number(progress?.percent ?? 0) / 100)),
+        });
+      };
+      autoUpdater.on("download-progress", onDownload);
+      try {
+        const files = await autoUpdater.downloadUpdate() as unknown as string[];
+        const file = (Array.isArray(files) ? files : []).find((item) => item && existsSync(item));
+        if (!file) throw new Error("差分下载完成但没有安装包文件");
+        differentialUpdater = { quitAndInstall: (silent, runAfter) => autoUpdater.quitAndInstall(silent, runAfter), version };
+        return { path: file, version, differential: true };
+      } finally {
+        autoUpdater.removeListener("download-progress", onDownload);
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}

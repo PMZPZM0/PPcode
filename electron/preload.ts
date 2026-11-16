@@ -1158,6 +1158,12 @@ contextBridge.exposeInMainWorld("codex", {
   mediaDeskEndpoint: () => __ipc("media-desk:endpoint", 0, []),
   /* 11-11 用户令：入口挪到侧栏「工作伙伴」下面；开独立窗口（尺寸跟随主窗口，单例） */
   mediaDeskPopout: () => __ipc("media-desk:popout", 0, []),
+  /* 11-16 下载并安装到 userData/media-desk-vendor/<version>，再重启本地服务；⛔ 不动随包资源 */
+  mediaDeskUpdate: (input?: { version?: string }) => __ipc("media-desk:update", 0, [input]),
+  /* 11-16 查上游 dsh-media-desk 最新版（npm 官方 dist-tags，镜像只用于下载加速） */
+  mediaDeskCheckUpdate: () => __ipc("media-desk:check-update", 0, []),
+  /* 11-16 自媒体工作台版本：current=生效版本（用户目录覆盖优先），bundled=随包基线 */
+  mediaDeskVersion: () => __ipc("media-desk:version", 0, []),
   /* 11-11 产物归档：只读清单（按 日期-任务短名 分目录），设置页「产物归档」用它 */
   listArtifactArchives: (workspace?: string) => __ipc("artifact:list", 0, [workspace]),
   /* 站点公开设置（sub2api `GET /api/v1/settings/public`，免鉴权）：注册流程站点可配 —— 邮箱验证/邀请码/优惠码/图形验证码/邮箱后缀白名单都以它为准，⛔ 别写死 */

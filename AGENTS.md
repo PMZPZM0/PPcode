@@ -343,9 +343,9 @@ nuphus 的桌面定位是「截屏 → 本地 OCR → 像素坐标」，窗口�
 - ⛔ **合规**：MIT 原文与版权头随包；只作**风格参考** —— 不复制品牌 logo / 商标 / 图片 / 专有字体。工具描述、技能、页面文案、`THIRD_PARTY_NOTICES.md` 四处都写明。
 - 判据：守卫 **`12bs-design-md`（74 条：数据真值与中文导读全覆盖 / 三通道 / slug 白名单 / 工具+指令+技能 / 页面五处注册 / 中英文预览与色板分组真值表 / 分类下拉与导出项目选择 / 打包与合规）** + 验收 **`design-library`（8 条：84 份加载（中文导读 + 分类下拉）/ 搜索 / 中文导读色值 / 英文原文页签 / 复制回执 / 导出目标可选 / 真导出 / 交给 Codex 填输入框）**。
 
-### 🖼 PhotoCraft 专业图像后期（11-15）
+### 🖼 PhotoCraft 专业图像后期（11-15）/ 🧰 Craft 全家桶（11-16）
 
-（详见主仓同节；本仓同构。）按需下载官方便携包（约 137MB，镜像序 + SHA256SUMS）→ 开发工具「PhotoCraft 图像编辑」卡；Codex 工具 `photocraft`（status/commands/info/run/convert/batch/open，命令白名单 + 路径闸 + 不覆盖原图）；安装后写 `[mcp_servers.photocraft]`（roots=userData/photocraft-io，harness 所属段，卸载直接删段并重启）；图片卡「在 PhotoCraft 中编辑」打开原生窗口。⛔ 只下载官方发行物、不重打包、不冒充 ArtCraft 官方。判据：守卫 12bt 48 条 + 验收 photocraft。
+（详见主仓同节；本仓同构。）按需下载 ArtCraft Launcher 官方便携包（约 11MB，镜像序 + SHA256SUMS）→ 开发工具唯一的「Craft 全家桶」卡（三级弹窗：卡 → `ArtCraftSuite` 的 19 个 App 网格 → 每个 App 一层弹窗；PhotoCraft 那层复用完整 `PhotoCraftCard`，原独立卡已撤销）；App 的安装/卸载交给 Launcher 本身，宿主不代装。PhotoCraft 官方便携包（约 137MB）仍在同一三级入口里安装；Codex 工具 `photocraft`（status/commands/info/run/convert/batch/open，命令白名单 + 路径闸 + 不覆盖原图）；安装后写 `[mcp_servers.photocraft]`（roots=userData/photocraft-io，harness 所属段，卸载直接删段并重启）。⛔⛔ 上游 Launcher v0.19.2 还没随包出货 craft-ai-mcp 网关（代码只在 main 分支）⇒ `[mcp_servers.ArtCraft]`（--stdio）只在网关二进制真存在时才写；不存在整段不写、卡片如实显示「等待 Launcher 新版」，上游发版后自动点亮。⛔ 只下载官方发行物、不重打包、不冒充 ArtCraft 官方。判据：守卫 12bt 48 条 / 12bu 52 条 + 验收 photocraft（三级入口）与 artcraft。
 
 ## 🧹 交付卫生（2026-11-08 用户令，硬性，守卫组 14）
 
@@ -639,6 +639,10 @@ Next.js + PostgreSQL 的多智能体互动课堂；按需下载源码 + pnpm 依
 `userData/openmaic-data`，卸载可保留。⛔ 依赖必须在最终 app 路径安装（pnpm node_modules 含链接，装完再移动会丢）；
 ⛔ pg_ctl 退出码不可信，以端口可连为准；模型 Key 只由用户在网页设置里填，宿主不读不写。
 配套 Codex 工具 `openmaic`（status / start / stop / open / generate / job）与内置技能 `openmaic`；守卫 12bp）。
+**PhotoCraft + Craft 全家桶**（11-15 / 11-16，storytold：photocraft 与 craft-launcher，Apache-2.0）：
+开发工具里只有一张「Craft 全家桶」卡（三级弹窗）—— PhotoCraft 137MB 与 Launcher 11MB 各自按需下载
+（GitHub release 镜像序 + SHA256SUMS → `tools/photocraft` / `tools/artcraft-launcher`）；App 的安装交给 Launcher。
+⛔ 上游 Launcher v0.19.2 还没随包出货 craft-ai-mcp 网关，`[mcp_servers.ArtCraft]` 只在检测到网关二进制时才写。守卫 12bt / 12bu。
 **卡片内更新**（11-14 用户：「这些卡片界面里面好像都没有配套更新功能」）：开发工具里按需下载卡
 （Filee / ApkStart / OpenMAIC / 飞书 CLI）都有独立「更新」行（`RuntimeUpdateRow`，打开卡片自动查一次），
 复用 `runtime:update-check` / `runtime:update` 单一真相源；OpenMAIC 更新 = 重新下载并构建（先停服务/库，课程数据保留）。
@@ -801,6 +805,7 @@ GitHub Release Notes、`whats-new-notes.ts` 要点的**唯一权威数据源**�
 
 - 近期功能性变更（宿主行为，引擎交互相关）
 - 11-15 PhotoCraft 专业图像后期：按需下载 + photocraft 工具 + MCP 连接器 + 图片卡 GUI 编辑（见「### 🖼 PhotoCraft 专业图像后期」）
+- 11-16 Craft 全家桶：开发工具一张卡三级弹窗（Launcher 11MB 按需装 / 19 个 App 目录 / 每个 App 一层弹窗）；网关 craft-ai-mcp 未随上游出货 ⇒ 检测到才写 `[mcp_servers.ArtCraft]`（见「### 🧰 Craft 全家桶」）
 - 11-15 设计参考库：84 份品牌 DESIGN.md 随包（工具 design_md + 设置页「设计参考」浏览/预览/导出/交给 Codex）（见「### 🎨 设计参考库」）
 - 10-21 长会话滚动条按回合总数撑高 + 按页水合（滚轮不跳 / 不回弹；顶部虚拟占位 + layout effect 首帧锚点补偿）
 - 10-21 长会话滑动窗口（全量加载后仍只挂 5 个回合，切会话不再变慢）+ 刻度尺当前阅读位置波浪 / 绿线等长可点击

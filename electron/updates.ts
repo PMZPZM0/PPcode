@@ -14,11 +14,11 @@
  *      （https + sha256）→ installUpdate() 运行安装包
  */
 import fs from "node:fs/promises";
-import { existsSync, createWriteStream, createReadStream, readdirSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, createWriteStream, createReadStream, readdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import https from "node:https";
-import { shell } from "electron";
+import { app, shell } from "electron";
 import { URL } from "node:url";
 import { DEFAULT_UPDATE_REPO, readUpdateSource, type UpdateSourceConfig } from "./update-source";
 import { mirrorCandidates } from "./gh-mirror";
@@ -537,6 +537,39 @@ export function quitAndInstallDifferential(): void {
 
 export type DifferentialDownloadResult = { path: string; version: string; differential: true };
 
+/** 差分缓存自愈（11-19）：electron-updater 的 NSIS 差分靠**成对**缓存
+ *   `installer.exe` + `current.blockmap`；缺任一或配不上对就永远整包，且不会自愈。
+ *  ⇒ 下载前缺一份就两份都删，让 updater 重新拉整包并写回成对缓存。
+ *  ⛔ 只动 %LOCALAPPDATA%/<appName>-updater，不碰安装目录与用户数据。 */
+function healDifferentialCache(): void {
+  try {
+    const localAppData = process.env.LOCALAPPDATA || process.env.APPDATA || "";
+    if (!localAppData) return;
+    const dir = path.join(localAppData, `${app.getName()}-updater`);
+    const installer = path.join(dir, "installer.exe");
+    const blockmap = path.join(dir, "current.blockmap");
+    const hasInstaller = existsSync(installer);
+    const hasBlockmap = existsSync(blockmap);
+    if (hasInstaller === hasBlockmap) return;
+    if (hasInstaller) rmSync(installer, { force: true });
+    if (hasBlockmap) rmSync(blockmap, { force: true });
+  } catch {
+    /* 自愈是尽力而为：失败不影响正常下载 */
+  }
+}
+
+/** 本机是否已具备差分基线（两份缓存成对）。选「补丁」但无基线时界面要明说本次是整包。 */
+export function hasDifferentialBaseline(): boolean {
+  try {
+    const localAppData = process.env.LOCALAPPDATA || process.env.APPDATA || "";
+    if (!localAppData) return false;
+    const dir = path.join(localAppData, `${app.getName()}-updater`);
+    return existsSync(path.join(dir, "installer.exe")) && existsSync(path.join(dir, "current.blockmap"));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 差分更新下载（NSIS blockmap）：无基线时下整包并登记基线，有基线时只下变化块。
  * ⛔ 仅 Windows；镜像候选逐个试，全部失败抛错由调用方回退自建整包下载。
@@ -548,10 +581,13 @@ export async function downloadUpdateDifferential(
   if (process.platform !== "win32") throw new Error("differential_unsupported_platform");
   const version = String(info?.version ?? "").trim();
   if (!version) throw new Error("differential_no_version");
+  /* 先自愈缓存：缺一份就两份都删，让本轮重新建立成对基线。 */
+  healDifferentialCache();
   const releaseBase = `https://github.com/${GITHUB_REPO}/releases/download/${String(info?.tag ?? `v${version}`)}`;
   const { autoUpdater } = await import("electron-updater");
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
+  /* ⛔ 11-19：设 false ⇒ 下载完不点重启就白下，句柄丢失后安装走 spawn（不写配对缓存）⇒ 永远整包。 */
+  autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowDowngrade = false;
   let lastError: unknown = new Error("differential_failed");
   for (const feedUrl of mirrorCandidates(releaseBase)) {

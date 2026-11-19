@@ -105,7 +105,7 @@ export async function ensureEgoBrowserSkill(skillsDir: string): Promise<void> {
  * 11-19 用户令：技能描述截成一行摘要（引擎把每条 description 塞进每轮清单）。
  * 只截 frontmatter 的 description，超过 120 字在标点处断开加省略号，正文不动。
  */
-function clampSkillDescription(content: string, max = 120): string {
+function clampSkillDescription(content: string, max = 60): string {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return content;
   const head = m[1];

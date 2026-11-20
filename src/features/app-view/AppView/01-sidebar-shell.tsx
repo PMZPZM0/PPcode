@@ -43,6 +43,7 @@ import {
   FileCode2,
   FileText,
   FileWarning,
+  Folder,
   FolderOpen,
   FolderPlus,
   FolderTree,
@@ -987,9 +988,10 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                       <div key={cwd} className={`project-item ${expanded ? "expanded" : "collapsed"} ${projectMenu === cwd ? "menu-open" : ""} ${items.length ? "" : "is-empty"}`}>
                         <div className="project-item-head">
                           <button className="project-item-toggle" title={expanded ? "折叠项目" : "展开项目"} onClick={() => toggleProjectExpanded(cwd)}>
-                            <ChevronDown size={12} className={`project-item-chevron ${expanded ? "open" : ""}`} />
-                            {/* 色相只给文件夹；箭头保持中性（它是展开/折叠的**状态**指示，染色会跟文件夹抢注意力） */}
-                            <FolderOpen size={13} className={hasBossThread ? "ic-amber" : "ic-blue"} />
+                            {/* 11-19 用户令：去掉独立展开箭头，文件夹图标自己表示状态（打开/闭合），并与上方图标左对齐。 */}
+                            {expanded
+                              ? <FolderOpen size={13} className={hasBossThread ? "ic-amber" : "ic-blue"} />
+                              : <Folder size={13} className={hasBossThread ? "ic-amber" : "ic-blue"} />}
                             <strong>{projectNameOf(cwd)}</strong>
                           </button>
                           {/* 10-25 用户令（对照 ZCode）：项目行加「新建会话」图标（··· 之前）——

@@ -1,5 +1,5 @@
 /**
- * 更新链镜像化判据（10-11 立；11-19 按实测重排）：资产「直连 → ghfast → hk.gh-proxy → gh-proxy」，API 仍镜像优先。
+ * 更新链镜像化判据（10-11 立；11-20 按实测重排）：资产「直连 → gh-proxy → hk.gh-proxy → ghfast」，API 仍镜像优先。
  *
  * 失效方式全是静默的：镜像表被复制出第二份（改镜像顺序要动三处还漏）、mirrorCandidates 对
  * 自定义清单/非 GitHub host 也加前缀（把用户自建分发地址发给第三方反代 = 信息泄露）、
@@ -31,8 +31,8 @@ const updates = codeOnly(read("electron/updates.ts"));
 const official = codeOnly(read("electron/codex-official-market.ts"));
 
 /* ── 单一真相源 ── */
-ok(/export const GH_MIRROR_PREFIXES = \["", "https:\/\/ghfast\.top\/", "https:\/\/hk\.gh-proxy\.com\/", "https:\/\/gh-proxy\.com\/"\] as const/.test(mirrorSrc),
-  "镜像表唯一一份在 gh-mirror.ts：**直连 → ghfast → hk.gh-proxy → gh-proxy**（11-19 实测 4MB Range：ghfast 0.82MB/s > gh-proxy 0.42MB/s > hk 302 不可用；「一分钟 1M」= 慢源排在最前）");
+ok(/export const GH_MIRROR_PREFIXES = \["", "https:\/\/gh-proxy\.com\/", "https:\/\/hk\.gh-proxy\.com\/", "https:\/\/ghfast\.top\/"\] as const/.test(mirrorSrc),
+  "镜像表唯一一份在 gh-mirror.ts：**直连 → gh-proxy → hk.gh-proxy → ghfast**（11-20 实测 16MB Range：gh-proxy 0.68MB/s > ghfast 0.095MB/s > hk 302 不可用；⛔ 顺序已反转两次，发版前必须重测）");
 ok(/export const GH_API_MIRROR_PREFIXES = \["https:\/\/gh-proxy\.com\/", "https:\/\/hk\.gh-proxy\.com\/", ""\] as const/.test(mirrorSrc),
   "API 单独一套序（镜像优先）：api.github.com 直连在国内不通，不能与资产共用「直连优先」");
 ok(/"https:\/\/ghfast\.top\/"/.test(codeOnly(mirrorSrc)),
@@ -47,8 +47,8 @@ ok(/const MIRROR_PREFIXES = GH_MIRROR_PREFIXES/.test(official),
   const { mirrorCandidates, GH_MIRROR_PREFIXES } = await import("../../electron/gh-mirror.ts");
   const url = "https://github.com/a/b/releases/download/v1/x.exe";
   const got = mirrorCandidates(url);
-  ok(got.length === 4 && got[0] === url && got[1] === "https://ghfast.top/" + url
-    && got[2] === "https://hk.gh-proxy.com/" + url && got[3] === "https://gh-proxy.com/" + url,
+  ok(got.length === 4 && got[0] === url && got[1] === "https://gh-proxy.com/" + url
+    && got[2] === "https://hk.gh-proxy.com/" + url && got[3] === "https://ghfast.top/" + url,
     "真值：github.com 资产 → **直连第一**、三档镜像按 11-19 实测吞吐兜底");
   const apiGot = mirrorCandidates("https://api.github.com/repos/x/y/releases/latest");
   ok(apiGot.length === 3 && apiGot[0] === "https://gh-proxy.com/https://api.github.com/repos/x/y/releases/latest",
@@ -73,8 +73,10 @@ if (IS_PPCODE) {
   // ⛔ 10-12 对账修正：更新链改走 releases **LIST** API（取全部资产匹配 digest），镜像序判定跟着换锚点
   ok(updates.includes("mirrorCandidates(GITHUB_RELEASES_LIST_API)") && /for \(const candidate of mirrorCandidates\(GITHUB_RELEASES_LIST_API\)\)/.test(updates),
     "检查更新走镜像序逐条尝试（第一个 2xx 生效）");
-  ok(updates.includes("const candidates = mirrorCandidates(releaseUrl)") && /for \(let candidateIndex = 0; candidateIndex < candidates\.length/.test(updates),
-    "下载安装包走镜像序（失败/校验不过/太慢 都换下一档；带索引是为了把 hasAlternative 传给超时与低速看门狗）");
+  ok(updates.includes("const candidates = mirrorCandidates(releaseUrl)")
+    && /const ranked = candidates\.length > 1 \? await rankMirrorsBySpeed\(candidates\) : candidates/.test(updates)
+    && /for \(let candidateIndex = 0; candidateIndex < ranked\.length/.test(updates),
+    "下载安装包：先并行测速重排（rankMirrorsBySpeed，11-20「上来要最快的源」），再逐条试（失败/校验不过/太慢 都换下一档；带索引是为了把 hasAlternative 传给超时与低速看门狗）");
 }
 ok(/fs\.rm\(destPath, \{ force: true \}\)/.test(updates) && /fs\.rm\(result\.path, \{ force: true \}\)/.test(updates),
   "每条候选开跑前删半截文件、校验失败删坏文件（半截包绝不进下一轮/不被执行）");
@@ -98,16 +100,20 @@ if (IS_PPCODE) {
 if (!IS_PPCODE) {
   const pkg = read("package.json");
   const ipc = codeOnly(read("electron/features/updates-ipc.ts"));
-  const buildWin = read(".github/workflows/build-win.yml");
   const release = read(".github/workflows/release.yml");
   ok(/"electron-updater"/.test(pkg) && /"provider": "generic"/.test(pkg) && /"artifactName": "Codex\.Harness\.Desktop-\$\{version\}-win-\$\{arch\}/.test(pkg),
     "打包配置含 electron-updater 的 publish 元数据 + 与 Release 一致的 Windows 资产名");
-  ok(/export async function downloadUpdateDifferential/.test(updates) && /autoUpdater\.setFeedURL\(\{ provider: "generic", url: feedUrl \}\)/.test(updates) && /autoUpdater\.downloadUpdate\(\)/.test(updates),
-    "差分下载走 electron-updater generic feed（按 Release tag + 镜像序）");
-  ok(/const tryDifferential = async/.test(ipc) && /await tryDifferential\(/.test(ipc) && /downloadUpdate\(url, dest/.test(ipc),
-    "下载入口差分优先；失败回退原有完整包下载");
-  ok(/\.exe\.blockmap/.test(buildWin) && /latest\.yml/.test(buildWin) && /\.exe\.blockmap/.test(release) && /latest\.yml/.test(release),
-    "发布流水线同时上传 exe / .exe.blockmap / latest.yml（缺任一则客户端只能整包）");
+  /* 11-20 用户令：「差分更新删了吧，就保留一个正常安装包更新」。
+     隔离实验实测：镜像开 multipart 返回 application/octet-stream（库拒收），关掉后 528 个单段请求
+     被 ERR_CONNECTION_RESET 掐断，GitHub 直连 302 都拿不到 ⇒ electron-updater 原生差分在此链路上不可用。
+     ⇒ 断言翻成**负向**：差分链不许复活；更新入口只有「查版本 → 镜像序下完整包 → 校验 → 非静默安装」。 */
+  ok(!/downloadUpdateDifferential|tryDifferential|differentialUpdater|setFeedURL/.test(updates)
+    && !/downloadUpdateDifferential|tryDifferential|hasPendingDifferential/.test(ipc),
+    "⛔ 差分链已整体删除（不许再出现 electron-updater 下载器 / feed / tryDifferential）");
+  ok(/export async function downloadUpdate\b/.test(updates) && /await downloadUpdate\(url/.test(ipc),
+    "更新只剩一条路：镜像序下载完整安装包（downloadUpdate）");
+  ok(/pick artifacts\/win-x64\s+'\*\.exe'/.test(release) && /pick_soft artifacts\/win-x64\s+'\*\.exe\.blockmap'/.test(release),
+    "发布侧只把 exe 当必需资产；blockmap / latest.yml 是软挑（客户端已不用 electron-updater，缺了不阻断）");
 }
 
 console.log(`\n【update-mirror】${checks - fails}/${checks} 通过${fails ? ` —— ${fails} 条红` : ""}`);

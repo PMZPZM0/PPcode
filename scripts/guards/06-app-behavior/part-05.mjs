@@ -377,9 +377,9 @@ if (!existsSync(join(ROOT, "src", "features", "team-office", "office-format.ts")
       // 镜像顺序 = 实测可用性（gh-proxy 通、直连兜底）；顺序反了国内首屏就要等三轮超时
       //（10-11 表收敛进 ./gh-mirror 单一真相源 —— 这里锚「别名引用 + 源头顺序」两处）
       (/const MIRROR_PREFIXES = GH_MIRROR_PREFIXES/.test(officialSrc)
-        && /export const GH_MIRROR_PREFIXES = \["", "https:\/\/ghfast\.top\/", "https:\/\/hk\.gh-proxy\.com\/", "https:\/\/gh-proxy\.com\/"\] as const/.test(codeOnly(readFileSync(join(ROOT, "electron", "gh-mirror.ts"), "utf8")))
+        && /export const GH_MIRROR_PREFIXES = \["", "https:\/\/gh-proxy\.com\/", "https:\/\/hk\.gh-proxy\.com\/", "https:\/\/ghfast\.top\/"\] as const/.test(codeOnly(readFileSync(join(ROOT, "electron", "gh-mirror.ts"), "utf8")))
         && /export const GH_API_MIRROR_PREFIXES = \["https:\/\/gh-proxy\.com\/"/.test(codeOnly(readFileSync(join(ROOT, "electron", "gh-mirror.ts"), "utf8"))) ? ok : fail)(
-        "【254】镜像优先级：资产 直连 → ghfast → hk.gh-proxy → gh-proxy（11-19 实测 4MB Range：ghfast 0.82MB/s > gh-proxy 0.42MB/s > hk 302 不可用）；api.github.com 仍走镜像优先（直连在国内不通）"
+        "【254】镜像优先级：资产 直连 → gh-proxy → hk.gh-proxy → ghfast（11-20 实测 16MB Range：gh-proxy 0.68MB/s > ghfast 0.095MB/s > hk 302 不可用；⛔ 顺序反转过两次，发版前重测）；api.github.com 仍走镜像优先（直连在国内不通）"
       );
       (officialSrc.includes("const MAX_FILES = 1_200") && officialSrc.includes("MAX_SINGLE_FILE_BYTES = 20 * 1024 * 1024") ? ok : fail)(
         "【254】文件数上限按实测放宽到 1200（上游 zoom 单插件 795 个文件；沿用 Gitee 源的 300 会拒装 4 个合法插件）"
@@ -618,19 +618,18 @@ if (!existsSync(join(ROOT, "src", "features", "team-office", "office-format.ts")
       && persSrc235.includes("向观众介绍你是 Codex")) ? ok : fail)(
       "【235】AGENTS.md 注入身份基线（被问「你是谁」按本应用回答；弹幕场景改用人设，不向观众自我介绍 Codex）"
     );
-    /* ⛔ 10-25 品牌不进同步面：主仓身份恒为 Codex Harness Desktop。
+    /* ⛔ 10-25 品牌不进同步面：主仓身份恒为 PPcode。
        反向防线——从 PPcode 同步 UI 时若把 `BRAND_NAME = "PPcode"` / PP 品牌带回来，这里打红。 */
     const mainSidebarBrandSrc = readFileSync(join(ROOT, "src", "features", "app-view", "AppView", "01-sidebar-shell.tsx"), "utf8");
-    /* 11-01：本仓品牌与主仓**必须分开**（用户明令）。断言按本仓口径钉：侧栏显示 PPcode，
-       ⛔ 不许被主仓同步覆盖成 Codex Harness。 */
-    (mainSidebarBrandSrc.includes('brand-name">PPcode')
-      && !mainSidebarBrandSrc.includes('brand-name">Codex Harness') ? ok : fail)(
-      "【235】侧栏品牌 = PPcode（⛔ 不许被 Codex Harness 覆盖）"
+    (mainSidebarBrandSrc.includes('<strong className="brand-name">PPcode</strong>')
+      && !mainSidebarBrandSrc.includes('BRAND_NAME = "Codex Harness"')
+      && !mainSidebarBrandSrc.includes('<strong className="brand-name">Codex Harness</strong>') ? ok : fail)(
+      "【235】PPcode 侧栏品牌 = PPcode（⛔ 不许被主仓品牌名覆盖）"
     );
     const mainWinFactorySrc = readFileSync(join(ROOT, "electron", "features", "window-factory.ts"), "utf8");
     (mainWinFactorySrc.includes('title: "PPcode"')
-      && !mainWinFactorySrc.includes('title: "Codex Harness Desktop"') ? ok : fail)(
-      "【235】窗口标题 = PPcode（本仓品牌；⛔ 不许被主仓标题覆盖）"
+      && !mainWinFactorySrc.includes('title: "Codex Harness"') ? ok : fail)(
+      "【235】PPcode 窗口标题 = PPcode（⛔ 不许被主仓标题覆盖）"
     );
 
     /* ③ 独立设置页三件套（注册表 / 类型 / 导航）+ 帮助总览 + 域页面在位 */

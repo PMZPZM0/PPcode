@@ -168,16 +168,15 @@ import { NewbieGuide } from "../../newbie-guide";
 import { SidebarGuideModal, type SidebarGuideKey, type SidebarGuideTarget } from "./SidebarGuideModal";
 import { LoginManagerModal, type LoginManagerTarget } from "./LoginManagerModal";
 import { NewProjectDialog } from "./NewProjectDialog";
-import { UpdateReadyToast } from "./UpdateReadyToast";
 import { UpdateFlowBanner } from "./UpdateFlowBanner";
 import { useEscapeLayer } from "../../../hooks/useEscapeLayer";
 
-/** 项目「⋯」按钮矩形：项目改名/删除气泡贴着项目行弹。 */
+/** 项目「⋯」按钮矩形：项目改名/删除气泡贴着**项目行**弹（⛔ 不用菜单项位置，否则飘在侧栏中间）。 */
 let projectMenuTriggerRect: DOMRect | null = null;
 
 /** 侧栏壳：项目/会话树、团队条、指挥中枢入口。⛔ 中枢就是**一个普通会话**（点按钮 = openThread(bossThreadId)），不是覆盖层。 */
 export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppApi; onOpenSettings?: (page: string) => void }) {
-  /* ──指挥中枢 = **一个普通会话**（10-25 用户令，推翻覆盖层）──────────────────
+  /* ── 指挥中枢 = **一个普通会话**（10-25 用户令，推翻覆盖层）──────────────────
      用户原话：「一个正常对话框不会做嘛，新建一个会话，常驻成指挥中枢，不就好了嘛」。
      ⇒ 点按钮就是 `openThread(群.bossThreadId)`：正常时间线、正常输入框、正常消息渲染，
         不再有任何覆盖层/专属界面。
@@ -205,6 +204,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
   ]);
   const visibleEntries = <T extends { id?: unknown }>(entries: T[]): T[] =>
     hiddenSidebarThreadIds.size ? entries.filter((e) => !hiddenSidebarThreadIds.has(String(e?.id ?? ""))) : entries;
+  /* 10-25 用户令：项目支持自定义标签（文字 + 颜色），默认无标签。 */
   const entityTags = useSyncExternalStore(subscribeEntityTags, getEntityTagState, getEntityTagState);
   /* 11-17 用户令：「一键隐藏标签」——侧栏（会话 + 项目）徽标统一开关，落 localStorage。 */
   const [hideSidebarTags, setHideSidebarTags] = useState<boolean>(() => {
@@ -217,9 +217,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
       return next;
     });
   };
-  /* 11-17 用户令：「把这个改成三个点，点击右边菜单」——原来的悬浮图标条改成常驻 ⋯，
-     点击在它右侧弹菜单（不再随 hover 出现、也不在窄侧栏里压住 tab）。 */
-  /* 11-19 用户令：侧栏列表滚动条默认隐藏，滚动时再展示（停 900ms 收回）。 */
+  /* 11-19 用户令：「这个滚动条默认隐藏，滚动再展示」——列表滚动时才给滚动条上色，停 900ms 收回。 */
   const [listScrolling, setListScrolling] = useState(false);
   const listScrollTimer = useRef<number | null>(null);
   useEffect(() => () => { if (listScrollTimer.current) window.clearTimeout(listScrollTimer.current); }, []);
@@ -228,6 +226,8 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     if (listScrollTimer.current) window.clearTimeout(listScrollTimer.current);
     listScrollTimer.current = window.setTimeout(() => setListScrolling(false), 900);
   };
+  /* 11-17 用户令：「把这个改成三个点，点击右边菜单」——原来的悬浮图标条改成常驻 ⋯，
+     点击在它右侧弹菜单（不再随 hover 出现、也不在窄侧栏里压住 tab）。 */
   const [moreMenu, setMoreMenu] = useState<{ left: number; top: number } | null>(null);
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
   const openMoreMenu = () => {
@@ -331,9 +331,9 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
       if (!dir || !dir.trim()) throw new Error("没有拿到项目目录（主进程未返回路径）");
       /* ⛔⛔⛔ **不写全局 workspace**（10-25 用户实测：「下面已经自动选了别的会话的项目地址，
          你这还有别的」「每次指挥中枢都不要自动选择旧的会话项目地址」）：
-         中枢的目录是**它自己会话的 cwd**，写进全局 workspace 会让：
-           ① 普通会话的顶栏/项目地址芯片显示成 中枢的目录（串项）；
-           ② 下一个新会话继承 中枢的目录。
+        中枢的目录是**它自己会话的 cwd**，写进全局 workspace 会让：
+           ① 普通会话的顶栏/项目地址芯片显示成中枢的目录（串项）；
+           ② 下一个新会话继承中枢的目录。
          ⇒ 这里只把目录记到指挥中枢自己的登记表（setBossDirChosen），
             发首条消息建会话时由 createEmptyThread 用它当 cwd（见 part08/01-seg.tsx）。 */
       closeBossDirDialog();
@@ -341,7 +341,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
       /* ⛔ 目录**按会话**记（10-25 用户令：指挥中枢可创建多个，互不干扰）——
          会话还没建出来（thread id 未分配）⇒ 暂存 pendingDir，会话建成后再按 id 落位。 */
       setBossDirChosen(dir, currentThreadId);
-      setBossPending(true);                        // 空态继续显示 中枢引导卡
+      setBossPending(true);                        // 空态继续显示中枢引导卡
       bossHomePending.current = true;              // 这个新会话登记为指挥中枢（拿到 id 后）
     } catch (error) {
       /* ⛔ 不许再静默：失败要把原因写在弹窗里（"点了没反应"是最难自查的一类故障）。
@@ -356,7 +356,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
   const currentThreadId = app.thread?.id ?? "";
   /* ⛔⛔ 10-25 用户令：「我选中下面已建的指挥中枢时候，上面那个指挥中枢选项不要亮」
      —— 顶部这个按钮是**动作**（新建一条指挥中枢），不是**状态**（我在不在指挥中枢里）。
-     把「当前会话是 中枢」映射成按钮高亮/`aria-pressed`，等于给它挂了个跟它自己用途无关的状态：
+     把「当前会话是中枢」映射成按钮高亮/`aria-pressed`，等于给它挂了个跟它自己用途无关的状态：
      选下面任意一条老指挥中枢，上面就跟着亮（前几轮已为此返工过一次），用户这次要求彻底去掉。
      ⇒ 按钮恒为普通态；当前会话的身份只由**会话列表里的选中行**表达。
      ⛔ 别再引入任何 `bossOn` 之类的派生高亮。 */
@@ -466,10 +466,6 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
     updateRestarting,
     dismissUpdateReady,
     restartAndInstall,
-    /* 11-15（同步主仓 0c0e31f5a）：自动安装（默认开）—— 提示条改成「空闲时自动安装并重启」。 */
-    autoInstallUpdate,
-    setAutoInstallUpdate,
-    autoInstallBlockedBy,
     userAvatar,
     username,
     viewTab,
@@ -601,28 +597,28 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
   }, [optionsCollapsed, closeOptions]);
   useEscapeLayer(!optionsCollapsed, () => closeOptions());
   /*指挥中枢按钮（历史与实测依据收在 scripts/guards/22-boss-groups.mjs，此处只留行为契约）：
-     ① **先跳到欢迎界面，再弹项目地址对话框**（10-25 用户实测：「点指挥中枢，先出来
-        这个弹窗，不会跳转到欢迎界面，再跳这个弹窗」⇒ 顺序反了）——
-        先建一个空的指挥中枢（pending=true ⇒ 时间线渲染 BossThreadIntro欢迎界面），
+     ① **先跳到 欢迎界面，再弹项目地址对话框**（10-25 用户实测：「点指挥中枢，先出来
+        这个弹窗，不会跳转到 欢迎界面，再跳这个弹窗」⇒ 顺序反了）——
+        先建一个空的指挥中枢（pending=true ⇒ 时间线渲染 BossThreadIntro 欢迎界面），
         再由欢迎界面（已渲染出来）弹地址对话框（走 boss-dir-dialog-store 的自动弹出标记）。
      ② ⛔⛔ **在已有指挥中枢里再点也必须能建**（10-25 用户实测第二轮：「这种情况我点不了上面
        指挥中枢选项，切不到指挥中枢界面，没修好啊」截图就是「当前在指挥中枢哈喽里」）——
         原来这里第一行是 `if (bossOn) return;`，等于**当前是指挥中枢就点不动**（按钮变死按钮）。
         行为对齐「新建任务」：每点一次 = 一条全新的指挥中枢（可无限建、各自独立）。
-     ③ 唯一不重复建的情形：**已经停在待发消息的欢迎界面**（pending 且还没有 thread id）
+     ③ 唯一不重复建的情形：**已经停在待发消息的 欢迎界面**（pending 且还没有 thread id）
         ⇒ 再点不重置，免得把用户刚打的提示词清掉、并重复弹对话框。 */
   const openBossSession = () => {
     if (bossThreads.pending && !currentThreadId) return;
     /* ① 起一个全新空会话，**然后**才置 pending ⇒ 落进欢迎界面。
        ⛔⛔ 顺序不能反：`startNewThread()` 是所有「新建普通会话」的统一漏斗，它在开头会
-          `setBossPending(false)`（10-25 用户实测：项目行的 ＋ 不清这个标记 ⇒ 停在欢迎界面时
-          点项目新建，标签页换了、界面却还卡在 中枢引导卡）。所以 中枢入口必须**在它之后**置 true，
+          `setBossPending(false)`（10-25 用户实测：项目行的 ＋ 不清这个标记 ⇒ 停在 欢迎界面时
+          点项目新建，标签页换了、界面却还卡在中枢引导卡）。所以中枢入口必须**在它之后**置 true，
           否则刚置上就被它清掉、按钮点了进不去欢迎界面。
        ⛔ 会话是在**选定项目地址之后**才真正建（引擎发首条消息时才分配 id），这里只把界面切过去。 */
     bossHomePending.current = true;              // 这个新会话登记为指挥中枢（拿到 id 后）
     startNewThread({ boss: true });              // ⛔ 每次都是全新会话；boss=true ⇒ 未选地址的提示用琥珀色
     setBossPending(true);                        // 必须在 startNewThread 之后（它会清这个标记）
-    /* ⛔⛔ 10-25 用户令：「不要进指挥中枢就弹，改成点击那个选项再弹」
+    /* ⛔⛔ 10-25 用户令：「不要进指挥欢迎界面就弹，改成点击那个选项再弹」
        ⇒ 这里**不再**自动弹项目地址对话框；入口在输入框左上角那枚项目地址 chip
          （`02-composer-form.tsx` 的 `boss-cwd-chip`，位置与普通会话欢迎界面一致），点它才弹。 */
   };
@@ -688,7 +684,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
       if (id === "login") { setLoginMgrOpen(true); return; }
       if (id === "newbie") { setNewbieOpen(true); return; }
       if (id === "team") { setGuideKey("agents"); return; }
-      /* 类型收窄：media / extensions 已分流，其余都是教程键。 */
+      /* 类型收窄：media / extensions 已在上面分流，其余都是教程键。 */
       const guideId = id as Parameters<typeof setGuideKey>[0];
       setGuideKey(guideId);
     });
@@ -898,6 +894,9 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                 >
                   <Crown size={15} /><span>指挥中枢</span><kbd className="quick-kbd">{bossShortcutLabel()}</kbd>
                 </button>
+                {/* 10-05 用户令：群聊入口放在「指挥中枢」下面（独立板块 src/features/harness-team）
+                    11-07 用户令：「把群组改名为『工作伙伴』，会话标签保持不变」——
+                    只改这个入口的名字；侧栏会话上的「群调度」标记不动（那是"这条会话哪来的"）。 */}
                 <button
                   className="sidebar-tab sidebar-quick-btn sidebar-quick-boss ic-accent"
                   title="工作伙伴：团队成员 + 伙伴，@ 一下就派活"
@@ -906,7 +905,8 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                   <MessagesSquare size={15} /><span>工作伙伴</span>
                 </button>
                 {/* 11-18 用户令：「把自媒体工作台和功能拓展放到功能入口里面」
-                    ⇒ 两颗常驻按钮已移除，入口与动作统一由 function-menu 派发。 */}
+                    ⇒ 这两颗常驻按钮已移除；入口与动作统一由 function-menu 派发
+                       （media → 独立窗口 / extensions → 拓展功能引导）。 */}
               </div>
             </div>
             {functionMenu.location === "top" && renderOptionsGroup("top")}
@@ -991,16 +991,20 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                     const expanded = expandedProjects.has(cwd);
                     const projectTag = entityTags.projects[cwd];
                     /* ⛔ 11-01 用户令（对照截图）：「普通会话的项目 logo 蓝色，中枢会话的项目 logo 黄色」
-                       ⇒ 配色按**项目里有没有指挥中枢会话**决定，而不是一律琥珀色。 */
+                       ⇒ 配色按**项目里有没有指挥中枢会话**决定，而不是一律琥珀色。
+                         中枢会话的判定与徽标同源（bossIds = 群 boss 线程，sessionIds = 已登记中枢）。 */
                     const hasBossThread = items.some((entry) => bossThreads.bossIds.includes(entry.id) || (bossThreads.sessionIds ?? []).includes(entry.id));
                     return (
                       <div key={cwd} className={`project-item ${expanded ? "expanded" : "collapsed"} ${projectMenu === cwd ? "menu-open" : ""} ${items.length ? "" : "is-empty"}`}>
                         <div className="project-item-head">
                           <button className="project-item-toggle" title={expanded ? "折叠项目" : "展开项目"} onClick={() => toggleProjectExpanded(cwd)}>
-                            {/* 11-19 用户令：去掉独立展开箭头，文件夹图标自己表示状态（打开/闭合），并与上方图标左对齐。 */}
+                            {/* 11-19 用户令：「展开折叠图标删了，项目图标左边对齐上面；项目图标做两张」
+                                ⇒ 去掉独立箭头，文件夹图标自己表示状态：展开 = 打开的文件夹，折叠 = 闭合文件夹。
+                                11-01 用户令：普通项目蓝、含指挥中枢的项目琥珀色 —— 一眼区分"这是中枢那个盘"。 */}
                             {expanded
                               ? <FolderOpen size={13} className={hasBossThread ? "ic-amber" : "ic-blue"} />
                               : <Folder size={13} className={hasBossThread ? "ic-amber" : "ic-blue"} />}
+                            {projectTag && <span className="entity-tag project-custom-tag" style={{ "--tag-color": projectTag.color } as any} title={`标签：${projectTag.text}`}>{projectTag.text}</span>}
                             <strong>{projectNameOf(cwd)}</strong>
                           </button>
                           {/* 10-25 用户令（对照 ZCode）：项目行加「新建会话」图标（··· 之前）——
@@ -1098,14 +1102,43 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
               ) : (
                 <button className="account-name" title="账户菜单" onClick={() => { setAccountMenuSub(null); setAccountMenuOpen(!accountMenuOpen); }}>{username}</button>
               )}
+              {/* ⛔⛔ 11-20 用户令：「有更新就在这里提醒，点击下载，就同步展示下载进度，完成后就一个很小的弹窗」。
+                 ⇒ 更新提示只在这里（账户行右侧一个小徽标）：有新版 = 图标 + 红点；下载中 = 百分比；
+                   就绪 = 绿点，点它重启安装。⛔ 不许再弹「发现新版本」大卡片，也不许启动就自动下载。 */}
+              {updateInfo?.hasUpdate || updateDownloading || updateReady ? (
+                <button
+                  type="button"
+                  className={`account-update-badge${updateDownloading ? " is-downloading" : ""}${updateReady ? " is-ready" : ""}`}
+                  title={updateReady
+                    ? `更新已就绪${updateReadyVersion ? ` v${updateReadyVersion}` : ""}：点击重启安装`
+                    : updateDownloading
+                      ? `正在下载更新${updateProgress > 0 ? ` ${Math.round(updateProgress * 100)}%` : ""}（不影响你继续使用）`
+                      : `有新版本 v${updateInfo?.version}：点击下载`}
+                  aria-label="软件更新"
+                  onClick={() => {
+                    if (updateReady) { void restartAndInstall(); return; }
+                    if (updateDownloading) return;
+                    void runUpdateDownload();
+                  }}
+                >
+                  {updateDownloading
+                    ? <Download size={13} className="account-update-icon spin-slow" />
+                    : <Download size={13} className="account-update-icon" />}
+                  <span className="account-update-label">
+                    {updateReady
+                      ? "安装"
+                      : updateDownloading
+                        ? (updateProgress > 0 ? `${Math.round(updateProgress * 100)}%` : "下载中")
+                        : "更新"}
+                  </span>
+                </button>
+              ) : null}
               {accountMenuOpen && (
                 <div className="account-menu" role="menu" ref={accountMenuRef}>
                   {accountMenuSub === null && <>
                     <button className="account-menu-item" onClick={() => setAccountMenuSub("lang")}><Globe2 size={15} className="ic-cyan" /><span>界面语言</span><ChevronRight size={14} className="account-menu-arrow" /></button>
                     <div className="account-menu-item account-menu-theme" role="menuitem">
                       <Sun size={15} className="ic-pink" /><span>界面主题</span>
-                      <span className="theme-quick">
-                        {/* 10-07：与设置页主题卡同一条切换链（过渡 + 完成后回执）——见 lib/visual-switch */}
                         {/* 10-07：与设置页主题卡同一条切换链（过渡 + 完成后回执）——见 lib/visual-switch。
                             10-31：控件本体换成 ThemeQuickSwitch（滑轨胶囊 + 自绘日/月）；两枚按钮仍各走
                             `runVisualSwitch`，且 setTheme 用 flushSync 包住 —— 涟漪转场要求"回调返回时
@@ -1115,7 +1148,6 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                           onLight={() => runVisualSwitch("主题", themeLabelOf("light"), () => flushSync(() => setTheme("light")), showToast)}
                           onDark={() => runVisualSwitch("主题", themeLabelOf("dark"), () => flushSync(() => setTheme("dark")), showToast)}
                         />
-                      </span>
                     </div>
                     <button className="account-menu-item" onClick={() => setAccountMenuSub("zoom")}><ZoomIn size={15} className="ic-violet" /><span>界面缩放</span><ChevronRight size={14} className="account-menu-arrow" /></button>
                     <button className="account-menu-item" onClick={() => setAccountMenuSub("update")}>
@@ -1155,14 +1187,8 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                           注入的指纹与自身 URL 里的产物名，显示的就是正在执行的那份，不是磁盘现状。 */}
                       <div className="account-menu-row"><span className="account-menu-label">构建</span><span className="account-menu-value mono" title="构建期写进包体的指纹（YYYYMMDD-HHmm）">{buildStamp}</span></div>
                       <div className="account-menu-row"><span className="account-menu-label">产物</span><span className="account-menu-value mono" title="正在执行的渲染层 bundle（含内容 hash）">{bundleFile}</span></div>
-                      <div className="account-menu-row"><span className="account-menu-label">更新地址</span><span className="account-menu-value">GitHub Releases</span></div>
-                      {/* 11-15：自动安装（默认开）——下载完成后在空闲时静默装并重启，不需要用户点。 */}
-                      <div className="account-menu-row"><span className="account-menu-label">自动安装</span>
-                        <span className="update-mode-switch" role="group" aria-label="自动安装更新">
-                          <button type="button" className={autoInstallUpdate ? "active" : ""} onClick={() => { setAutoInstallUpdate(true); showToast("已开启自动安装更新", "下载完成后会在你空闲时自动安装并重启"); }}>自动</button>
-                          <button type="button" className={!autoInstallUpdate ? "active" : ""} onClick={() => { setAutoInstallUpdate(false); showToast("已关闭自动安装更新", "改回手动确认：更新就绪后点「重启安装」"); }}>手动</button>
-                        </span>
-                      </div>
+                      <div className="account-menu-row"><span className="account-menu-label">更新地址</span><span className="account-menu-value">GitHub Releases<span className="update-help" title="国内镜像优先：gh-proxy.com → ghfast.top → GitHub 直连；任一通道失败自动换下一档">?</span></span></div>
+                      <div className="account-menu-row"><span className="account-menu-label">更新方式</span><span className="account-menu-value">完整包<span className="update-help" title="每版下载完整安装包（差分更新已下线）；macOS 下载后把应用拖进「应用程序」完成更新">?</span></span></div>
                     </div>
                     <button className="account-menu-item" onClick={() => void copyBuildDiagnostics()}>
                       <ClipboardList size={15} /><span>复制诊断信息</span>
@@ -1203,23 +1229,14 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
             <NewbieGuide open={newbieOpen} onOpenChange={setNewbieOpen} onOpenSettings={onOpenSettings} />
           </aside>
     ) : null}
-    {/* ⛔ 10-12 更新就绪弹窗（需求 3）：挂在 sidebar 之外、Fragment 之内 ——
-        它自己 portal 到 body（输入框那层带 transform，不 portal 会被定位成"跟着输入框跑"）。 */}
-    {updateReady ? (
-      <UpdateReadyToast
-        version={updateReadyVersion}
-        restarting={updateRestarting}
-        auto={autoInstallUpdate}
-        blockedBy={typeof autoInstallBlockedBy === "function" ? autoInstallBlockedBy() : ""}
-        onCancel={dismissUpdateReady}
-        onRestartInstall={() => void restartAndInstall()}
-      />
-    ) : null}
+    {/* 11-20 用户令：「右上角的更新提醒弹窗就不要了，不要烦用户」——
+        就绪状态只体现在账户行的蓝色胶囊上（点它安装），⛔ 不再弹提示条。 */}
     {/* 11-16 更新流程进度条 / 安装遮罩：自订阅主进程的 updates:download-state。 */}
     <UpdateFlowBanner />
     {/* ⛔ 10-13 关闭确认弹窗（应用内卡片，替代原生系统框）：自包含组件（自己订阅
         close-confirm:ask / 自己回包），主进程关窗守卫 preventDefault 后推事件到这里。 */}
     {/* 工作区外文件预览的授权确认（10-18，应用内模态；⛔ 不用系统弹窗） */}
+    {/* 会话 / 项目标签编辑（10-25）：自订阅，portal 到 body。 */}
     <EntityTagEditorHost />
     </>
   );

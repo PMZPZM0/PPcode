@@ -671,20 +671,13 @@ export interface Bag {
   updateChecking: boolean;
   setUpdateChecking: React.Dispatch<React.SetStateAction<boolean>>;
   updateError: string;
+  /** 云账号就绪回调（PPcode 专属：云登录完成后刷新云端记忆入口）。 */
+  handleCloudReady: (info?: { username?: string | undefined; }) => Promise<boolean>;
   setUpdateError: React.Dispatch<React.SetStateAction<string>>;
   updateDownloading: boolean;
   setUpdateDownloading: React.Dispatch<React.SetStateAction<boolean>>;
-  /** 更新方式：差分优先（默认）/ 强制完整包（差分出问题时兜底）。 */
-  updateMode: "differential" | "full";
-  /* 11-17：差分只有 Windows NSIS 支持；mac/linux 恒 false（界面据此禁用切换）。 */
-  updateDiffSupported: boolean;
-  setUpdateMode: (mode: "differential" | "full") => void;
-  /** 更新方式的状态 setter（设置页的「补丁 / 完整包」单选直接用 setState 语义）。 */
-  setUpdateModeState: React.Dispatch<React.SetStateAction<"differential" | "full">>;
   updateProgress: number;
   setUpdateProgress: React.Dispatch<React.SetStateAction<number>>;
-  updateNotice: { version?: string | undefined; changelog?: string | undefined; size?: number | undefined; mandatory?: boolean | undefined; } | null;
-  setUpdateNotice: React.Dispatch<React.SetStateAction<{ version?: string | undefined; changelog?: string | undefined; size?: number | undefined; mandatory?: boolean | undefined; } | null>>;
   accountMenuRef: React.RefObject<HTMLDivElement | null>;
   runUpdateCheck: () => Promise<void>;
   runUpdateDownload: () => Promise<void>;
@@ -703,22 +696,7 @@ export interface Bag {
   armUpdateReady: (version?: string|undefined) => void;
   dismissUpdateReady: () => void;
   restartAndInstall: () => Promise<void>;
-  tryArmUpdateReady: () => Promise<void>;
-  /** 11-15 用户令「差分更新做成自动化」：自动安装并重启的开关（默认开，localStorage 落盘）。
-   *  ⛔ 关掉只回到「提示 + 手动重启」，不影响后台检查与静默下载。 */
-  autoInstallUpdate: boolean;
-  setAutoInstallUpdate: (next: boolean) => void;
-  /** 自动安装现在的阻塞原因（空串 = 条件齐备）。⛔ 判据只有这一份，调度与提示条都读它。 */
-  autoInstallBlockedBy: () => string;
-  /* 自动安装内部状态（【93】要求段内顶层声明全部登记）：setter 与三个 ref 只在 02c2 段内用，
-     登记它们是为了让「段内声明 ⇒ Bag 一定有」这条不变量继续成立，不是新的跨段通道。 */
-  setAutoInstallUpdateState: React.Dispatch<React.SetStateAction<boolean>>;
-  /** 最后一次真实键鼠/可见性变化时刻（自动重启的「90 秒无操作」判据）。 */
-  lastInputAtRef: React.RefObject<number>;
-  /** 自动模式下点「稍后」的延后截止时刻（只延后 30 分钟，不是永久压住）。 */
-  autoSnoozeUntilRef: React.RefObject<number>;
-  /** 「稍后」到期后重新提示就绪的定时器句柄（卸载时清掉）。 */
-  autoSnoozeTimerRef: React.RefObject<number>;
+
   openFeedbackPage: () => void;
   uiLang: string;
   setUiLang: React.Dispatch<React.SetStateAction<string>>;
@@ -1435,8 +1413,6 @@ export interface Bag {
   /** 预填文本 + 一次性技能后**直接发送**（10-30 任务监控「进化」）；⛔ 文本/技能走一次性 ref，不落 state */
   sendPrefilled: (input: { text: string; skill?: { name: string; description: string } }) => Promise<void>;
   handleLogin: (info: { provider: string; name: string; baseUrl: string; apiKey: string; model: string; username?: string | undefined; saved?: any; models?: string[] | undefined; }) => Promise<boolean>;
-  /* 云助手登录门回调（PP 侧保留；与主仓分叉，⛔ 同步时别整份覆盖） */
-  handleCloudReady: (info?: { username?: string | undefined; }) => Promise<boolean>;
   handleSkip: () => Promise<void>;
   MODEL_CONFIGURED_KEY: "model-configured-v1";
   markModelConfigured: () => void;

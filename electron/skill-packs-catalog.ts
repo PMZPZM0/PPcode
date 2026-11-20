@@ -132,7 +132,7 @@ export const SKILL_PACKS: SkillPackDef[] = [
     experts: ["产品设计专家团", "前端开发专家"],
     bundled: { dir: "playwright-browser-automation" },
   },
-    {
+  {
     /* 11-20 用户指定收录（GitHub txga01Lwz/shendeng）：单技能仓库，SKILL.md 在仓库根，
        安装器走「仓库内扫描 SKILL.md」→ 目录名取 frontmatter name（shendeng）。
        ⛔ 许可 CC BY-NC 4.0：**署名 + 非商业**。界面必须展示许可徽标与原文链接；
@@ -150,7 +150,6 @@ export const SKILL_PACKS: SkillPackDef[] = [
     skills: ["shendeng"],
     notice: "声明：心理引导不替代医疗诊断；自伤 / 严重抑郁等急性危机请寻求专业帮助。内容来自第三方（作者：罗伟泽 · 听心格爱），CC BY-NC 4.0 —— 须保留署名，不得用于商业销售。",
   },
-
   {
     /* 11-19：cheat on 早在随包 resources/expert-skills/cheat-on-content ⇒ 只做展示。 */
     id: "cheat-on-content",

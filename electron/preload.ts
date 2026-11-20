@@ -846,8 +846,6 @@ contextBridge.exposeInMainWorld("codex", {
   toolStatus: () => __ipc("tools:status", 0, []),
   updateCheck: () => __ipc("updates:check", 0, []),
   updateDownload: (input: { downloadUrl: string; filename?: string }) => __ipc("updates:download", 1, [input]),
-  /* 10-13 后台静默下载 / 重启安装 */
-  updateDownloadSilent: () => __ipc("updates:download-silent", 0, []),
   updateInstall: (filePath: string) => __ipc("updates:install", 1, [filePath]),
   /* 10-13 后台静默下载 / 重启安装 */
   updateRestartInstall: () => __ipc("updates:restart-install", 0, []),
@@ -1013,7 +1011,7 @@ contextBridge.exposeInMainWorld("codex", {
   dataaccessVaultSave: (input: { threadId: string; item: Record<string, unknown> }) => __ipc("dataaccess:vault-save", 1, [input]),
   /* 清内置浏览器（persist:harness-browser）的登录态/缓存 */
   browserClearData: (kind?: string) => __ipc("browser:clear-data", 0, [kind]),
-  /* 为会话建专属工作区 <project>/.codex-harness/sessions/<threadId>（幂等） */
+  /* 为会话建专属工作区 <project>/.ppcode-harness/sessions/<threadId>（幂等） */
   sessionspaceEnsure: (threadId: string, projectRoot: string) => __ipc("sessionspace:ensure", 2, [threadId, projectRoot]),
   /* 查某会话的工作区记录 */
   sessionspaceState: (threadId: string) => __ipc("sessionspace:state", 1, [threadId]),

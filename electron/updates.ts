@@ -431,10 +431,12 @@ export async function downloadUpdate(
   //    直连逐条试：网络错 / HTTP 错 / sha256 校验不过都**删掉半截文件换下一档**（校验不过最可能是
   //    镜像动了包体，直连 GitHub 是基准真相，候选最后一条恒为直连）。
   const candidates = token ? [releaseUrl] : mirrorCandidates(releaseUrl);
+  /* ⛔ 11-20 用户令「上来要最快的更新源」：先并行探针测速重排，再逐条试（token 门仍恒直连）。 */
+  const ranked = candidates.length > 1 ? await rankMirrorsBySpeed(candidates) : candidates;
   let lastError: unknown = new Error("no_candidate");
-  for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
-    const candidate = candidates[candidateIndex];
-    const hasAlternative = candidateIndex < candidates.length - 1;
+  for (let candidateIndex = 0; candidateIndex < ranked.length; candidateIndex += 1) {
+    const candidate = ranked[candidateIndex];
+    const hasAlternative = candidateIndex < ranked.length - 1;
     await fs.rm(destPath, { force: true }).catch(() => undefined);
     try {
       const result = await hop(candidate, 0, hasAlternative);
@@ -517,107 +519,70 @@ export function fileExists(p: string): boolean {
   return existsSync(p);
 }
 
-/* ── 11-15 差分更新（同步主仓 21:29 方案 A）─────────────────────────────────
-   electron-updater + NSIS blockmap：无基线时下整包并登记基线，有基线时只下变化块。
-   ⛔ 安装必须由这个 updater 实例 quitAndInstall 完成（基线就在安装时写入缓存），
-      换进程 spawn pending.exe 只会弹交互向导（主仓 11-15 已实证）。 */
-let differentialUpdater: { quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void; version: string } | null = null;
-
-/** 本次会话是否已有「差分包下载完、只等重启安装」的版本（安装入口据此优先走 updater）。 */
-export function hasPendingDifferential(): boolean {
-  return Boolean(differentialUpdater);
+/** 按**实测吞吐**给镜像候选排序（11-20 用户令「上来要最快的更新源」）。
+ *  规则：先并行探针；读到的字节越多 = 越快，按降序排；测不出的（<=0，含 302 不落地）保持原相对顺序排在末尾。
+ *  ⚠️ 只在候选 ≥2 时调用；窗口内读满 probeBytes 的（极快的源）会并列，按原始顺序（gh-proxy 在前）。 */
+async function rankMirrorsBySpeed(
+  candidates: readonly string[],
+  windowMs = 1800,
+  probeBytes = 3 * 1024 * 1024,
+): Promise<readonly string[]> {
+  const scores = await Promise.all(
+    candidates.map((url, index) => probeSpeed(url, windowMs, probeBytes).then((bytes) => ({ index, bytes }))),
+  );
+  const bytesOf = new Map(scores.map((s) => [s.index, s.bytes]));
+  return candidates
+    .map((url, index) => ({ url, index, bytes: bytesOf.get(index) ?? -1 }))
+    .sort((a, b) => {
+      const sa = a.bytes > 0 ? a.bytes : -1;
+      const sb = b.bytes > 0 ? b.bytes : -1;
+      if (sa !== sb) return sb - sa;
+      return a.index - b.index;
+    })
+    .map((item) => item.url);
 }
 
-/** 让 electron-updater 静默安装并自动重启（⛔ 换进程 spawn pending exe 只会弹交互向导）。 */
-export function quitAndInstallDifferential(): void {
-  const updater = differentialUpdater;
-  if (!updater) throw new Error("no_pending_differential");
-  updater.quitAndInstall(true, true);
-}
-
-export type DifferentialDownloadResult = { path: string; version: string; differential: true };
-
-/** 差分缓存自愈（11-19）：electron-updater 的 NSIS 差分靠**成对**缓存
- *   `installer.exe` + `current.blockmap`；缺任一或配不上对就永远整包，且不会自愈。
- *  ⇒ 下载前缺一份就两份都删，让 updater 重新拉整包并写回成对缓存。
- *  ⛔ 只动 %LOCALAPPDATA%/<appName>-updater，不碰安装目录与用户数据。 */
-function healDifferentialCache(): void {
-  try {
-    const localAppData = process.env.LOCALAPPDATA || process.env.APPDATA || "";
-    if (!localAppData) return;
-    const dir = path.join(localAppData, `${app.getName()}-updater`);
-    const installer = path.join(dir, "installer.exe");
-    const blockmap = path.join(dir, "current.blockmap");
-    const hasInstaller = existsSync(installer);
-    const hasBlockmap = existsSync(blockmap);
-    if (hasInstaller === hasBlockmap) return;
-    if (hasInstaller) rmSync(installer, { force: true });
-    if (hasBlockmap) rmSync(blockmap, { force: true });
-  } catch {
-    /* 自愈是尽力而为：失败不影响正常下载 */
-  }
-}
-
-/** 本机是否已具备差分基线（两份缓存成对）。选「补丁」但无基线时界面要明说本次是整包。 */
-export function hasDifferentialBaseline(): boolean {
-  try {
-    const localAppData = process.env.LOCALAPPDATA || process.env.APPDATA || "";
-    if (!localAppData) return false;
-    const dir = path.join(localAppData, `${app.getName()}-updater`);
-    return existsSync(path.join(dir, "installer.exe")) && existsSync(path.join(dir, "current.blockmap"));
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 差分更新下载（NSIS blockmap）：无基线时下整包并登记基线，有基线时只下变化块。
- * ⛔ 仅 Windows；镜像候选逐个试，全部失败抛错由调用方回退自建整包下载。
- */
-export async function downloadUpdateDifferential(
-  info: { version?: string; tag?: string },
-  onProgress?: (info: { receivedBytes: number; totalBytes: number; percent: number }) => void,
-): Promise<DifferentialDownloadResult> {
-  if (process.platform !== "win32") throw new Error("differential_unsupported_platform");
-  const version = String(info?.version ?? "").trim();
-  if (!version) throw new Error("differential_no_version");
-  /* 先自愈缓存：缺一份就两份都删，让本轮重新建立成对基线。 */
-  healDifferentialCache();
-  const releaseBase = `https://github.com/${GITHUB_REPO}/releases/download/${String(info?.tag ?? `v${version}`)}`;
-  const { autoUpdater } = await import("electron-updater");
-  autoUpdater.autoDownload = false;
-  /* ⛔ 11-19：设 false ⇒ 下载完不点重启就白下，句柄丢失后安装走 spawn（不写配对缓存）⇒ 永远整包。 */
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.allowDowngrade = false;
-  let lastError: unknown = new Error("differential_failed");
-  for (const feedUrl of mirrorCandidates(releaseBase)) {
+/** 单个候选的测速探针：窗口内读到的字节数；不可用返回 -1。
+ *  ⛔ 必须 destroy：Range 只有 3MB，但慢源可能在窗口内都没读完，不掐就会一直挂着。 */
+function probeSpeed(url: string, windowMs: number, probeBytes: number): Promise<number> {
+  return new Promise<number>((resolve) => {
+    let settled = false;
+    let got = 0;
+    const finish = (value: number) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
     try {
-      autoUpdater.setFeedURL({ provider: "generic", url: feedUrl });
-      const check = await autoUpdater.checkForUpdates();
-      const remoteVersion = String(check?.updateInfo?.version ?? "");
-      if (remoteVersion && compareVersions(remoteVersion, version) !== 0) {
-        throw new Error(`latest.yml 版本 ${remoteVersion} 与 Release ${version} 不一致`);
-      }
-      const onDownload = (progress: any) => {
-        onProgress?.({
-          receivedBytes: Number(progress?.transferred ?? 0),
-          totalBytes: Number(progress?.total ?? 0),
-          percent: Math.max(0, Math.min(1, Number(progress?.percent ?? 0) / 100)),
-        });
-      };
-      autoUpdater.on("download-progress", onDownload);
-      try {
-        const files = await autoUpdater.downloadUpdate() as unknown as string[];
-        const file = (Array.isArray(files) ? files : []).find((item) => item && existsSync(item));
-        if (!file) throw new Error("差分下载完成但没有安装包文件");
-        differentialUpdater = { quitAndInstall: (silent, runAfter) => autoUpdater.quitAndInstall(silent, runAfter), version };
-        return { path: file, version, differential: true };
-      } finally {
-        autoUpdater.removeListener("download-progress", onDownload);
-      }
-    } catch (error) {
-      lastError = error;
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:") return finish(-1);
+      const req = https.request(
+        {
+          method: "GET",
+          hostname: parsed.hostname,
+          port: parsed.port || 443,
+          path: parsed.pathname + parsed.search,
+          headers: { "User-Agent": "CodexHarness/0.1", Range: `bytes=0-${probeBytes - 1}` },
+        },
+        (res) => {
+          const status = res.statusCode ?? 0;
+          /* 3xx 不算速度：GitHub 直连会 302 到 release-assets，探针不跟跳转（会吃掉整个窗口）。 */
+          if (status < 200 || status >= 300) {
+            res.resume();
+            return finish(-1);
+          }
+          res.on("data", (chunk: Buffer) => { got += chunk.length; });
+          res.on("end", () => finish(got));
+          res.on("error", () => finish(got));
+        },
+      );
+      req.on("error", () => finish(-1));
+      req.setTimeout(windowMs, () => { req.destroy(); finish(got); });
+      setTimeout(() => { try { req.destroy(); } catch { /* 已结束 */ } finish(got); }, windowMs);
+      req.end();
+    } catch {
+      finish(-1);
     }
-  }
-  throw lastError;
+  });
 }
+

@@ -122,14 +122,14 @@ export function memoryRoute(): MemoryRoute {
       skill: "memory-cloud-backend",
       store: "云端 memapi（随账号走，按账号隔离）",
       tools: [],
-      how: "云端记忆由对话上游自动注入与写入 —— ⛔ 你**不需要**调用任何记忆工具，也⛔ 不要往 lessons/*.md / MEMORY.md 手写（那套是内置金字塔的位置，云端不会读它）。只要正常回答，记忆会被上游自动收走。",
+      how: "云端记忆由对话上游自动注入与写入 —— ⛔ 你**不需要**调用任何记忆工具，也⛔ 不要往 lessons/*.md / MEMORY.md 手写（那套是内置记忆的位置，云端不会读它）。只要正常回答，记忆会被上游自动收走。",
     };
   }
   return {
     backend: "builtin",
     connectorIds: [],
     skill: "memory-classify",
-    store: "<workspace>/.codex-harness/memory/（分层文件：lessons/ · project/ · logs/）",
+    store: "<workspace>/.ppcode-harness/memory/（分层文件：lessons/ · project/ · logs/）",
     tools: [],
     how: "写记忆按 `memory-classify` 的四分类（纠错 > 坑 > SOP > 偏好）落到 `lessons/<分类>.md`，写前去重。",
   };
@@ -147,15 +147,15 @@ export function knowledgeRoute(): KnowledgeRoute {
         CLOUD_KB_TOOLS.ask, CLOUD_KB_TOOLS.search, CLOUD_KB_TOOLS.grep,
         CLOUD_KB_TOOLS.list, CLOUD_KB_TOOLS.read, CLOUD_KB_TOOLS.bases,
       ],
-      how: `检索云端知识库用 \`${CLOUD_KB_TOOLS.ask}\`（自然语言提问）/ \`${CLOUD_KB_TOOLS.search}\`（关键词）；先 \`${CLOUD_KB_TOOLS.bases}\` 看有哪些库，再 \`${CLOUD_KB_TOOLS.list}\` 列文档、\`${CLOUD_KB_TOOLS.read}\` 读全文。⛔ 本地目录（<workspace>/.codex-harness/knowledge/）在此模式下不是真相源，别去 grep 它当检索结果。`,
+      how: `检索云端知识库用 \`${CLOUD_KB_TOOLS.ask}\`（自然语言提问）/ \`${CLOUD_KB_TOOLS.search}\`（关键词）；先 \`${CLOUD_KB_TOOLS.bases}\` 看有哪些库，再 \`${CLOUD_KB_TOOLS.list}\` 列文档、\`${CLOUD_KB_TOOLS.read}\` 读全文。⛔ 本地目录（<workspace>/.ppcode-harness/knowledge/）在此模式下不是真相源，别去 grep 它当检索结果。`,
     };
   }
   return {
     backend: "local",
     connectorIds: [],
-    store: "<workspace>/.codex-harness/knowledge/（项目级本地库，随项目走）",
+    store: "<workspace>/.ppcode-harness/knowledge/（项目级本地库，随项目走）",
     tools: [],
-    how: "本地知识库没有 MCP 工具：检索就 grep 文档文件本身（`.codex-harness/knowledge/<project>/docs/*.md`），或用应用界面的知识库页搜索。⛔ 此时云端工具不存在，别去找 `cloud_kb__*`。",
+    how: "本地知识库没有 MCP 工具：检索就 grep 文档文件本身（`.ppcode-harness/knowledge/<project>/docs/*.md`），或用应用界面的知识库页搜索。⛔ 此时云端工具不存在，别去找 `cloud_kb__*`。",
   };
 }
 

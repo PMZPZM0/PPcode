@@ -123,7 +123,7 @@ ok(/const activeInstalls = new Map/.test(feature) && /正在安装中，请稍�
   "同一技能包不允许并发安装（避免两份下载同时写 skills 目录）");
 /* 11-20 用户令「加上声明和注释，和 github 跳转」：声明卡片/预览都展示；仓库可显式跳 GitHub。 */
 ok(/row\.notice/.test(panel) && /preview\.notice/.test(panel) && /className="skill-pack-notice/.test(panel)
-  && /GitHub 仓库/.test(panel) && /openExternal\(\`https:\/\/github\.com\/\$\{preview\.repo\}\`\)/.test(panel),
+  && /GitHub 仓库/.test(panel) && /window\.codex\.openExternal\(`https:\/\/github\.com\/\$\{preview\.repo\}`\)/.test(panel),
   "声明（卡片 + 预览）与 GitHub 显式跳转都在（跳转走 openExternal，不在应用内导航）");
 /* ★ 10-30「要真安装真卸载」：界面结果必须以磁盘回读为准，不能一律绿色糊过去。 */
 ok(/磁盘确认已写入/.test(panel) && /磁盘确认已不存在/.test(panel) && /没有新技能：/.test(panel),

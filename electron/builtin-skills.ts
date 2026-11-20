@@ -18,7 +18,7 @@ import { NO_AI_SLOP_SKILL } from "./builtin-skills/04-skill-no-ai-slop";
 import { I_HAVE_ADHD_SKILL } from "./builtin-skills/05-skill-adhd";
 import { DOC_CONVERT_SKILL } from "./builtin-skills/06-skill-doc-convert";
 import { SKILL_AUTHORING_SKILL } from "./builtin-skills/07-skill-authoring";
-/* 11-19: memory pyramid removed => distill skill no longer registered. */
+/* 11-19：旧版分层记忆已删除 ⇒ 蒸馏技能不再注册（文件保留备查）。 */
 import { SELF_REVIEW_SKILL } from "./builtin-skills/09-skill-self-review";
 import { MEMORY_HYGIENE_SKILL } from "./builtin-skills/10-skill-memory-hygiene";
 import { MEMORY_CLASSIFY_SKILL } from "./builtin-skills/11-skill-memory-classify";
@@ -102,9 +102,11 @@ export async function ensureEgoBrowserSkill(skillsDir: string): Promise<void> {
 
 /** 把随包的内置技能写进技能目录（缺就补），返回写入了哪些。 */
 /**
- * 11-19 用户令：技能描述截成一行摘要（引擎把每条 description 塞进每轮清单）。
- * 只截 frontmatter 的 description，超过 120 字在标点处断开加省略号，正文不动。
+ * 11-19 用户令：「技能描述优化一下」——引擎把每条 description 塞进每轮的 `### Available skills`，
+ * 长描述（实测最长 610 字）等于每轮重复付费。这里**只截 frontmatter 的 description**：
+ * 超过 120 字在最近的标点处断开并加省略号；正文一个字不动（技能内容照旧完整）。
  */
+/* 11-19 阶段 1：描述再收到 **60 字**——清单只当索引（触发词 + 路径），细节靠 read_file 读正文。 */
 function clampSkillDescription(content: string, max = 60): string {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return content;
@@ -118,7 +120,7 @@ function clampSkillDescription(content: string, max = 60): string {
   return '---\n' + nextHead + '\n---' + content.slice(m[0].length);
 }
 
-/** 内置技能落盘（尊重两种停用态）。 */
+/** 内置技能落盘：首次安装或升级时补齐缺失/过期的 SKILL.md，尊重两种停用态（不复活被关掉的技能）。 */
 export async function ensureBuiltinSkills(skillsDir: string) {
   const entries: [string, string][] = [
     ["desktop-automation", DESKTOP_SKILL],
@@ -146,7 +148,7 @@ export async function ensureBuiltinSkills(skillsDir: string) {
     // 元技能「怎么造技能」：经验包的积累通道。写成技能而不是塞进 developer_instructions，
     // 是因为格式正文只在"真要沉淀时"才需要被读（渐进披露，省每轮 token）。
     ["skill-authoring", SKILL_AUTHORING_SKILL],
-    // 元技能「怎么蒸记忆金字塔」：水位提示出现时按它把那一层压下去（引擎自助，用户 09-22 点名）
+    // 元技能「怎么蒸记忆文件」：水位提示出现时按它把那一层压下去（引擎自助，用户 09-22 点名）
     // ── 09-23 用户点名要的四件（「技能配置与集成…内置为默认能力」）─────────────────
     // 收尾复盘：任务完成后自我总结 → 识别错误/改进点 → 沉淀为记忆与技能（自我进化的入口）
     ["self-review", SELF_REVIEW_SKILL],
@@ -175,9 +177,11 @@ export async function ensureBuiltinSkills(skillsDir: string) {
     //  36 种组件的字段速查 + 手机/电脑/网页三种形态 + 导航/主题；与工具 frontend_* 及
     //  指令第 13 条（FRONTEND_CANVAS_INSTRUCTIONS）同源，名字改了要一起改（守卫【283】钉）。
     ["frontend-canvas", FRONTEND_CANVAS_SKILL],
-    // 11-03：前端设计方法（正文由 DESIGN.md 的 DESIGN-METHOD 标记区生成，不要手写第二份）。
+    // 11-03：前端设计方法（用户：「把你的前端设计思路做成 design.md，放项目里，内置，供 codex 参考使用」）——
+    //  ⛔ 正文由 DESIGN.md 的 DESIGN-METHOD 标记区生成（scripts/gen-design-skill.mjs），别在这里手写第二份。
     ["frontend-design", FRONTEND_DESIGN_SKILL],
-    /* 11-13：RPA 配方的保存/复用口径（rpa_save / rpa_run）—— 步骤格式与失败处理在技能里。 */
+    // 11-13：RPA 配方的保存/复用口径（rpa_save / rpa_run）—— 步骤格式与失败处理在技能里，
+    // 工具描述只留一句；⛔ 别再往每个会话的常驻指令里塞完整手册。
     ["rpa-recipes", RPA_RECIPES_SKILL],
     // 11-14：ApkStart 模拟器测试流程（apkstart 工具）—— 安装/启动/截屏/logcat/adb 的顺序与失败自检；
     //  工具描述只留一句，细节在这里（渐进披露）。
@@ -222,6 +226,8 @@ export async function ensureBuiltinSkills(skillsDir: string) {
       const existing = await fs.readFile(target, "utf8").catch(() => "");
       // 比对前归一化行尾：停用/启用会把文件重写成 LF，与常量里的行尾不同，
       // 逐字比会每次启动都重写一遍（无意义写盘，且让「内容未变就别动」的判据失效）。
+      /* ⛔ skill-audit 的 description 是判据词库（守卫【113】按「不得安装」等词比对）⇒ 不截断。
+         ⛔ 比对必须拿**截断后**的 body：拿原文比会在"磁盘是未截断版本"时判等 ⇒ 永远不重写。 */
       const body = name === "skill-audit" ? content : clampSkillDescription(content);
       if (existing.replace(/\r\n/g, "\n") !== body.replace(/\r\n/g, "\n")) {
         await fs.mkdir(dir, { recursive: true });
@@ -244,7 +250,7 @@ export async function ensureBuiltinSkills(skillsDir: string) {
 
   /* 09-25 记忆后端**互斥**：启用 MCP 记忆后端时只留 memory-mcp-backend，内置分类技能必须停用。
      ⛔ 不这么做的话，引擎会同时读到两套互相矛盾的写法（一套让它往 lessons/*.md 写、
-     一套让它调 MCP 工具）—— 用户原话：「不要 mcp 写了记忆，又用金字塔记忆，这样重复了」。
+     一套让它调 MCP 工具）—— 用户原话：「不要 mcp 写了记忆，又用内置记忆，这样重复了」。
      ⛔ 用**改名**（SKILL.md ⇄ SKILL.md.disabled）而不是删目录：切回内置时立刻恢复，不用重写盘。
      ⛔ 这是后端语义驱动的强制切换（与「能力总闸」同源），会覆盖对这两个技能的手动启停。 */
   try {
@@ -339,6 +345,7 @@ export async function ensureBuiltinSkillDirs(skillsDir: string): Promise<void> {
          只认前者的话，被池停用的目录型技能会在每次升级同步时被写回 SKILL.md。 */
       const off = rel === SKILL_FILE ? disabledVariantOf(target) : null;
       const dest = off ?? path.join(target, rel);
+      /* 同一个截断口径：SKILL.md 写截断版，其它文件原样；比对也用最终要写的字节。 */
       const body = rel === SKILL_FILE ? Buffer.from(clampSkillDescription(content.toString("utf8")), "utf8") : content;
       const existing = await fs.readFile(dest).catch(() => null);
       if (existing && existing.equals(body)) continue;

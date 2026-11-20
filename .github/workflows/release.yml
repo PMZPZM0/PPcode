@@ -91,8 +91,8 @@ jobs:
           }
 
           pick artifacts/win-x64   '*.exe' "PPcode-${VERSION}-win-x64.exe"
-          # 10-25 NSIS 差分更新：blockmap 与 latest.yml 必须跟安装包一起发；
-          # 缺任何一个，客户端都会自动回退到完整包（不会坏，但没有增量效果）。
+          # 11-20：客户端只剩完整包（不再用 electron-updater）⇒ blockmap 与 latest.yml
+          # 只是 electron-builder 的默认产物，一起带上；客户端已不读它们。
           pick artifacts/win-x64   '*.exe.blockmap' "PPcode-${VERSION}-win-x64.exe.blockmap"
           LATEST=$(find artifacts/win-x64 -type f -name 'latest.yml' -print -quit)
           if [ -z "${LATEST}" ]; then

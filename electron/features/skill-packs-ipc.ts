@@ -124,6 +124,15 @@ async function findSkillDirsInRepo(root: string): Promise<string[]> {
   return out;
 }
 
+/** 读 SKILL.md frontmatter 的 name（单根技能仓库用它当安装目录名；读不到回空串）。 */
+async function skillNameFromFile(dir: string): Promise<string> {
+  try {
+    const text = await fs.readFile(path.join(dir, "SKILL.md"), "utf8");
+    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? "";
+    return (/^name:\s*["']?([^"'\r\n]+)["']?\s*$/m.exec(frontmatter)?.[1] ?? "").trim();
+  } catch { return ""; }
+}
+
 /** 随包内置技能：扫 resources/expert-skills/<dir>（根 SKILL.md 或 skills/<n>/SKILL.md）。 */
 function bundledBaseDir(dir: string): string {
   const root = path.join(process.resourcesPath ?? "", "expert-skills", dir);
@@ -233,7 +242,11 @@ async function installPack(id: string, signal?: AbortSignal, options: { update?:
     const rejected: string[] = [];
     for (const dir of dirs) {
       if (cancelled()) throw new DownloadCancelledError();
-      const folder = path.basename(dir).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+      /* ⛔ 根目录就是技能时，目录名会变成解压出的 `repo-main`（神灯 = shendeng-main），
+         用户看到的技能名和目录名对不上 ⇒ 优先用 SKILL.md frontmatter 的 name（引擎展示同源）。
+         子目录技能仍按目录名（taste-skill 等行为不变）。 */
+      const rawName = dir === repoRoot ? await skillNameFromFile(dir) : path.basename(dir);
+      const folder = (rawName || path.basename(dir)).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
       if (!folder) continue;
       const target = path.join(root, folder);
       if (existsSync(target)) {

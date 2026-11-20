@@ -219,6 +219,15 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
   };
   /* 11-17 用户令：「把这个改成三个点，点击右边菜单」——原来的悬浮图标条改成常驻 ⋯，
      点击在它右侧弹菜单（不再随 hover 出现、也不在窄侧栏里压住 tab）。 */
+  /* 11-19 用户令：侧栏列表滚动条默认隐藏，滚动时再展示（停 900ms 收回）。 */
+  const [listScrolling, setListScrolling] = useState(false);
+  const listScrollTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (listScrollTimer.current) window.clearTimeout(listScrollTimer.current); }, []);
+  const markListScrolling = () => {
+    setListScrolling(true);
+    if (listScrollTimer.current) window.clearTimeout(listScrollTimer.current);
+    listScrollTimer.current = window.setTimeout(() => setListScrolling(false), 900);
+  };
   const [moreMenu, setMoreMenu] = useState<{ left: number; top: number } | null>(null);
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
   const openMoreMenu = () => {
@@ -965,7 +974,7 @@ export function AppViewSidebarShell({ app, onOpenSettings }: { app: HarnessAppAp
                 ⛔ DOM 顺序是**契约的一部分**（守卫【268】钉死已登记插槽位不许被删），
                    所以只允许追加在既有插槽之后，不许插到既有按钮之间。*/}
             <Slot id="sidebar.middle" props={{ onOpenSettings }} loader={() => import("../../settings-devtools/DomainsPanel")} />
-            <div className={`thread-list${viewTab === "tasks" ? " is-tasks" : ""}`}>
+            <div className={`thread-list${viewTab === "tasks" ? " is-tasks" : ""}${listScrolling ? " is-scrolling" : ""}`} onScroll={markListScrolling}>
               {loading ? Array.from({ length: 5 }).map((_, index) => <div className="thread-skeleton shimmer" key={index} />) : viewTab === "tasks" ? (
                 /* 10-25 用户令：「项目选项旁边加一个任务选项」= 平铺全部会话（置顶优先、按最近活动排；
                    与项目视图共用 renderDispatchedList 同一渲染器）。

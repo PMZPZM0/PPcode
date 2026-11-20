@@ -17,6 +17,7 @@ import { lazy } from "react";
 import type { ReactNode } from "react";
 import type { SettingsPage } from "../../../../app-view/types";
 import type { HarnessAppApi } from "../../../../app-state/useHarnessApp";
+import { GithubTrendingPage } from "../../../../github-trending";
 import UsagePanel from "../../../../../components/UsagePanel";
 import VoiceSettingsSection from "../../../../../components/VoiceSettingsSection";
 import { storeCodexAvatar, setCodexIdentity } from "../../../../../lib/codex-identity.mjs";
@@ -504,6 +505,7 @@ export function settingsPagesOf(app: HarnessAppApi): Partial<Record<SettingsPage
        各自 registerSlot，声明式插件照旧能挂到这些位置 —— 10-07 那次「同一 id 写成两处 ⇒
        功能域画两遍、声明式插件从不显示」的坑，继续由【268-c】按 id 全局去重钉着。 */
     devtools: { render: () => <DevtoolsSettingsSection setNotice={setNotice} devRuntimes={devRuntimes} runtimeInstalling={runtimeInstalling} runtimeUninstalling={runtimeUninstalling} runtimePercent={runtimePercent} runtimeStage={runtimeStage} runtimeSpeed={runtimeSpeed} runtimeProgress={runtimeProgress} installDevRuntime={installDevRuntime} uninstallDevRuntime={uninstallDevRuntime} cancelDevRuntime={cancelDevRuntime} runtimeModal={runtimeModal} setRuntimeModal={setRuntimeModal} onOpenExperts={openExpert} /> },
+    "github-trending": { render: () => <GithubTrendingPage /> },
     extensibility: { render: () => <ExtensibilitySettingsSection onNotice={setNotice} /> },
     screenshot: { render: () => <ScreenshotSettingsSection onNotice={setNotice} /> },
     /* 桌面宠物（09-30）：域只收显式 props（onNotice），状态全走自己的 IPC（pet:*），不占 app 字段面 */

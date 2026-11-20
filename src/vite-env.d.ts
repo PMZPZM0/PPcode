@@ -1061,6 +1061,8 @@ interface Window {
     ponytailModeGet(): Promise<string>;
     ponytailModeSet(mode: string): Promise<{ mode: string }>;
     enhancePrompt(text: string): Promise<{ ok: boolean; text?: string; error?: string }>;
+    /* GitHub 热门榜简介翻译：先用当前模型批量翻，失败再走 MyMemory */
+    translateTexts(input: { texts: string[] }): Promise<{ ok: boolean; translations: string[]; error?: string }>;
     qqConnect(appId: string, appSecret: string): Promise<{ ok: boolean; name?: string; error?: string }>;
     qqLogout(): Promise<{ ok: boolean }>;
     qqQrCancel(): Promise<{ ok: boolean }>;

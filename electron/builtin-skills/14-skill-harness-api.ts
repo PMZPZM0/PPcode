@@ -11,7 +11,7 @@ description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当
 
 # 宿主接口清单与可拓展能力（自动生成，勿手改）
 
-数据源：electron/ipc-channels.manifest.json（123 个能力域 / 724 个通道），由 scripts/gen-capability-skill.mjs 生成。
+数据源：electron/ipc-channels.manifest.json（123 个能力域 / 725 个通道），由 scripts/gen-capability-skill.mjs 生成。
 
 ## 怎么用
 
@@ -235,9 +235,9 @@ OpenFilm 视频剪辑（第三方开源 github.com/openfilm/openfilm，MIT + 商
 OpenAI 账号鉴权（登录/凭据/额度）
 通道：openai:account-remove, openai:account-switch, openai:accounts, openai:capture-login, openai:import-file, openai:login-cancel, openai:login-start, openai:login-status, openai:models, openai:set-proxy, openai:toggle-account, openai:usage
 
-### prompt（1 通道）
+### prompt（2 通道）
 提示词增强（把用户草稿改写为更完整的 prompt）
-通道：prompt:enhance
+通道：prompt:enhance, prompt:translate
 
 ### terminal（5 通道）
 内置终端（创建/输入/缩放/重启）

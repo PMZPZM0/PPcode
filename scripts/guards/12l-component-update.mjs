@@ -1,297 +1,313 @@
-#!/usr/bin/env node
-/**
- * 12l-component-update —— 统一更新体系守卫（10-13 用户令：「覆盖全部同类组件的统一更新体系」）。
- *
- * 钉的都是「一旦破了就会悄悄回到各自为政」的坑：
- *  ① **清单单一真相源**：组件清单只在 electron/update-registry.ts，别处不许再写一份包名/来源表；
- *  ② **镜像策略单一真相源**：update-registry 只引用（npm/pip/github 三张既有表），不许抄 URL 字面量；
- *  ③ **不可更新的条目必须写原因**（mirror:false 而 reason 为空 = 用户看到一行没头没尾的「不支持」）；
- *  ④ **远端一律国内镜像**：pip 走 PIP_INDEXES、GitHub 走 GH_MIRROR_PREFIXES；出现裸 github.com 取数
- *     必须经 withPrefix（直连只能作为最后一档候选，不许写死成首选）；
- *  ⑤ **幂等**：更新前后比内容指纹 / 版本号，一致 ⇒ action=unchanged，不重复安装；
- *  ⑥ **失败回滚**：有目标目录的分支必须走 withRollback（保证不留在「半更新」状态）；
- *  ⑦ **手动链 = 自动链**：后台循环与手动通道都调 updateComponent，不许按 kind 再写一套；
- *  ⑧ **开关关就不检查**：runCycle 里开关判定在 update 之前 continue（不是"查到了不装"）；
- *  ⑨ **界面不自己定默认值**：行数据自带 enabled，UI 不许再写一份缺省判断；
- *  ⑩ 控制台要有「检测 / 单个更新」入口 + 台账有条目；「一键更新全部」已按用户要求删除（按键丑）。
- */
-import { readFileSync, existsSync } from "node:fs";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-let checks = 0;
-let fails = 0;
-const ok = (cond, label) => {
-  checks++;
-  if (!cond) fails++;
-  console.log(`${cond ? "  ✓" : "  ✗"} ${label}`);
-};
-
-const read = (p) => {
-  try { return readFileSync(join(ROOT, p), "utf8"); } catch { return ""; }
-};
-const stripComments = (text) => text
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .replace(/(^|\s)\/\/[^\n]*/g, "$1");
-
-const registry = read("electron/update-registry.ts");
-const backends = read("electron/update-backends.ts");
-const safety = read("electron/update-safety.ts");
-const board = read("electron/features/auto-update-ipc.ts");
-const appSettings = read("electron/app-settings.ts");
-const card = read("src/features/settings-general/AutoUpdateCard.tsx");
-const general = read("src/features/settings-general/GeneralSettingsSection.tsx");
-const ledger = read("docs/FEATURE-LEDGER.md");
-const cardCode = stripComments(card);
-const backendsCode = stripComments(backends);
-const boardCode = stripComments(board);
-const registryCode = stripComments(registry);
-
-console.log("【① 清单单一真相源】");
-ok(/export const COMPONENT_SPECS/.test(registryCode) && /export function componentSpec/.test(registryCode),
-  "electron/update-registry.ts 导出组件清单 COMPONENT_SPECS + componentSpec");
-// ⛔ 别处不许出现"第二类组件清单"（这里用包名数组判 —— 写第三份包名表时这里会红）
-ok(!/const\s+[A-Z_]*(PACKAGES|COMPONENTS|TARGETS)\s*=/.test(backendsCode),
-  "⛔ 后端不含第二份「组件清单/包名表」（清单只认 update-registry）");
-ok(/import .*componentSpec|from "\.\/update-registry"/.test(backendsCode),
-  "后端从 update-registry 取清单");
-ok(/from "\.\.?\/update-registry"/.test(boardCode),
-  "编排层（auto-update-ipc）也从 update-registry 取清单");
-
-console.log("【② 镜像策略单一真相源】");
-ok(/from "\.\/gh-mirror"/.test(registryCode) && /from "\.\/features\/pip-sources"/.test(registryCode),
-  "GitHub 与 pip 的源表**引用**既有单一真相源（gh-mirror / pip-sources）");
-ok(!/https:\/\/pypi\.tuna|https:\/\/mirrors\.cloud\.tencent|https:\/\/mirrors\.aliyun/.test(registryCode),
-  "⛔ update-registry 不抄 pip 镜像 URL 字面量（只用 PIP_INDEXES）");
-ok(/export function mirrorOrder/.test(registryCode) && /case "npm":/.test(registryCode) && /case "pip":/.test(registryCode) && /case "github":/.test(registryCode),
-  "mirrorOrder 覆盖 npm / pip / github 三条远端通道");
-ok(/source === "direct"\s*\n?\s*\?\s*\[NPM_SOURCES\.official/.test(registryCode) || /NPM_SOURCES\.official, NPM_SOURCES\.mirror/.test(registryCode),
-  "默认（auto/mirror）下 npm 是**国内镜像在前**、官方兜底");
-ok(/GH_MIRROR_PREFIXES/.test(registryCode) && !/gh-proxy\.com\/?"/.test(registryCode.replace(/https:\/\/gh-proxy\.com\/",\s*$/gm, "")),
-  "GitHub 通道不写死单一镜像站，走 GH_MIRROR_PREFIXES 的三级顺序");
-
-console.log("【③ 不可更新的条目必须写明原因】");
-{
-  // 逐个 spec 块核对 mirror/reason 配对（reason 为空且 mirror:false = 用户看到一句没头没尾的拒绝）
-  const blocks = registryCode.split(/\n\s*\{\n/).slice(1);
-  let paired = true;
-  let bad = "";
-  for (const block of blocks) {
-    const mirrorFalse = /mirror:\s*false/.test(block);
-    const hasReason = /reason:\s*"[^"]{10,}"/.test(block);
-    if (!hasReason) { paired = false; bad = block.slice(0, 60).replace(/\s+/g, " "); break; }
-  }
-  ok(paired, `每个 spec 都有非空 reason（${paired ? "全部通过" : "反例：" + bad}）`);
-  const offCount = (registryCode.match(/mirror:\s*false/g) ?? []).length;
-  ok(offCount >= 4, `结论性「无可用镜像源」的条目已列明并计数（当前 ${offCount} 条）`);
-  ok(/channel:\s*"none"/.test(registryCode) && /随应用/.test(registryCode) && /钩子/.test(registryCode),
-    "内置技能 / 随包工具 / 钩子 / 声明式插件都进了清单并给了原因（排查无遗漏的证据）");
-}
-
-console.log("【④ 远端一律走国内镜像】");
-ok(/mirrorOrder\("pip", source\)/.test(backendsCode) && !/pypi\.org\/simple/.test(backendsCode),
-  "pip 更新按 PIP_INDEXES 逐个源重试（代码里没有写死官方源）");
-ok(/mirrorOrder\("github", source\)/.test(backendsCode) && /withPrefix\(url, prefix\)/.test(backendsCode),
-  "GitHub 取数与下载都套镜像前缀后才 fetch（直连只是最后一档候选）");
-ok(!/await fetch\(`?https:\/\/(api\.)?github\.com/.test(backendsCode),
-  "⛔ 后端没有裸 github.com 的 fetch（那条一定会绕过镜像）");
-ok(/mirrorOrder\("pip", ctx\.source\)|mirrorOrder\("pip", source\)/.test(backendsCode) && /-i", index/.test(backendsCode),
-  "pip install 显式带 -i <镜像索引>");
-
-console.log("【⑤ 幂等：内容一致不重装】");
-ok(/dirFingerprint/.test(backendsCode) && /after === before\s*\n?\s*\? outcome\("unchanged"/.test(backendsCode),
-  "更新前后比内容指纹，一致 ⇒ action=unchanged（不重复安装）");
-ok(/result\.to === result\.from\s*\n?\s*\? outcome\("unchanged"/.test(backendsCode),
-  "工具/引擎分支也比版本号，版本相同 ⇒ unchanged");
-ok(/export async function dirFingerprint/.test(safety) && /crypto\.createHash\("sha256"\)/.test(safety),
-  "指纹基于 sha256，且目录名/修改时间不进指纹（否则重装也会得到不同值）");
-
-console.log("【⑥ 失败回滚：不留半更新状态】");
-ok(/export async function withRollback/.test(safety) && /restoreDir/.test(safety),
-  "electron/update-safety.ts 提供快照 + 回滚");
-ok((backendsCode.match(/withRollback\(/g) ?? []).length >= 4,
-  `市场技能 / 插件 / 专家包等有目录的分支都走 withRollback（当前 ${(backendsCode.match(/withRollback\(/g) ?? []).length} 处）`);
-ok(/先删后拷|restoreDir\(taken\.dir, targetDir\)/.test(safety),
-  "回滚是「先删残缺目标再整份拷回」（不是合并，避免留下混合目录）");
-ok(/已自动回滚到更新前的版本|回滚也失败了/.test(safety),
-  "回滚成功/失败都给用户明确说法（失败不许吞掉）");
-ok(/KEEP_PER_COMPONENT|TOTAL_CAP_BYTES/.test(safety) && /export async function pruneSnapshots/.test(safety),
-  "快照有 prune（每组件最多 N 份 + 总量上限），不会把磁盘撑爆");
-
-console.log("【⑦ 手动链 = 自动链】");
-ok(/updateRow\(row, source, settings\)/.test(boardCode) && /updateComponent\(spec, row\.id/.test(boardCode),
-  "后台循环与手动通道都经 updateRow → updateComponent 同一函数");
-ok(!/performEngineUpdateFlow|performRuntimeUpdate/.test(boardCode),
-  "⛔ 编排层不再直接调各家内��安装函数（判据只有一份，不在编排层再来一遍）");
-
-console.log("【⑧ 开关关闭 ⇒ 不发起检查】");
-ok(/if \(!readAutoUpdateRowSwitch\(settings, row\.id\)\) continue;/.test(boardCode),
-  "runCycle 里开关判定在 continue 之前（关掉就整行跳过，连检查都不做）");
-ok(/readAutoUpdateRowSwitch/.test(appSettings) && /autoUpdateOverrides/.test(appSettings),
-  "每行的开关判据唯一入口 readAutoUpdateRowSwitch（含 overrides map，支持任意组件行）");
-ok(/AUTO_UPDATE_DEFAULT_OFF/.test(appSettings),
-  "会改写用户文件的三类（市场技能/专家包/人格包）默认关，其余默认开 —— 分档只写一处");
-
-console.log("【⑨ 界面不自己定默认值】");
-ok(/enabled: boolean;/.test(cardCode) && /checked=\{row\.enabled\}/.test(cardCode),
-  "行数据自带 enabled，UI 直接渲染（⛔ 界面不许再写一份缺省判断）");
-ok(!/\["market-skill", "expert-skill", "soul"\]\.includes/.test(cardCode),
-  "⛔ UI 不再自己维护「哪几类默认关」的名单（那会让界面与后台漂移）");
-
-console.log("【⑩ 控制台统一入口 + 台账】");
-ok(/window\.codex\.scanAutoUpdateComponents\(/.test(cardCode), "控制台有「检测更新」入口");
-ok(/window\.codex\.runAutoUpdateComponent\(row\.id\)/.test(cardCode), "控制台支持按名称/组件逐个更新");
-ok(!/runAllAutoUpdateComponents/.test(cardCode) && !/一键更新全部/.test(cardCode), "⛔ 不再有「一键更新全部」（用户：按键真丑，已删）");
-ok(/auto-update-log/.test(cardCode), "有进度与结果输出区");
-ok(/noMirror|无可用镜像源/.test(cardCode), "⛔ 控制台显式标注「无可用镜像源」的条目");
-ok(/<AutoUpdateCard/.test(general), "卡片挂在「控制台」（general）页");
-ok(/统一更新|组件更新/.test(ledger), "docs/FEATURE-LEDGER.md 有本轮条目");
-
-console.log("【⑪ 当前版本 = 实际安装态（不是随包常量）】");
-/* 10-13 用户实测的真 bug：控制台那行显示「4.9.0 → v5.2.0（有可用更新）」，点更新后 toast 说「已更新」，
-   但版本号与徽标一直不动。根因：ponytail 的「当前版本」报的是**随包常量** PONYTAIL_VERSION（4.9.0），
-   而在线更新装的是**按标签命名**的目录（…/ponytail/ponytail/5.2.0）—— 磁盘上只剩 5.2.0，界面仍报 4.9.0。
-   判据：① 版本必须从引擎落点实际读；② 两个分支（检测 / 更新前）都用它；③ 「有没有新版」走 compareVersions
-   （⛔ 不再用字符串不等）；④ **造夹具跑编译产物里的真函数**做行为断言（不是看文本）。 */
-{
-  const pluginSrc = read("electron/ponytail-plugin.ts");
-  ok(/export async function listInstalledPonytailVersions\(/.test(pluginSrc),
-    "ponytail-plugin 导出「读引擎落点里实际安装版本」的 listInstalledPonytailVersions");
-  ok(/plugins", "cache", "ponytail", "ponytail"/.test(pluginSrc),
-    "读的是引擎安装落点 plugins/cache/ponytail/ponytail/<版本>");
-  ok((backendsCode.match(/installedPonytailVersion\(ctx\.codexHome\)/g) ?? []).length >= 2,
-    "检测与「更新前」两个分支都按实际安装版本取当前版本");
-  ok(!/current:\s*PONYTAIL_VERSION/.test(backendsCode),
-    "⛔ 检测分支不再把随包常量当当前版本（那会让控制台永远停在「有可用更新」、更新完也不刷新）");
-  ok(!/!==\s*PONYTAIL_VERSION/.test(backendsCode),
-    "⛔ 不再用「字符串不等」判 ponytail 有没有新版");
-  ok(/compareVersions\(latest, current\) > 0/.test(backendsCode) && /compareVersions\(tag, before\) <= 0/.test(backendsCode),
-    "ponytail 的更新判据走 updates.ts 的 compareVersions（版本比较单一真相源）");
-
-  const distPlugin = join(ROOT, "dist-electron", "ponytail-plugin.js");
-  if (!existsSync(distPlugin)) {
-    fail("【⑪】dist-electron/ponytail-plugin.js 不存在（先构建再跑预检）—— 行为断言无法执行");
-  } else {
-    try {
-      const mod = await import(pathToFileURL(distPlugin).href);
-      const root = await mkdtemp(join(tmpdir(), "ponytail-fixture-"));
-      const home = join(root, "codex-home");
-      for (const v of ["4.9.0", "5.2.0"]) {
-        const dir = join(home, "plugins", "cache", "ponytail", "ponytail", v);
-        await mkdir(dir, { recursive: true });
-        await writeFile(join(dir, "plugin.yaml"), `name: ponytail\nversion: ${v}\n`, "utf8");
-      }
-      const found = await mod.listInstalledPonytailVersions(home);
-      const bothSeen = Array.isArray(found) && found.includes("4.9.0") && found.includes("5.2.0");
-      ok(bothSeen,
-        `【⑪】实际安装版本确实从磁盘读（夹具放两个版本 ⇒ 读到 ${JSON.stringify(found)}；应含 4.9.0 与 5.2.0）`);
-      ok(!(Array.isArray(found) && found.length === 1 && found[0] === "4.9.0"),
-        "⛔ 读到的不是随包常量（否则界面在更新后仍报 4.9.0）");
-      const empty = await mod.listInstalledPonytailVersions(join(root, "no-such-home"));
-      ok(Array.isArray(empty) && empty.length === 0,
-        "落点不存在时返回空数组（调用方才能区分「没装」与「装了旧版」）");
-      await rm(root, { recursive: true, force: true });
-    } catch (e) {
-      fail(`【⑪】dist-electron/ponytail-plugin.js 行为断言执行失败：${e && e.message ? e.message : String(e)}`);
-    }
-  }
-}
-
-/* 【⑫】引擎安装自愈（10-28 事故）：在线更新把 live vendor 目录搬走后落位/回滚都失败，
-   `bin/codex.exe` 消失 ⇒ 技能/钩子/插件一起报 spawn ENOENT。三道防线都要在：
-   ① 启动前自愈；② 删上一代备份前确认 live 在位；③ 落位没成功就别删解压产物。 */
-{
-  const heal = read("electron/engine-install-heal.ts");
-  const boot = read("electron/features/boot.ts");
-  const updater = stripComments(read("electron/engine-updater.ts"));
-  ok(/export async function healEngineInstall/.test(heal),
-    "【⑫】存在引擎安装自愈模块（healEngineInstall）");
-  ok(/\.bak-1/.test(heal) && /\.engine-update-/.test(heal),
-    "【⑫】自愈候选同时覆盖上一代备份与上次更新的解压产物");
-  const bootStart = boot.indexOf("await server.start()");
-  const bootHeal = boot.indexOf("healEngineInstall(");
-  ok(bootHeal >= 0 && bootStart >= 0 && bootHeal < bootStart,
-    "【⑫】启动链在 server.start() 之前调用自愈（spawn 时就要能解析到二进制）");
-  ok(/if \(existsSync\(path\.join\(vendorDir, "bin", exeName\)\)\) \{\s*await fs\.rm\(backupDir/.test(updater),
-    "【⑫】删上一代备份前必须确认 live 在位（否则唯一副本被删 = 引擎彻底没有）");
-  ok(/if \(existsSync\(path\.join\(vendorDir, "bin", exeName\)\)\) \{\s*await fs\.rm\(workRoot/.test(updater),
-    "【⑫】落位未成功时保留解压产物（它是启动自愈的最后一个候选）");
-  ok((updater.match(/回滚失败（备份已保留/g) || []).length >= 2,
-    "【⑫】两处回滚失败都留日志（不许静默吞掉）");
-}
-
-/* 【⑬】组件更新 npm 通道：所有源都查 + 取最大（11-10 用户令「官方源兜底」）。
-   ⛔ 回归场景：npmmirror 是缓存快照，1.1.4 发布 3 天后仍报 1.1.3；旧实现
-      「第一个成功就 return」⇒ 官方源永远插不上话，界面恒显示「已是最新」。
-      ⛔ 形态断言之外必须**造夹具真跑编译产物**，否则守卫会「自洽地绿」。 */
-{
-  const probeSrc = stripComments(read("electron/npm-version.ts"));
-  const runtimeSrc = stripComments(read("electron/features/runtime-ipc.ts"));
-  const engineSrc = stripComments(read("electron/engine-updater.ts"));
-  ok(/export function pickNewestVersion/.test(probeSrc) && /export async function probeNewestNpmVersion/.test(probeSrc),
-    "【⑬】npm 版本判定收敛到 npm-version.ts（pickNewestVersion + probeNewestNpmVersion）");
-  ok(/compareVersions/.test(probeSrc) && /from "\.\/version-utils"/.test(probeSrc),
-    "【⑬】版本比较只认 version-utils.ts 的 compareVersions（不手写第二份）");
-  ok(/for \(const registry of registries\)/.test(probeSrc) && !/return \{ version: latest/.test(probeSrc),
-    "【⑬】⛔ 探测循环不早退：所有候选源都查完再挑最大");
-  ok(/probeNewestNpmVersion\(/.test(runtimeSrc) && /probeNewestNpmVersion\(/.test(engineSrc),
-    "【⑬】工具链与引擎两条检查更新链都走同一判定层");
-  ok(!/查最新版本失败（国内镜像与官方源都试过了）/.test(runtimeSrc) && !/查询最新版本失败：/.test(engineSrc),
-    "【⑬】⛔ 两条链路都不再有「第一个成功就返回」的旧兜底文案");
-  ok(/preferredRegistry/.test(runtimeSrc) && /compareVersions\(to, target\.version\) !== 0/.test(runtimeSrc),
-    "【⑬】安装侧用胜出源 + 具体版本，并复核装完版本等于目标（否则 @latest 会从滞后镜像装回旧版）");
-
-  const distProbe = join(ROOT, "dist-electron", "npm-version.js");
-  if (!existsSync(distProbe)) {
-    ok(false, "【⑬】dist-electron/npm-version.js 不存在（先构建再跑预检）—— 行为断言无法执行");
-  } else {
-    try {
-      const mod = await import(pathToFileURL(distProbe).href);
-      const { probeNewestNpmVersion, pickNewestVersion } = mod;
-      const mirror = "https://registry.npmmirror.com";
-      const official = "https://registry.npmjs.org";
-      const lag = await probeNewestNpmVersion([mirror, official], async (r) => r === mirror ? "1.1.3" : "1.1.4");
-      ok(lag.version === "1.1.4" && lag.registry === official && lag.checked.length === 2,
-        "【⑬】真值：镜像 1.1.3 / 官方 1.1.4 ⇒ 取官方 1.1.4（⛔ 不能停在镜像的「已是最新」）");
-      const down = await probeNewestNpmVersion([mirror, official], async (r) => {
-        if (r === mirror) throw new Error("mirror down");
-        return "1.1.4";
-      });
-      ok(down.version === "1.1.4" && down.errors.length === 1,
-        "【⑬】真值：镜像挂掉 ⇒ 官方仍生效，错误留痕不吞");
-      const tie = await probeNewestNpmVersion([mirror, official], async () => "1.1.4");
-      ok(tie.version === "1.1.4" && tie.registry === mirror,
-        "【⑬】真值：两源同版 ⇒ 保留候选序靠前的镜像（下载快）");
-      let threw = false;
-      try { await probeNewestNpmVersion([mirror, official], async () => { throw new Error("down"); }); } catch { threw = true; }
-      ok(threw, "【⑬】真值：全部源失败 ⇒ 抛错（不许拿空版本当「已是最新」）");
-      ok(pickNewestVersion([{ version: "1.9.0", registry: mirror }, { version: "1.10.0", registry: official }])?.version === "1.10.0",
-        "【⑬】真值：版本比较按数值段（1.10.0 > 1.9.0），不是字符串字典序");
-    } catch (e) {
-      ok(false, `【⑬】行为断言执行失败：${e && e.message ? e.message : String(e)}`);
-    }
-  }
-}
-
-/* ── ⑬ 按需安装工具一律装「最新稳定版」（11-15 用户令「下载得都是旧版本」）──
-   旧代码直接吃 scripts/lib/tools-versions.cjs 里的固定值（feishuCli 1.0.98 / filee 2.2.0），
-   且 GitHub 侧只查 /releases/latest（不少上游不发 Release ⇒ 拿不到或长期滞后）。 */
-const rtRaw = readFileSync(join(ROOT, "electron/features/runtime-ipc.ts"), "utf8");
-const rtCode = rtRaw.split("\n").filter((l) => !/^\s*(\/\/|\/\*|\*)/.test(l)).join("\n");
-ok(/\/tags\?per_page=100/.test(rtCode) && /releases\/latest/.test(rtCode) && /compareVersions\(v, best\)/.test(rtCode),
-  "GitHub 最新 = tags 列表 + releases/latest 都查、取版本最大者（不早退）");
-ok(rtCode.includes("if (/^\\d+\\.\\d+\\.\\d+$/.test(v)) versions.push(v)"),
-  "只认稳定版三段号（⛔ 否则 OpenMAIC 的 v1.5.0-rc.2 会被当最新版装）");
-ok(/async function latestInstallVersion/.test(rtCode)
-  && (rtCode.match(/latestInstallVersion\("/g) || []).length >= 5
-  && !rtCode.includes("TOOLS_VERSIONS.filee ??"),
-  "按需安装不再直接吃固定版本表（固定值降级为离线兜底）");
-ok(rtCode.includes('fetchRegistryLatest("@larksuite/cli", downloadSource)'),
-  "飞书 CLI 安装先查 npm 具体最新版再拼包名（⛔ 不再写死 1.0.98）");
-
-console.log("");
-console.log(fails === 0 ? `12l 组件更新守卫：全部通过（${checks}/${checks}）` : `12l 组件更新守卫：${fails} 项未通过（共 ${checks} 项）`);
-process.exit(fails === 0 ? 0 : 1);
+#!/usr/bin/env node
+/**
+ * 12l-component-update —— 统一更新体系守卫（10-13 用户令：「覆盖全部同类组件的统一更新体系」）。
+ *
+ * 钉的都是「一旦破了就会悄悄回到各自为政」的坑：
+ *  ① **清单单一真相源**：组件清单只在 electron/update-registry.ts，别处不许再写一份包名/来源表；
+ *  ② **镜像策略单一真相源**：update-registry 只引用（npm/pip/github 三张既有表），不许抄 URL 字面量；
+ *  ③ **不可更新的条目必须写原因**（mirror:false 而 reason 为空 = 用户看到一行没头没尾的「不支持」）；
+ *  ④ **远端一律国内镜像**：pip 走 PIP_INDEXES、GitHub 走 GH_MIRROR_PREFIXES；出现裸 github.com 取数
+ *     必须经 withPrefix（直连只能作为最后一档候选，不许写死成首选）；
+ *  ⑤ **幂等**：更新前后比内容指纹 / 版本号，一致 ⇒ action=unchanged，不重复安装；
+ *  ⑥ **失败回滚**：有目标目录的分支必须走 withRollback（保证不留在「半更新」状态）；
+ *  ⑦ **手动链 = 自动链**：后台循环与手动通道都调 updateComponent，不许按 kind 再写一套；
+ *  ⑧ **开关关就不检查**：runCycle 里开关判定在 update 之前 continue（不是"查到了不装"）；
+ *  ⑨ **界面不自己定默认值**：行数据自带 enabled，UI 不许再写一份缺省判断；
+ *  ⑩ 控制台要有「检测 / 单个更新」入口 + 台账有条目；「一键更新全部」已按用户要求删除（按键丑）。
+ */
+import { readFileSync, existsSync } from "node:fs";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+let checks = 0;
+let fails = 0;
+const ok = (cond, label) => {
+  checks++;
+  if (!cond) fails++;
+  console.log(`${cond ? "  ✓" : "  ✗"} ${label}`);
+};
+
+const read = (p) => {
+  try { return readFileSync(join(ROOT, p), "utf8"); } catch { return ""; }
+};
+const stripComments = (text) => text
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/(^|\s)\/\/[^\n]*/g, "$1");
+
+const registry = read("electron/update-registry.ts");
+const backends = read("electron/update-backends.ts");
+const safety = read("electron/update-safety.ts");
+const board = read("electron/features/auto-update-ipc.ts");
+const appSettings = read("electron/app-settings.ts");
+const card = read("src/features/settings-general/AutoUpdateCard.tsx");
+const general = read("src/features/settings-general/GeneralSettingsSection.tsx");
+const ledger = read("docs/FEATURE-LEDGER.md");
+const cardCode = stripComments(card);
+const backendsCode = stripComments(backends);
+const boardCode = stripComments(board);
+const registryCode = stripComments(registry);
+
+console.log("【① 清单单一真相源】");
+ok(/export const COMPONENT_SPECS/.test(registryCode) && /export function componentSpec/.test(registryCode),
+  "electron/update-registry.ts 导出组件清单 COMPONENT_SPECS + componentSpec");
+// ⛔ 别处不许出现"第二类组件清单"（这里用包名数组判 —— 写第三份包名表时这里会红）
+ok(!/const\s+[A-Z_]*(PACKAGES|COMPONENTS|TARGETS)\s*=/.test(backendsCode),
+  "⛔ 后端不含第二份「组件清单/包名表」（清单只认 update-registry）");
+ok(/import .*componentSpec|from "\.\/update-registry"/.test(backendsCode),
+  "后端从 update-registry 取清单");
+ok(/from "\.\.?\/update-registry"/.test(boardCode),
+  "编排层（auto-update-ipc）也从 update-registry 取清单");
+
+console.log("【② 镜像策略单一真相源】");
+ok(/from "\.\/gh-mirror"/.test(registryCode) && /from "\.\/features\/pip-sources"/.test(registryCode),
+  "GitHub 与 pip 的源表**引用**既有单一真相源（gh-mirror / pip-sources）");
+ok(!/https:\/\/pypi\.tuna|https:\/\/mirrors\.cloud\.tencent|https:\/\/mirrors\.aliyun/.test(registryCode),
+  "⛔ update-registry 不抄 pip 镜像 URL 字面量（只用 PIP_INDEXES）");
+ok(/export function mirrorOrder/.test(registryCode) && /case "npm":/.test(registryCode) && /case "pip":/.test(registryCode) && /case "github":/.test(registryCode),
+  "mirrorOrder 覆盖 npm / pip / github 三条远端通道");
+ok(/source === "direct"\s*\n?\s*\?\s*\[NPM_SOURCES\.official/.test(registryCode) || /NPM_SOURCES\.official, NPM_SOURCES\.mirror/.test(registryCode),
+  "默认（auto/mirror）下 npm 是**国内镜像在前**、官方兜底");
+ok(/GH_MIRROR_PREFIXES/.test(registryCode) && !/gh-proxy\.com\/?"/.test(registryCode.replace(/https:\/\/gh-proxy\.com\/",\s*$/gm, "")),
+  "GitHub 通道不写死单一镜像站，走 GH_MIRROR_PREFIXES 的三级顺序");
+
+console.log("【③ 不可更新的条目必须写明原因】");
+{
+  // 逐个 spec 块核对 mirror/reason 配对（reason 为空且 mirror:false = 用户看到一句没头没尾的拒绝）
+  const blocks = registryCode.split(/\n\s*\{\n/).slice(1);
+  let paired = true;
+  let bad = "";
+  for (const block of blocks) {
+    const mirrorFalse = /mirror:\s*false/.test(block);
+    const hasReason = /reason:\s*"[^"]{10,}"/.test(block);
+    if (!hasReason) { paired = false; bad = block.slice(0, 60).replace(/\s+/g, " "); break; }
+  }
+  ok(paired, `每个 spec 都有非空 reason（${paired ? "全部通过" : "反例：" + bad}）`);
+  const offCount = (registryCode.match(/mirror:\s*false/g) ?? []).length;
+  ok(offCount >= 4, `结论性「无可用镜像源」的条目已列明并计数（当前 ${offCount} 条）`);
+  ok(/channel:\s*"none"/.test(registryCode) && /随应用/.test(registryCode) && /钩子/.test(registryCode),
+    "内置技能 / 随包工具 / 钩子 / 声明式插件都进了清单并给了原因（排查无遗漏的证据）");
+}
+
+console.log("【④ 远端一律走国内镜像】");
+ok(/mirrorOrder\("pip", source\)/.test(backendsCode) && !/pypi\.org\/simple/.test(backendsCode),
+  "pip 更新按 PIP_INDEXES 逐个源重试（代码里没有写死官方源）");
+ok(/mirrorOrder\("github", source\)/.test(backendsCode) && /withPrefix\(url, prefix\)/.test(backendsCode),
+  "GitHub 取数与下载都套镜像前缀后才 fetch（直连只是最后一档候选）");
+ok(!/await fetch\(`?https:\/\/(api\.)?github\.com/.test(backendsCode),
+  "⛔ 后端没有裸 github.com 的 fetch（那条一定会绕过镜像）");
+ok(/mirrorOrder\("pip", ctx\.source\)|mirrorOrder\("pip", source\)/.test(backendsCode) && /-i", index/.test(backendsCode),
+  "pip install 显式带 -i <镜像索引>");
+
+console.log("【⑤ 幂等：内容一致不重装】");
+ok(/dirFingerprint/.test(backendsCode) && /after === before\s*\n?\s*\? outcome\("unchanged"/.test(backendsCode),
+  "更新前后比内容指纹，一致 ⇒ action=unchanged（不重复安装）");
+ok(/result\.to === result\.from\s*\n?\s*\? outcome\("unchanged"/.test(backendsCode),
+  "工具/引擎分支也比版本号，版本相同 ⇒ unchanged");
+ok(/export async function dirFingerprint/.test(safety) && /crypto\.createHash\("sha256"\)/.test(safety),
+  "指纹基于 sha256，且目录名/修改时间不进指纹（否则重装也会得到不同值）");
+
+console.log("【⑥ 失败回滚：不留半更新状态】");
+ok(/export async function withRollback/.test(safety) && /restoreDir/.test(safety),
+  "electron/update-safety.ts 提供快照 + 回滚");
+ok((backendsCode.match(/withRollback\(/g) ?? []).length >= 4,
+  `市场技能 / 插件 / 专家包等有目录的分支都走 withRollback（当前 ${(backendsCode.match(/withRollback\(/g) ?? []).length} 处）`);
+ok(/先删后拷|restoreDir\(taken\.dir, targetDir\)/.test(safety),
+  "回滚是「先删残缺目标再整份拷回」（不是合并，避免留下混合目录）");
+ok(/已自动回滚到更新前的版本|回滚也失败了/.test(safety),
+  "回滚成功/失败都给用户明确说法（失败不许吞掉）");
+ok(/KEEP_PER_COMPONENT|TOTAL_CAP_BYTES/.test(safety) && /export async function pruneSnapshots/.test(safety),
+  "快照有 prune（每组件最多 N 份 + 总量上限），不会把磁盘撑爆");
+
+console.log("【⑦ 手动链 = 自动链】");
+ok(/updateRow\(row, source, settings\)/.test(boardCode) && /updateComponent\(spec, row\.id/.test(boardCode),
+  "后台循环与手动通道都经 updateRow → updateComponent 同一函数");
+ok(!/performEngineUpdateFlow|performRuntimeUpdate/.test(boardCode),
+  "⛔ 编排层不再直接调各家内��安装函数（判据只有一份，不在编排层再来一遍）");
+
+console.log("【⑧ 开关关闭 ⇒ 不发起检查】");
+ok(/if \(!readAutoUpdateRowSwitch\(settings, row\.id\)\) continue;/.test(boardCode),
+  "runCycle 里开关判定在 continue 之前（关掉就整行跳过，连检查都不做）");
+ok(/readAutoUpdateRowSwitch/.test(appSettings) && /autoUpdateOverrides/.test(appSettings),
+  "每行的开关判据唯一入口 readAutoUpdateRowSwitch（含 overrides map，支持任意组件行）");
+ok(/AUTO_UPDATE_DEFAULT_OFF/.test(appSettings),
+  "会改写用户文件的三类（市场技能/专家包/人格包）默认关，其余默认开 —— 分档只写一处");
+
+console.log("【⑨ 界面不自己定默认值】");
+ok(/enabled: boolean;/.test(cardCode) && /checked=\{row\.enabled\}/.test(cardCode),
+  "行数据自带 enabled，UI 直接渲染（⛔ 界面不许再写一份缺省判断）");
+ok(!/\["market-skill", "expert-skill", "soul"\]\.includes/.test(cardCode),
+  "⛔ UI 不再自己维护「哪几类默认关」的名单（那会让界面与后台漂移）");
+
+console.log("【⑩ 控制台统一入口 + 台账】");
+ok(/window\.codex\.scanAutoUpdateComponents\(/.test(cardCode), "控制台有「检测更新」入口");
+ok(/window\.codex\.runAutoUpdateComponent\(row\.id\)/.test(cardCode), "控制台支持按名称/组件逐个更新");
+ok(!/runAllAutoUpdateComponents/.test(cardCode) && !/一键更新全部/.test(cardCode), "⛔ 不再有「一键更新全部」（用户：按键真丑，已删）");
+ok(/auto-update-log/.test(cardCode), "有进度与结果输出区");
+ok(/noMirror|无可用镜像源/.test(cardCode), "⛔ 控制台显式标注「无可用镜像源」的条目");
+ok(/<AutoUpdateCard/.test(general), "卡片挂在「控制台」（general）页");
+ok(/统一更新|组件更新/.test(ledger), "docs/FEATURE-LEDGER.md 有本轮条目");
+
+console.log("【⑪ 当前版本 = 实际安装态（不是随包常量）】");
+/* 10-13 用户实测的真 bug：控制台那行显示「4.9.0 → v5.2.0（有可用更新）」，点更新后 toast 说「已更新」，
+   但版本号与徽标一直不动。根因：ponytail 的「当前版本」报的是**随包常量** PONYTAIL_VERSION（4.9.0），
+   而在线更新装的是**按标签命名**的目录（…/ponytail/ponytail/5.2.0）—— 磁盘上只剩 5.2.0，界面仍报 4.9.0。
+   判据：① 版本必须从引擎落点实际读；② 两个分支（检测 / 更新前）都用它；③ 「有没有新版」走 compareVersions
+   （⛔ 不再用字符串不等）；④ **造夹具跑编译产物里的真函数**做行为断言（不是看文本）。 */
+{
+  const pluginSrc = read("electron/ponytail-plugin.ts");
+  ok(/export async function listInstalledPonytailVersions\(/.test(pluginSrc),
+    "ponytail-plugin 导出「读引擎落点里实际安装版本」的 listInstalledPonytailVersions");
+  ok(/plugins", "cache", "ponytail", "ponytail"/.test(pluginSrc),
+    "读的是引擎安装落点 plugins/cache/ponytail/ponytail/<版本>");
+  ok((backendsCode.match(/installedPonytailVersion\(ctx\.codexHome\)/g) ?? []).length >= 2,
+    "检测与「更新前」两个分支都按实际安装版本取当前版本");
+  ok(!/current:\s*PONYTAIL_VERSION/.test(backendsCode),
+    "⛔ 检测分支不再把随包常量当当前版本（那会让控制台永远停在「有可用更新」、更新完也不刷新）");
+  ok(!/!==\s*PONYTAIL_VERSION/.test(backendsCode),
+    "⛔ 不再用「字符串不等」判 ponytail 有没有新版");
+  ok(/compareVersions\(latest, current\) > 0/.test(backendsCode) && /compareVersions\(tag, before\) <= 0/.test(backendsCode),
+    "ponytail 的更新判据走 updates.ts 的 compareVersions（版本比较单一真相源）");
+
+  const distPlugin = join(ROOT, "dist-electron", "ponytail-plugin.js");
+  if (!existsSync(distPlugin)) {
+    fail("【⑪】dist-electron/ponytail-plugin.js 不存在（先构建再跑预检）—— 行为断言无法执行");
+  } else {
+    try {
+      const mod = await import(pathToFileURL(distPlugin).href);
+      const root = await mkdtemp(join(tmpdir(), "ponytail-fixture-"));
+      const home = join(root, "codex-home");
+      for (const v of ["4.9.0", "5.2.0"]) {
+        const dir = join(home, "plugins", "cache", "ponytail", "ponytail", v);
+        await mkdir(dir, { recursive: true });
+        await writeFile(join(dir, "plugin.yaml"), `name: ponytail\nversion: ${v}\n`, "utf8");
+      }
+      const found = await mod.listInstalledPonytailVersions(home);
+      const bothSeen = Array.isArray(found) && found.includes("4.9.0") && found.includes("5.2.0");
+      ok(bothSeen,
+        `【⑪】实际安装版本确实从磁盘读（夹具放两个版本 ⇒ 读到 ${JSON.stringify(found)}；应含 4.9.0 与 5.2.0）`);
+      ok(!(Array.isArray(found) && found.length === 1 && found[0] === "4.9.0"),
+        "⛔ 读到的不是随包常量（否则界面在更新后仍报 4.9.0）");
+      const empty = await mod.listInstalledPonytailVersions(join(root, "no-such-home"));
+      ok(Array.isArray(empty) && empty.length === 0,
+        "落点不存在时返回空数组（调用方才能区分「没装」与「装了旧版」）");
+      await rm(root, { recursive: true, force: true });
+    } catch (e) {
+      fail(`【⑪】dist-electron/ponytail-plugin.js 行为断言执行失败：${e && e.message ? e.message : String(e)}`);
+    }
+  }
+}
+
+/* 【⑫】引擎安装自愈（10-28 事故）：在线更新把 live vendor 目录搬走后落位/回滚都失败，
+   `bin/codex.exe` 消失 ⇒ 技能/钩子/插件一起报 spawn ENOENT。三道防线都要在：
+   ① 启动前自愈；② 删上一代备份前确认 live 在位；③ 落位没成功就别删解压产物。 */
+{
+  const heal = read("electron/engine-install-heal.ts");
+  const boot = read("electron/features/boot.ts");
+  const updater = stripComments(read("electron/engine-updater.ts"));
+  ok(/export async function healEngineInstall/.test(heal),
+    "【⑫】存在引擎安装自愈模块（healEngineInstall）");
+  ok(/\.bak-1/.test(heal) && /\.engine-update-/.test(heal),
+    "【⑫】自愈候选同时覆盖上一代备份与上次更新的解压产物");
+  const bootStart = boot.indexOf("await server.start()");
+  const bootHeal = boot.indexOf("healEngineInstall(");
+  ok(bootHeal >= 0 && bootStart >= 0 && bootHeal < bootStart,
+    "【⑫】启动链在 server.start() 之前调用自愈（spawn 时就要能解析到二进制）");
+  ok(/if \(existsSync\(path\.join\(vendorDir, "bin", exeName\)\)\) \{\s*await fs\.rm\(backupDir/.test(updater),
+    "【⑫】删上一代备份前必须确认 live 在位（否则唯一副本被删 = 引擎彻底没有）");
+  ok(/if \(existsSync\(path\.join\(vendorDir, "bin", exeName\)\)\) \{\s*await fs\.rm\(workRoot/.test(updater),
+    "【⑫】落位未成功时保留解压产物（它是启动自愈的最后一个候选）");
+  ok((updater.match(/回滚失败（备份已保留/g) || []).length >= 2,
+    "【⑫】两处回滚失败都留日志（不许静默吞掉）");
+}
+
+/* 【⑬】组件更新 npm 通道：所有源都查 + 取最大（11-10 用户令「官方源兜底」）。
+   ⛔ 回归场景：npmmirror 是缓存快照，1.1.4 发布 3 天后仍报 1.1.3；旧实现
+      「第一个成功就 return」⇒ 官方源永远插不上话，界面恒显示「已是最新」。
+      ⛔ 形态断言之外必须**造夹具真跑编译产物**，否则守卫会「自洽地绿」。 */
+{
+  const probeSrc = stripComments(read("electron/npm-version.ts"));
+  const runtimeSrc = stripComments(read("electron/features/runtime-ipc.ts"));
+  const engineSrc = stripComments(read("electron/engine-updater.ts"));
+  ok(/export function pickNewestVersion/.test(probeSrc) && /export async function probeNewestNpmVersion/.test(probeSrc),
+    "【⑬】npm 版本判定收敛到 npm-version.ts（pickNewestVersion + probeNewestNpmVersion）");
+  ok(/compareVersions/.test(probeSrc) && /from "\.\/version-utils"/.test(probeSrc),
+    "【⑬】版本比较只认 version-utils.ts 的 compareVersions（不手写第二份）");
+  ok(/for \(const registry of registries\)/.test(probeSrc) && !/return \{ version: latest/.test(probeSrc),
+    "【⑬】⛔ 探测循环不早退：所有候选源都查完再挑最大");
+  ok(/probeNewestNpmVersion\(/.test(runtimeSrc) && /probeNewestNpmVersion\(/.test(engineSrc),
+    "【⑬】工具链与引擎两条检查更新链都走同一判定层");
+  ok(!/查最新版本失败（国内镜像与官方源都试过了）/.test(runtimeSrc) && !/查询最新版本失败：/.test(engineSrc),
+    "【⑬】⛔ 两条链路都不再有「第一个成功就返回」的旧兜底文案");
+  ok(/preferredRegistry/.test(runtimeSrc) && /compareVersions\(to, target\.version\) !== 0/.test(runtimeSrc),
+    "【⑬】安装侧用胜出源 + 具体版本，并复核装完版本等于目标（否则 @latest 会从滞后镜像装回旧版）");
+
+  const distProbe = join(ROOT, "dist-electron", "npm-version.js");
+  if (!existsSync(distProbe)) {
+    ok(false, "【⑬】dist-electron/npm-version.js 不存在（先构建再跑预检）—— 行为断言无法执行");
+  } else {
+    try {
+      const mod = await import(pathToFileURL(distProbe).href);
+      const { probeNewestNpmVersion, pickNewestVersion } = mod;
+      const mirror = "https://registry.npmmirror.com";
+      const official = "https://registry.npmjs.org";
+      const lag = await probeNewestNpmVersion([mirror, official], async (r) => r === mirror ? "1.1.3" : "1.1.4");
+      ok(lag.version === "1.1.4" && lag.registry === official && lag.checked.length === 2,
+        "【⑬】真值：镜像 1.1.3 / 官方 1.1.4 ⇒ 取官方 1.1.4（⛔ 不能停在镜像的「已是最新」）");
+      const down = await probeNewestNpmVersion([mirror, official], async (r) => {
+        if (r === mirror) throw new Error("mirror down");
+        return "1.1.4";
+      });
+      ok(down.version === "1.1.4" && down.errors.length === 1,
+        "【⑬】真值：镜像挂掉 ⇒ 官方仍生效，错误留痕不吞");
+      const tie = await probeNewestNpmVersion([mirror, official], async () => "1.1.4");
+      ok(tie.version === "1.1.4" && tie.registry === mirror,
+        "【⑬】真值：两源同版 ⇒ 保留候选序靠前的镜像（下载快）");
+      let threw = false;
+      try { await probeNewestNpmVersion([mirror, official], async () => { throw new Error("down"); }); } catch { threw = true; }
+      ok(threw, "【⑬】真值：全部源失败 ⇒ 抛错（不许拿空版本当「已是最新」）");
+      ok(pickNewestVersion([{ version: "1.9.0", registry: mirror }, { version: "1.10.0", registry: official }])?.version === "1.10.0",
+        "【⑬】真值：版本比较按数值段（1.10.0 > 1.9.0），不是字符串字典序");
+    } catch (e) {
+      ok(false, `【⑬】行为断言执行失败：${e && e.message ? e.message : String(e)}`);
+    }
+  }
+}
+
+/* ── ⑬ 按需安装工具一律装「最新稳定版」（11-15 用户令「下载得都是旧版本」）──
+   旧代码直接吃 scripts/lib/tools-versions.cjs 里的固定值（feishuCli 1.0.98 / filee 2.2.0），
+   且 GitHub 侧只查 /releases/latest（不少上游不发 Release ⇒ 拿不到或长期滞后）。 */
+const rtRaw = readFileSync(join(ROOT, "electron/features/runtime-ipc.ts"), "utf8");
+const rtCode = rtRaw.split("\n").filter((l) => !/^\s*(\/\/|\/\*|\*)/.test(l)).join("\n");
+ok(/\/tags\?per_page=100/.test(rtCode) && /releases\/latest/.test(rtCode) && /compareVersions\(v, best\)/.test(rtCode),
+  "GitHub 最新 = tags 列表 + releases/latest 都查、取版本最大者（不早退）");
+ok(rtCode.includes("if (/^\\d+\\.\\d+\\.\\d+$/.test(v)) versions.push(v)"),
+  "只认稳定版三段号（⛔ 否则 OpenMAIC 的 v1.5.0-rc.2 会被当最新版装）");
+ok(/async function latestInstallVersion/.test(rtCode)
+  && (rtCode.match(/latestInstallVersion\("/g) || []).length >= 5
+  && !rtCode.includes("TOOLS_VERSIONS.filee ??"),
+  "按需安装不再直接吃固定版本表（固定值降级为离线兜底）");
+ok(rtCode.includes('fetchRegistryLatest("@larksuite/cli", downloadSource)'),
+  "飞书 CLI 安装先查 npm 具体最新版再拼包名（⛔ 不再写死 1.0.98）");
+
+console.log("【⑭ 内置/随包组件全部进台账（11-21 用户令「内置的都要能更新」）】");
+/* 回归场景：Agent Desktop 是默认桌面后端，却只在自己卡片里有更新按钮；Ego Lite 更糟 ——
+   它连台账里都没有，是编排层 scanAll 末尾**手工拼出来的一行**。
+   ⇒ 判据：① 三个内置/随包组件必须登记在 registry；② 编排层不许再补特例行；
+          ③ external 分支只在 update-backends 里实现（执行也只认台账）。 */
+ok(/id:\s*"agent-desktop"/.test(registryCode) && /id:\s*"ego-lite"/.test(registryCode) && /id:\s*"feishu-cli"/.test(registryCode),
+  "agent-desktop / ego-lite / feishu-cli 都登记在 COMPONENT_SPECS（过控制台清单就都能看到）");
+ok(/channel:\s*"external"/.test(registryCode) && /kind:\s*"external"/.test(registryCode),
+  "外部应用有独立通道 external（⛔ 不塞进 none：none = 根本不能更新，会把按钮藏掉）");
+ok(!/specId:\s*"ego-lite"/.test(boardCode) && !/label:\s*"Ego Lite 浏览器自动化"/.test(boardCode),
+  "⛔ 编排层不再手工补 Ego Lite 行（清单只认 update-registry）");
+ok(/case "external":/.test(backendsCode) && /runEgoUpgrade\(\)/.test(backendsCode),
+  "external 的检测与更新都在 update-backends（执行层单一实现）");
+ok(!/row\.id === "ego-lite"/.test(boardCode) && /componentSpec\(row\.specId\)\?\.kind !== "external"/.test(boardCode),
+  "后台循环按 kind=external 判断「无版本号也要跑」，不再写 id 字面量");
+
+console.log("");
+console.log(fails === 0 ? `12l 组件更新守卫：全部通过（${checks}/${checks}）` : `12l 组件更新守卫：${fails} 项未通过（共 ${checks} 项）`);
+process.exit(fails === 0 ? 0 : 1);

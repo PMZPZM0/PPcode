@@ -904,6 +904,8 @@ export class VoiceService {
     }
     const worker = await this.ensurePreviewWorker(sherpaPath, wanted, numThreads);
     try {
+      /* ⛔ 11-21：单次合成带上限（正常 vits 单句 <1s；20s 已远超），超时判坏重建。 */
+      const speakStartedAt = Date.now();
       const result = await worker.request("speak", {
         text: String(input?.text ?? VOICE_SAMPLE_TEXT),
         sid: input?.sid ?? settings.tts.sid,
@@ -911,7 +913,8 @@ export class VoiceService {
         /* 显式回落到设置里的音质档（不传 undefined —— 那会让 worker 用写死的 4，
            与用户在设置页选的档位脱节）。 */
         numSteps: input?.numSteps ?? settings.tts.numSteps,
-      });
+      }, 20_000);
+      console.info("[voice-preview]", text.slice(0, 16), `${Date.now() - speakStartedAt}ms`);
       return { ok: true, sampleRate: Number(result.sampleRate ?? 22050), samples: result.samples };
     } catch (error: any) {
       // worker 出错时下次重建（坏 worker 不复用）
@@ -957,7 +960,10 @@ export class VoiceService {
       this.previewTts = worker;
       this.previewTtsKey = key;
       try {
-        await worker.request("create");
+        /* ⛔ 11-21：模型加载是首句延迟的大头 —— 记录耗时并给 120s 上限（卡死判坏重建）。 */
+        const createStartedAt = Date.now();
+        await worker.request("create", {}, 120_000);
+        console.info("[voice-preview] worker 就绪", `${Date.now() - createStartedAt}ms`);
       } catch (error) {
         await worker.terminate().catch(() => undefined);
         if (this.previewTts === worker) {

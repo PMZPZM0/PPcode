@@ -1,1713 +1,1713 @@
-/**
- * runtime-ipc（10-03 从 `features/engine-ipc/03-dev-runtime` + `04-dev-runtime-install` 合并成单前缀板块，
- * 同时改为**插件形态**）
- *
- * 域：runtime(7)
- * 通道：runtime:list / install / uninstall / cancel / health / update-check / update
- *
- * ⛔⛔ 四条实证口径（本次纯搬迁，一字未改）：
- *   1. **卸载落点不能按 marker 首段推导**（10-01 用户报「卸载不真」的根因）：首段会得到
- *      `tools/npm-global` 或 `tools/python` —— 那是多个 npm 包 / 整个 Python 运行时的**共同
- *      家目录**，卸载一个会把其它一起删光。npm 包要删「包体目录 + 它自己的 shim」。
- *   2. **ponytail 卸载/重装必须显式写 config.toml 的 enabled**：插件 key 是
- *      `"ponytail@ponytail"`（写成 "ponytail-plugin" 会静默无效）；且必须带 `mergeStrategy`
- *      —— 缺了整条请求被判 Invalid request，而这里是 `.catch(() => undefined)` 静默吞掉。
- *      install 分支必须把 enabled 置回 true（seedConfigSections 幂等，不会自己翻回 true）。
- *   3. **同一工具并发安装要「等它跑完」而不是抛错**（09-18 用户反馈）：抛错会让整批安装中断。
- *   4. **随包内置只认 zip，不回落在线下载**（09-12 实测发布包故障）：GitHub Release 那个
- *      automation-tools.zip 资产根本不存在，回落只会撞死地址 —— 装不上就当场说清楚。
- * ⛔ 自检（`runtime:health`）单项失败绝不抛出，探测带 8s 超时：一个工具探不通不能让整页崩。
- * ⛔ 待接缝化（阶段 2）：app / shell / spawn 为宿主能力。
- */
-import fs from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
-import { once } from "node:events";
-import { createHash } from "node:crypto";
-import net from "node:net";
-import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
-import { app, shell } from "electron";
-import { CHINA_NPM_REGISTRY, bundledNode, bundledNpmCli, bundledPython, existingToolPath, npmGlobalRoot, npmGlobalRootCandidates, npmPackagePath, pythonPipReady, reaServerScript, tarExecutable, toolchainEnv, toolRootsRead, toolsRoot, userToolsRoot, writeToolsRoot } from "../toolchain";
-import { mirrorCandidates } from "../gh-mirror";
-import { contentPredictionRow } from "../content-prediction";
-import { provideRuntimeInventory } from "../expert-equipment-report";
-import { downloadThroughMirrors } from "../mirror-download";
-import { OPENMAIC_REPO, installOpenMaicFromGitHub, openmaicInstalledVersion } from "../openmaic-install";
-import { HUSK_REPO, huskInstalledVersion, installHuskFromGitHub, installHuskTipaFromGitHub } from "../husk-install";
-import { ARTCRAFT_REPO, artcraftInstalledVersion, installArtCraftFromGitHub } from "../artcraft";
-import { installKbEmbedding, kbBackendDir, kbEmbeddingInstalled, uninstallKbEmbedding } from "./kb-embed-backend";
-import { DARWIN_HIDDEN, DARWIN_MARKERS, DARWIN_SPEC_TEXT, IS_MAC, PIP_PACKAGE_DIRS, cancelRuntimeInstall, cleanupRuntimeTempFiles, clearCancelRequest, devRuntimeSpecs, emitRuntimeProgress, isCancelRequested, pipMetadataDirs, pythonSiteDir, readDownloadSource, requestRuntimeCancel, restartServerWhenIdle, runRuntimeInstaller, runtimeInstalled, runtimeInstaller, runtimeInstalls, trackRuntimeProc } from "./dev-runtimes";
-import type { DevRuntimeId, DevRuntimeSpec } from "./dev-runtimes";
-import { sendToWindow } from "./window-bus";
-import { readAppSettings, saveAppSettings } from "../app-settings";
-import type { AppSettings } from "../app-settings";
-import { healPonytailInstall } from "../ponytail-heal";
-import { REA_PINNED_VERSION } from "../rea-gateway";
-import { layaInstall } from "./laya-service";
-import { installPhoneHarness } from "./phone-harness";
-import { codexHome, server } from "../runtime-refs";
-import { defineFeature } from "../context";
-import { recordToolRemoved } from "./tool-persistence";
-import type { IpcHost } from "../ipc-host";
-// 版本比较统一走 `../updates`（含预发布语义：1.2.3-beta < 1.2.3）——⛔ 别再写第二份。
-import { compareVersions } from "../updates";
-/* 11-10：查最新版本走统一判定层（所有源都查 + 取最大，官方源兜底）；
-   NPM_SOURCES 用于把「胜出源」映射成安装器认识的取值，不在这里再抄一份 URL。 */
-import { probeNewestNpmVersion } from "../npm-version";
-import { guardedFetch } from "../net-guard";
-import { NPM_SOURCES } from "../update-registry";
-/* ⛔⛔ 10-30 Windows 真机事故（0.0.51 装了打不开，用户截图：Cannot find module
-   '../../scripts/lib/tools-versions.cjs'）：这张**版本表**原先在模块顶层裸 require，而 build.files
-   白名单里没有 scripts/** ⇒ 文件没进 asar ⇒ 主进程启动即死。两件事都要有：
-   ① 已经把它加进 build.files（守卫【96】② /【288】钉住「产物树外的 require 必须被覆盖」）；
-   ② 这里**降级**：读不到就给空表 —— 用到它的地方（飞书 CLI 的版本号）自己退化成 latest。
-   ⛔ 原则：一张数据表读不到，绝不允许把应用搞崩（这条比"一定要读到"更重要）。 */
-const TOOLS_VERSIONS: Record<string, string> = (() => {
-  try {
-    const loaded = (require("../../scripts/lib/tools-versions.cjs") as { TOOLS_VERSIONS?: Record<string, string> }).TOOLS_VERSIONS;
-    return loaded && typeof loaded === "object" ? loaded : {};
-  } catch (error) {
-    console.warn("[runtime-ipc] 读不到 scripts/lib/tools-versions.cjs（打包缺文件？）—— 版本号退化为 latest", error);
-    return {};
-  }
-})();
-
-function specFor(id: DevRuntimeId, spec: DevRuntimeSpec): DevRuntimeSpec {
-  if (!IS_MAC) return spec;
-  const override = DARWIN_SPEC_TEXT[id];
-  return override ? { ...spec, ...override } : spec;
-}
-
-function runtimeInstalledBySystem(id: DevRuntimeId): boolean {
-  if (IS_MAC) {
-    if (id === "git") return ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"].some((p) => existsSync(p));
-    if (id === "openssl") return existsSync("/usr/bin/openssl");
-    // ⛔ mac 适配（09-17 审计）：Docker Desktop for Mac 装完是 /Applications/Docker.app，
-    //    CLI 落在 /usr/local/bin/docker（或 Apple Silicon 的 /opt/homebrew/bin/docker）。
-    //    旧实现只探测 Windows 的 docker.exe，mac 用户装好 Docker 也一直显示「未安装」。
-    if (id === "docker") {
-      return ["/usr/local/bin/docker", "/opt/homebrew/bin/docker", "/Applications/Docker.app"].some((p) => existsSync(p));
-    }
-    return false;
-  }
-  // docker 是系统级安装：未在工具目录时也探测系统 PATH 上的 docker.exe（已装则视为完成）
-  return (id === "docker" || id === "openssl") && (process.env.PATH ?? "").split(path.delimiter).some(dir => dir && existsSync(path.join(dir.trim(), `${id}.exe`)));
-}
-
-/* ── 「装不上就让 Codex 自己装」（10-08 用户要求）─────────────────────────────
- * 用户原话：「加一个开发工具备用方案，每个工具后面如果安装不上，可以预置一个提示词，提示用户，
- * 发 codex 自行安装就行，有的电脑网不好，容易下载报错」。
- * ⛔ 文案**只在主进程生成**（单一真相源）：渲染层只负责展示 + 复制，不许再拼一份 —— 否则又是
- *   「两处口径各自为政」（本项目当天刚栽过三次：见【286】/【241】）。
- * ⛔ 路径一律取自与「判定 / 卸载」同源的来源（toolsRoot / codexHome / kbBackendDir / pythonSiteDir /
- *   npmGlobalRoot），别再写第三套。
- * ⛔ 网络兜底文案里的镜像站必须与实际代码里用的**同一批**（npmmirror / 清华 pypi / 清华 miniconda），
- *   不要凭空发明源。 */
-
-/** 该工具的「首选做法」一句话；没登记的走通用的一键脚本文案。 */
-const FALLBACK_STEPS: Partial<Record<DevRuntimeId, string>> = {
-  filee: "使用开发工具页 Filee 专用安装器：从 GitHub Release 依次经 gh-proxy、ghfast、官方直连下载便携包，保留校验并重新检测 CLI。不要用通用运行时脚本。",
-  apkstart: "通过 ApkStart 卡片安装 Windows 便携版，使用内置 GitHub 镜像候选；首次运行由 ApkStart 下载安卓运行时。",
-  artcraft: "通过 Craft 全家桶卡片获取并校验 Launcher；Windows 使用发布包镜像，其他系统按卡片的平台说明。创作 App 由 Launcher 按需安装。",
-  openmaic: "使用 OpenMAIC 卡片的安装器，通过项目配置的镜像获取源码、pnpm 依赖和便携数据库，再在本机构建；开始前检查磁盘空间。",
-  husk: "使用 Husk 卡片下载官方 IPA 并校验，镜像不可用时回落官方源。只在电脑上准备文件，侧载需我在 iPhone 上确认。",
-  "husk-tipa": "在 Husk 卡片选择 TrollStore 版本，通过内置镜像下载并校验 TIPA。不要用 IPA 替代，仅供兼容设备手动安装。",
-  "feishu-cli": "在飞书 CLI 卡片通过应用的 npm 安装器获取 @larksuite/cli（镜像与官方版本对照）。完成后由我登录授权。",
-  nuphus: "通过桌面自动化卡片恢复随包自动化资源；缺少归档时请提示我检查应用安装包。",
-  rea: "从开发工具页安装应用固定的兼容版本，使用配置的 npm 镜像，必要时回落官方源，不自行改装 latest。",
-  python: "删掉损坏的 python 目录后重跑一键脚本 —— 脚本装的是 python-build-standalone 整包（自带 pip 与 Tkinter），走 npmmirror 镜像",
-  node: "重跑一键脚本装回内置 Node（体积不大，一般不会失败）",
-  git: "重跑一键脚本装 MinGit（约 90 MB）：npmmirror 镜像优先，失败自动回落官方源",
-  pwsh: "从 GitHub 的 PowerShell release 下 win-x64 的 zip（约 282 MB）后解压；下载慢就给链接加 gh-proxy / ghfast 加速前缀（一键脚本会自动这么干）",
-  ffmpeg: "从 BtbN/FFmpeg-Builds 或 gyan.dev 下 win64 构建，取出 ffmpeg.exe 与 ffprobe.exe 放进去",
-  mingw: "从 winlibs 的 release 下 winlibs-x86_64-posix-seh 的 zip（约 267 MB），解压后把里面的 mingw64 目录整体放进去",
-  conda: "用清华镜像的 Miniconda3 Windows 安装器静默装到目标目录（清华镜像实测比官方站快很多）",
-  markitdown: "在目标 python 下执行：python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple \"markitdown[pdf,docx,pptx]\" openpyxl",
-  laya: "在目标 python 下执行：python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple laya[serve]（含 PyTorch，约 800 MB，要耐心等）",
-  "phone-harness": "在目标 python 下执行：python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple phone-harness，装完把它的 CLI 注册成引擎技能",
-  "kb-embedding": "让 Codex 读项目里的工具链文档，用 npmmirror 装 npm 运行库、用 hf-mirror 下模型，都放目标目录",
-  docker: "系统级安装：界面按钮会打开官网，按官网步骤装完需要重启电脑",
-  openssl: "系统级安装：界面按钮会打开官网（slproweb 的 Windows 版），按官网步骤装",
-  ponytail: "重跑一键脚本重新种插件（界面上的「修复安装」走的是同一条路）",
-};
-
-/**
- * mac 专用「首选做法」（10-30 全链路审计）。
- *
- * ⛔⛔ 上面那批文案是**按 Windows 写的**（MinGit / win-x64 zip / `.exe` / slproweb），而这段提示词
- *   会被用户**原样复制给 Codex 照着装** ⇒ 在 mac 上等于让模型去下 Windows 包，然后反复失败。
- *   只覆盖 darwin 上说法确实会错的条目；`mingw` 在 mac 已被隐藏（DARWIN_HIDDEN），不必覆盖。
- *   镜像站与 install-runtimes.cjs 的 mac 分支同源（清华 miniconda / 清华 pypi / evermeet 兜底）。
- */
-const DARWIN_FALLBACK_STEPS: Partial<Record<DevRuntimeId, string>> = {
-  git: "mac 不装 MinGit：直接用系统自带 git（随 Xcode 命令行工具）。若 `git --version` 报错就执行 `xcode-select --install`，系统弹窗里点安装，装完再验证一次",
-  pwsh: "从 GitHub 的 PowerShell release 下 **osx-arm64 / osx-x64 的 tar.gz**（约 70 MB），解压后把 `pwsh` 可执行文件放进 tools/pwsh（mac 上没有 .exe 后缀、也不是 zip）",
-  ffmpeg: "下 **darwin** 构建（ffmpeg-static 的 ffmpeg-darwin-<arch>.gz，或 evermeet 的 zip），把 `ffmpeg` 与 `ffprobe` 两个可执行文件放进 tools/ffmpeg/bin（无 .exe）",
-  conda: "用清华镜像的 Miniconda3-**MacOSX**-<arch>.sh 安装器：`bash Miniconda3-*.sh -b -p <tools>/miniconda`（静默装到目标目录，不要用 Windows 安装器）",
-  openssl: "mac 用系统自带的 LibreSSL（`/usr/bin/openssl`），一般无需安装；确实需要新版才 `brew install openssl` 并把它加进 PATH",
-  markitdown: "在随包 python 下执行：`<tools>/python/bin/python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple \"markitdown[pdf,docx,pptx]\" openpyxl`（mac 的 python 是 python3，没有裸 python）",
-  laya: "在随包 python 下执行：`<tools>/python/bin/python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple laya[serve]`（含 PyTorch，约 800 MB，要耐心等）",
-  "phone-harness": "在随包 python 下执行：`<tools>/python/bin/python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple phone-harness`，装完把它的 CLI 注册成引擎技能",
-};
-
-/** 该工具在本机平台的「首选做法」（darwin 先查专用表，其余沿用上面那份）。 */
-function fallbackStepsOf(id: DevRuntimeId): string | undefined {
-  return (process.platform === "darwin" ? DARWIN_FALLBACK_STEPS[id] : undefined) ?? FALLBACK_STEPS[id];
-}
-
-/** 发命令用的解释器与脚本路径：优先用随包 node（与主进程跑安装时同源）。
- *  ⛔ 10-08 自审改：**不要写成 `VAR="x" cmd`**（POSIX 写法在 Windows 的 cmd/PowerShell 里跑不了，
- *    而这份提示词恰恰是给 Windows 机器准备的）。改成「命令 + 需要时先设哪个环境变量」的自然语言，
- *    跨平台都读得懂，也不会让人照抄一条必然报错的命令。 */
-function fallbackRunner(): string {
-  const node = bundledNode() || "node";
-  return `"${node}" "${runtimeInstaller("install-runtimes.cjs")}"（若脚本要求指定工具目录，先设环境变量 TOOLS_ROOT=${writeToolsRoot()}）`;
-}
-
-/** 「装到哪个目录」——按工具类型给**语义正确**的落点（⛔ 不是 marker 首段推导）。 */
-function fallbackTargetDir(id: DevRuntimeId, spec: DevRuntimeSpec): string {
-  if (id === "moekoe") return IS_MAC ? "/Applications/MoeKoe Music.app 或 ~/Applications" : "系统 Program Files 下的 MoeKoe Music（由外部安装器管理）";
-  if (IS_MAC && id === "git") return "系统 Git（/usr/bin/git 或 Homebrew bin）";
-  if (id === "ponytail") return path.join(codexHome, "plugins", "cache");
-  if (id === "kb-embedding") return kbBackendDir();
-  if (PIP_PACKAGE_DIRS[id]) return path.join(writeToolsRoot(), "python");
-  if (NPM_PACKAGE_ARTIFACTS[id]) return path.join(writeToolsRoot(), "npm-global");
-  if (spec.kind === "guide") return IS_MAC ? (id === "docker" ? "/Applications/Docker.app" : "/usr/bin/openssl") : `系统安装器选择的目录；将 ${id}.exe 所在目录加入 PATH，重启应用后检测`;
-  // 其余落在 tools/<marker 首段> —— 与 runtimeUninstallTargets 的通用分支同源
-  return path.join(writeToolsRoot(), spec.marker.split(/[\\/]/)[0]);
-}
-
-/** 装完怎么确认：可执行文件型给一条**真能跑**的验证命令（与自检同口径）。
- *  ⛔⛔ 不许按 marker 推导「该出现什么」：pip 包的 marker 是**占位**（见 dev-runtimes 的注释），
- *    照它拼出来的 `tools\markitdown` 是一个**根本不存在的路径** —— 这正是 10-08 当天修过的
- *    「marker 推导出不存在的路径」同款坑（探针真跑时当场抓到，不能只看类型通过就发）。 */
-function fallbackExpectLine(id: DevRuntimeId, spec: DevRuntimeSpec): string {
-  if (id === "ponytail") return `这个目录存在：${path.join(codexHome, "plugins", "cache", "ponytail")}`;
-  if (id === "kb-embedding") return `这个目录存在（npm 包 + worker + 模型三件齐）：${kbBackendDir()}`;
-  if (PIP_PACKAGE_DIRS[id]) {
-    const site = pythonSiteDir(path.join(writeToolsRoot(), "python"));
-    const pkg = PIP_PACKAGE_DIRS[id]!;
-    return site
-      ? `这个包目录存在：${path.join(site, pkg)}；也可以跑 python -c "import ${pkg}" 看能不能导入`
-      : `在 ${path.join(writeToolsRoot(), "python")} 下跑 python -m pip show ${pkg} 确认`;
-  }
-  if (spec.kind === "guide") {
-    return `在终端跑 ${id === "docker" ? "docker --version" : "openssl version"}，能打印版本就说明装好了`;
-  }
-  if (NPM_PACKAGE_ARTIFACTS[id]) {
-    const root = npmGlobalRoot() || path.join(writeToolsRoot(), "npm-global");
-    const rel = NPM_PACKAGE_ARTIFACTS[id]!.dirs[0].replace(/^node_modules[\\/]/, "");
-    return `这个目录存在：${path.join(root, rel)}`;
-  }
-  const args = HEALTH_ARGS[id];
-  const file = healthExecPath(id, spec);
-  if (!args) return `这个文件存在：${file}`;
-  return `"${file}" ${args.join(" ")}（能打印版本就说明装好了）`;
-}
-
-/** 拼出「发给 Codex 让它自己装」的提示词。⛔ 只在主进程生成（渲染层只展示 + 复制）。 */
-function fallbackPromptFor(id: DevRuntimeId, spec: DevRuntimeSpec): string {
-  // MoeKoe 是系统级外部客户端：不能套用 install-runtimes.cjs 的「装到 tools/moekoe」模板。
-  if (id === "moekoe") {
-    return [
-      "帮我在这台电脑上安装开发工具「MoeKoe Music（酷狗客户端）」。",
-      "背景：应用里「设置 → 开发工具 → MoeKoe 音乐」有手动安装入口；如果下载失败，请按下面的首选做法继续。",
-      "",
-      "· 用途：外部酷狗客户端，Codex 通过它的 6521 API 搜歌/播放",
-      process.platform === "darwin"
-        ? "· 装到哪：/Applications/MoeKoe Music.app（无权限时回落 ~/Applications）；macOS 首次打开如被拦截，去「系统设置 → 隐私与安全性」允许"
-        : "· 装到哪：默认 Program Files\\MoeKoe Music（可在安装向导里改盘）",
-      "· 首选做法：在 Harness 会话里调用能力网关 moekoe_install（confirm=true），它会从官方下载源（music.moekoe.cn 同款 release，中国大陆走 gh-proxy 镜像）按系统/架构选包并启动安装；⛔ 不要用 install-runtimes.cjs（那里没有 moekoe，MoeKoe 也不是装到 tools 目录）。",
-      "· 网络兜底：官方下载页 https://music.moekoe.cn/download.html 勾选「我是来自中国大陆（使用镜像加速下载）」，或给 GitHub 直链加 gh-proxy / ghfast 前缀；下载失败先删掉半截文件再完整重下（续传修不好坏文件）。",
-      "· 装完请验证：MoeKoe Music 能启动，且 http://127.0.0.1:6521/register/dev 返回 dfid；把结果发给我。",
-    ].join("\n");
-  }
-  const steps = fallbackStepsOf(id) ?? `重跑本机的一键安装脚本（一条命令只装这一个工具，脚本自带「国内镜像优先 + 逐通道回落 + 坏缓存先删」）：\n    ${fallbackRunner()} ${id}`;
-  const head = spec.description.split("；")[0];
-  const purpose = head.length > 70 ? `${head.slice(0, 70)}…` : head;
-  const lines = [
-    `帮我在这台电脑上装好开发工具「${spec.name}」。`,
-    "请先检测是否已就绪，不重复安装。优先使用应用提供的安装或修复入口；需要系统授权时请让我确认。",
-    "",
-    `· 用途：${purpose}`,
-    `· 装到哪：${fallbackTargetDir(id, spec)}`,
-    `· 首选做法：${steps}`,
-    spec.kind === "guide" ? "· 网络兜底：只用该平台的官方安装入口；系统已提供时不要重复下载。" : "· 网络兜底：按该工具支持的通道选择国内源：npm 用 npmmirror、pip 用清华镜像，GitHub 发布包走 gh-proxy → ghfast → 官方直连。保留版本和完整性校验。",
-    `· 装完请验证：${fallbackExpectLine(id, spec)}，并把命令输出发给我。`,
-  ];
-  if (spec.builtIn || spec.bundled) {
-    lines.push("· 注意：这个工具本来是随应用内置的，如果只是文件损坏，优先从随包的备份/归档恢复，不要另外装一份不同版本。");
-  }
-  return lines.join("\n");
-}
-
-/** marker 落在**随包根**（resources/tools）即为随包内置，删不掉。 */
-function installedFromBundle(spec: DevRuntimeSpec): boolean {
-  const marker = (spec as any).marker;
-  const rels: string[] = Array.isArray(marker) ? marker : marker ? [marker] : [];
-  return rels.some((rel) => { try { return existsSync(path.join(toolsRoot(), rel)); } catch { return false; } });
-}
-
-/** 开发工具页与专家查缺共用本机检测和安装提示。 */
-function runtimeList() {
-  const rows = (Object.entries(devRuntimeSpecs) as [DevRuntimeId, DevRuntimeSpec][])
-    .filter(([id]) => !(IS_MAC && DARWIN_HIDDEN.has(id)))
-    .map(([id, spec]) => ({
-      id, ...specFor(id, spec),
-      installed: runtimeInstalled(id, spec),
-      /* ⛔ 11-01：随包资源（resources/tools）里的工具**删不掉**，但原来照样给「卸载」按钮，
-         点了才报错 —— 用户原话「搞笑吗这是」。这里把来源标出来，让界面直接显示「内置」。 */
-      fromBundle: installedFromBundle(spec),
-      installedBySystem: runtimeInstalledBySystem(id),
-      installTarget: fallbackTargetDir(id, spec),
-      installing: runtimeInstalls.has(id),
-      // 装不上时的备用方案：预置一段可直接发给 Codex 的提示词（渲染层只展示 + 复制）
-      fallbackPrompt: fallbackPromptFor(id, spec),
-    }));
-  return [...rows, contentPredictionRow()];
-}
-
-/** 卸载也要有进度（10-07 用户要求「不允许出现无响应状态」）：pw-browsers ~170MB / ffmpeg ~300MB
- *  这种大目录逐文件删要几秒，一句「正在卸载…」闷到结束就是无响应。
- *  做法：先盘点（收集全部文件 + 字节数），再分批删（每批 ~4MB 或 200 个文件），按字节比例发
- *  `runtime:progress`；删完文件再把（现在已空的）目录树整体摘掉。批次间 setImmediate 让事件循环
- *  喘口气，进度事件才能真的发出去。 */
-/** ⛔⛔ 11-15：安装/卸载失败的真实原因必须落盘。
- *  界面只显示进度条最后一行（且应用一重启就没了），用户报「安装报错」时开发者拿不到任何证据；
- *  OpenMAIC 的构建日志、pip 的多源失败明细都在这里留全文，便于下次直接定位而不是靠猜。 */
-async function recordInstallFailure(id: string, phase: "install" | "uninstall", error: unknown): Promise<void> {
-  try {
-    const dir = path.join(app.getPath("userData"), "logs");
-    await fs.mkdir(dir, { recursive: true });
-    const text = String((error as Error)?.stack ?? (error as Error)?.message ?? error);
-    await fs.appendFile(path.join(dir, "install-errors.log"),
-      `\n===== ${new Date().toISOString()} ${phase} ${id} =====\n${text.slice(0, 10_000)}\n`, "utf8");
-  } catch { /* 日志写不了不能影响主流程 */ }
-}
-
-async function removeTargetsWithProgress(id: DevRuntimeId, targets: string[]): Promise<void> {
-  const jobs: { file: string; size: number }[] = [];
-  let totalBytes = 0;
-  /* ⛔⛔ 11-15 用户实测「卸载直接把应用干死」：OpenMAIC 装完后 app/node_modules 有几十万个
-     小文件，旧实现用同步 readdirSync/statSync **递归遍历整棵树**，主进程事件循环被整段堵住
-     （几十秒到几分钟）⇒ Windows 弹「Electron 未响应」。改成异步遍历 + 每 200 项让出一次事件循环，
-     删除本身本来就是 await fs.rm（异步），界面全程可响应、可取消。 */
-  let scanned = 0;
-  const yieldToLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
-  /* ⛔ 11-15：统计阶段本身也要给反馈 —— 20 万个小文件遍历要十几秒，
-     期间一条事件都不发，用户看到的就是「点了卸载没反应」。 */
-  sendToWindow("runtime:progress", { id, stage: "正在统计要删除的文件", percent: 0 });
-  const collectDir = async (dir: string): Promise<void> => {
-    let entries: import("node:fs").Dirent[];
-    try { entries = await fs.readdir(dir, { withFileTypes: true }) as import("node:fs").Dirent[]; } catch { return; }
-    for (const entry of entries) {
-      const childPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) await collectDir(childPath);
-      else {
-        let size = 0;
-        try { size = (await fs.stat(childPath)).size; } catch { /* 竞态：文件刚没了 */ }
-        jobs.push({ file: childPath, size });
-        totalBytes += size;
-      }
-      if (++scanned % 200 === 0) await yieldToLoop();
-    }
-  };
-  const roots: string[] = [];
-  for (const target of targets) {
-    const resolved = path.resolve(target);
-    roots.push(resolved);
-    let stat;
-    try { stat = await fs.stat(resolved); } catch { continue; } // 目标不在了 = 已经卸载好
-    if (stat.isDirectory()) await collectDir(resolved);
-    else { jobs.push({ file: resolved, size: stat.size }); totalBytes += stat.size; }
-  }
-  sendToWindow("runtime:progress", { id, stage: "正在删除文件", percent: 0 });
-  const BATCH_BYTES = 4 * 1024 * 1024;
-  const BATCH_FILES = 200;
-  let batch: string[] = [];
-  let batchBytes = 0;
-  let removedBytes = 0;
-  let failedCount = 0;
-  let firstFailure = "";
-  const flush = async () => {
-    const pending = batch;
-    batch = [];
-    batchBytes = 0;
-    /* ⛔⛔ 11-15 用户实测「点了卸载半天不动」：旧实现逐个 `await fs.rm`，20 万个小文件
-       等于 20 万次串行系统调用（几分钟）。改成 32 路并发 —— 总耗时降到秒级。
-       失败语义不变：被占用文件照样计数（10-07 那条「不谎报成功」的规矩），首个样本留证。 */
-    for (let index = 0; index < pending.length; index += 32) {
-      await Promise.all(pending.slice(index, index + 32).map((file) => fs.rm(file, { force: true }).catch((error: Error) => {
-        failedCount++;
-        if (!firstFailure) firstFailure = `${file}（${String(error?.message ?? error).slice(0, 80)}）`;
-      })));
-    }
-    if (totalBytes > 0) {
-      const percent = Math.min(99, Math.round((removedBytes / totalBytes) * 100));
-      sendToWindow("runtime:progress", { id, stage: "正在删除文件", percent });
-    }
-    await new Promise((resolve) => setImmediate(resolve));
-  };
-  for (const job of jobs) {
-    batch.push(job.file);
-    batchBytes += job.size;
-    removedBytes += job.size;
-    if (batchBytes >= BATCH_BYTES || batch.length >= BATCH_FILES) await flush();
-  }
-  if (batch.length) await flush();
-  // 文件删完后摘目录树（recursive 对已空目录是瞬时操作，顺带兜走漏网文件）
-  for (const root of roots) {
-    try { await fs.rm(root, { recursive: true, force: true }); } catch (error) {
-      failedCount++;
-      if (!firstFailure) firstFailure = `${root}（${String((error as Error)?.message ?? error).slice(0, 80)}）`;
-    }
-  }
-  // ⛔ 如实报错而不是「假装卸载成功」——失败最常见的原因是文件被占用（Windows 常驻子进程、
-  //   浏览器内核缓存被引用），提示必须能指导用户下一步动作。
-  if (failedCount > 0) {
-    throw new Error(
-      `有 ${failedCount} 个文件删不掉（常见原因：被其它程序占用）。首个失败：${firstFailure}`
-      + " —— 请关闭占用它的程序（浏览器 / 后台工具）后重试，或重启应用再卸载。"
-    );
-  }
-}
-
-/** npm 包（nuphus / rea）的卸载落点：**包体目录 + 它自己的 shim**。
- *  ⛔⛔ 为什么不能按 marker 首段推导：marker 是 `npm-global\node_modules\@nuphus\nuphus-mcp\package.json`，
- *    首段推导会得到 `tools/npm-global` —— 那是几个 npm 能力的**共同家目录**，卸载一个会把其它一起删光。
- *  ⛔ 10-01 用户报「卸载不真」的根因：旧实现只删 `npm-global/<pkg>`（那是 **shim 文件**），
- *    真正的包体 `npm-global/node_modules/<pkg>` 原地不动 ⇒ 卡片显示「未安装」但包还在。 */
-const NPM_PACKAGE_ARTIFACTS: Partial<Record<DevRuntimeId, { dirs: string[]; shims: string[] }>> = {
-  nuphus: { dirs: ["node_modules/@nuphus"], shims: ["nuphus-mcp", "nuphus-call"] },
-  // REA（10-13）：包体目录 + rea / rea-agents 两个 shim；删完引擎重启后 [mcp_servers.rea]
-  // 段自动消失（custom-model-apply 按 reaServerScript() 的存在性生成，见 ownedMcpServers）。
-  rea: { dirs: ["node_modules/rea-agents"], shims: ["rea", "rea-agents"] },
-  // 飞书 CLI（10-29）：包体 @larksuite/cli + 前缀根上的 lark-cli / lark-cli.cmd
-  "feishu-cli": { dirs: ["node_modules/@larksuite"], shims: ["lark-cli"] },
-};
-
-/** 需要放行 postinstall 的包（**只放行点名的包**，⛔ 不全局放开脚本）。
- *  ⛔ 安装与**在线更新**是两条调用路径，名单必须同一份 —— 只在安装分支放行的话，
- *    更新走的就是「装出空壳」（飞书 CLI 的二进制全靠 postinstall 下载）。 */
-const NPM_ALLOW_SCRIPTS: Partial<Record<DevRuntimeId, string[]>> = {
-  "feishu-cli": ["@larksuite/cli"],
-};
-
-
-/** npm 包在某个 npm-global 根下留的 shim（不是包体，删完包体要顺手清掉）。
- *  ⛔ 10-07：显式接 `globalRoot` 参数，不再内部取 `npmGlobalRoot()` ——
- *   卸载要遍历**全部候选落位**，内部只取一个就又回到「删不干净」的旧 bug。 */
-function npmShimPaths(globalRoot: string, ...pkgs: string[]): string[] {
-  const globalDir = path.dirname(globalRoot);
-  const out: string[] = [];
-  for (const pkg of pkgs) {
-    out.push(
-      path.join(globalDir, pkg),
-      // ⛔ mac 适配（09-17 审计）：POSIX 的 npm 全局 shim 落在 `<prefix>/bin/<pkg>`（不带后缀、
-      //    symlink 到包内 bin），prepare-mac-tools 正是这么写的（npm-global/bin/nuphus-call）。
-      //    旧清单只有 Windows 的 .cmd/.ps1 ⇒ mac 上卸载包后 shim 残留，PATH 里继续指向空目录。
-      path.join(globalDir, "bin", pkg),
-      path.join(globalDir, `${pkg}.cmd`),
-      path.join(globalDir, `${pkg}.ps1`),
-      path.join(globalDir, "node_modules", ".bin", pkg),
-      path.join(globalDir, "node_modules", ".bin", `${pkg}.cmd`),
-      path.join(globalDir, "node_modules", ".bin", `${pkg}.ps1`),
-    );
-  }
-  return out;
-}
-
-/** 卸载落点（**全部**要删的路径；调用方逐条做安全校验后再删）。 */
-function runtimeUninstallTargets(id: DevRuntimeId, spec: DevRuntimeSpec): string[] {
-  // 引擎侧安装：ponytail 在 codex-home/plugins/cache/ponytail
-  if (id === "ponytail") return [path.join(codexHome, "plugins", "cache", "ponytail")];
-  // ⛔⛔ 10-07 用户实测「知识库本地语义检索卸载不更新状态，一直显示已安装」：
-  //   kb-embedding 装在 **<userData>/kb-backend**（runtimeInstalled 的判据
-  //   kbEmbeddingInstalled() 读的就是这个目录），而通用分支按 marker 首段推出的是
-  //   `tools/kb-embedding` —— **一个根本不存在的路径** ⇒ 卸载「删成功」但文件原地不动，
-  //   界面永远显示已安装。⇒ 这类「装在 tools 之外」的项必须**显式给真实目录**，不能靠 marker 推导。
-  if (id === "kb-embedding") return [kbBackendDir()];
-  const pkg = NPM_PACKAGE_ARTIFACTS[id];
-  if (pkg) {
-    // ⛔⛔ 同源纪律（10-07 同一批实测）：判定侧认**全部候选落位**（mac 双布局），
-    //   卸载侧也必须逐个删 —— 只删 npmGlobalRoot() 那一个，装在另一个落位的包会
-    //   「卸载了但仍显示已安装」（历史实测）。落位清单来自单一真相源，别手拼。
-    // ⛔⛔⛔ dirs 里的路径是相对 **npm-global 前缀**的（`node_modules/cloakbrowser`），
-    //   而候选落位 npmGlobalRootCandidates() 返回的**已含 node_modules 一段** ——
-    //   直接 join 会拼出 `node_modules/node_modules/cloakbrowser` ⇒ **包体从来就没被删过**
-    //   （Windows 同样中招，10-07 实测才抓到）。所以这里必须 join 到前缀（= 落位的上一级）。
-    return npmGlobalRootCandidates(true).flatMap((root) => {
-      const prefix = path.dirname(root);
-      return [
-        ...pkg.dirs.map((dir) => path.join(prefix, dir)),
-        ...npmShimPaths(root, ...pkg.shims),
-      ];
-    });
-  }
-  // ⛔ pip 包（markitdown / laya / phone-harness）：只能删**包目录本身**。按 marker 首段推导会得到
-  //    `tools/python` —— 那是整个 Python 运行时（含 pip 与引擎依赖），卸载一个包会把 Python 一起删光。
-  const pipDir = PIP_PACKAGE_DIRS[id];
-  if (pipDir) {
-    const site = pythonSiteDir(path.join(writeToolsRoot(), "python"));
-    if (!site) return [path.join(writeToolsRoot(), pipDir)];
-    // ⛔⛔ 必须连**元数据目录**一起删（10-08 用户实测事故「开发工具装完不更新」）：只删包目录会留下
-    //   `<name>-<ver>.dist-info`，pip 据此认为「已安装」⇒ 重装时回 `Requirement already satisfied`
-    //   且 exit 0（什么都不做），而判定看的是包目录 ⇒ 界面报「安装成功」但卡片永远显示未安装。
-    //   markitdown / laya / phone-harness 三个 pip 包都在这个分支上，一起覆盖。
-    return [path.join(site, pipDir), ...pipMetadataDirs(site, pipDir)];
-  }
-  // 工具侧：安装根 = marker 路径的第一段（git -> git / ffmpeg -> ffmpeg / …）
-  // ⛔ 卸载只删 **userData** 里的下载件；随包 resources 的目录不归用户可卸载。
-  return [path.join(writeToolsRoot(), spec.marker.split(/[\\/]/)[0])];
-}
-
-/** ⛔⛔ 安装成功后**必须回读「装没装」的判定**（10-08 用户报「开发工具安装完不更新」的整类根因）。
- *  子进程 exit 0 只证明「命令跑完了」，不证明「东西真装上了」：pip 见到孤儿 `*.dist-info` 就会
- *  回一句 `Requirement already satisfied` 然后**什么都不做**（同样 exit 0），安装脚本照样报到界面
- *  ⇒ 用户看到「开发工具安装成功」的绿条 + 卡片仍显示「下载」，点多少次都一样（markitdown 实测：
- *  包目录 83 个文件全丢、只剩 dist-info；`import` 报 ModuleNotFoundError 而 `pip show` 说装着）。
- *  ⇒ 判据必须与卡片**同源**（就是同一个 runtimeInstalled），否则又造出第二套口径。
- *  ⛔ 只在「真跑过安装」的分支调用：guide（去官网）/ builtIn（无需安装）/ 已就绪 三条不算。 */
-function assertInstallVerified(id: DevRuntimeId, spec: DevRuntimeSpec): void {
-  // ⛔ 11-14：REA 的 marker 只查 package.json，半截安装（缺 rea.mjs / dist chunk）照样会过
-  //    ⇒ 界面报「安装完成」但专家永远不出现。复核必须再过一次「能用的安装」口径（reaServerScript 三查）。
-  if (runtimeInstalled(id, spec) && (id !== "rea" || Boolean(reaServerScript()))) return;
-  throw new Error(
-    `「${spec.name}」安装流程已结束，但复核未通过 —— 在预期位置找不到已安装产物`
-    + `（安装根目录：${writeToolsRoot()}）。这通常是安装器「假成功」（命令退出码 0 但没落盘），`
-    + "请把本页日志反馈给开发者；重复点「下载」不会自愈。"
-  );
-}
-
-/** npm 包按需安装：用**内置 node 自带的 npm**，registry 国内镜像优先、失败回落官方源。 */
-async function runNpmInstall(id: string, pkg: string, label: string, source: NonNullable<AppSettings["downloadSource"]> = "auto", allowScripts: string[] = [], preferredRegistry?: string): Promise<void> {
-  const node = bundledNode();
-  if (!node) throw new Error(`缺少内置 Node，无法安装 ${label}`);
-  // ⛔ 按平台候选探测（Windows zip 布局 / mac tar.gz 布局）—— 别在这里复制路径字面量，见 toolchain.bundledNpmCli
-  const npmCli = bundledNpmCli();
-  if (!npmCli) throw new Error(`内置 Node 缺少 npm（候选中无 npm-cli.js，tools 根：${toolsRoot()}），无法安装 ${label}`);
-  const globalDir = path.join(writeToolsRoot(), "npm-global");
-  await fs.mkdir(globalDir, { recursive: true });
-  const userRegistry = process.env.npm_config_registry || process.env.NPM_CONFIG_REGISTRY || "";
-  const registries = userRegistry ? [userRegistry] : source === "direct" ? [""] : [CHINA_NPM_REGISTRY, ""];
-  /* ⛔ 11-10：检查更新已按「所有源查完取最大」判版本 ⇒ 安装必须优先走**同一个胜出源**。
-     否则 @latest 在还没同步的镜像上会装回旧版：界面显示「有更新」，点完仍是旧版。
-     传 "" = 不设 registry（npm 回落官方源）；undefined = 沿用默认源序。 */
-  const ordered = preferredRegistry === undefined
-    ? registries
-    : [preferredRegistry, ...registries.filter((entry) => entry !== preferredRegistry)];
-  let lastError: Error | null = null;
-  for (const registry of ordered) {
-    const via = registry ? (userRegistry ? "用户配置的源" : "国内镜像") : "官方源";
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const env: Record<string, string> = {
-          ...toolchainEnv(),
-          npm_config_audit: "false",
-          npm_config_fund: "false",
-          npm_config_loglevel: "error",
-          npm_config_update_notifier: "false",
-          NO_UPDATE_NOTIFIER: "1",
-        };
-        // 空串 = 不设 registry，npm 回落到官方源
-        if (registry) env.npm_config_registry = registry;
-        const scriptFlags = allowScripts.map((name) => `--allow-scripts=${name}`);
-        const child = spawn(node, [npmCli, "install", "--global", "--prefix", globalDir, pkg, "--no-audit", "--no-fund", ...scriptFlags], { windowsHide: true, env });
-        trackRuntimeProc(id, child);
-        let tail = "";
-        const report = (chunk: Buffer | string) => {
-          const text = String(chunk);
-          if (!text.trim()) return;
-          tail = `${tail}\n${text}`.slice(-4000);
-          emitRuntimeProgress(id, text, `（${via}）`);
-        };
-        child.stdout?.on("data", report);
-        child.stderr?.on("data", report);
-        child.on("error", reject);
-        child.on("close", (code) => code === 0 ? resolve() : reject(new Error(tail.trim().slice(-1200) || `${label} 安装失败（${code}）`)));
-      });
-      return;
-    } catch (error) {
-      lastError = error as Error;
-      if (registry) sendToWindow("runtime:progress", { id, message: `${label} 从${via}安装失败，改用官方源重试…`, percent: 0 });
-    }
-  }
-  throw lastError ?? new Error(`${label} 安装失败`);
-}
-
-/* ── Filee 文件转换（10-30）───────────────────────────────────────────────────
- * GitHub release 直下型（**不是 npm 包**）：镜像序下载便携包 → SHA256 校验 → 解压 tools/filee/。
- * ⛔ 镜像序单一真相源 = gh-mirror.mirrorCandidates（gh-proxy → ghfast → 直连），别在这里另写一份。
- * ⛔ 151MB 大包必须 SHA256 校验（release 自带 Filee-<ver>-SHA256SUMS.txt）：镜像转发偶发截断，
- *   坏包解压一半比「下载失败」更难排查（10-30 实测 CLI 真跑通过后定的口径）。
- * ⛔ 装完写 version.txt：更新链的 installedVersionOf 读它 —— `filee-cli --version` 要 spawn 一次太慢。
- * ⛔ CLI 输出/取消：下载用流式 + 进度（同 skill-packs 的 10-30 口径「要真安装」），取消走
- *   isCancelRequested 轮询（fetch 不能被 trackRuntimeProc 杀，每 chunk 自查）。
- * ⛔ 导出 FILEE_REPO：filee:status 的声明区（FileeCard 跳转按钮）从它取 —— 前端不写第二份 URL。 */
-export const FILEE_REPO = "KnifeLemon/Filee";
-function fileeInstallDir(): string { return path.join(writeToolsRoot(), "filee"); }
-function fileeVersionFile(): string { return path.join(fileeInstallDir(), "version.txt"); }
-
-/** Filee 便携包资产名（按平台/架构；资产名规律 10-30 实测自 GitHub release v2.2.0）。 */
-function fileeAssetName(version: string): string {
-  const arch = process.arch === "arm64" ? "arm64" : "x64";
-  if (process.platform === "win32") return `Filee-${version}-win-Portable.zip`;
-  if (process.platform === "darwin") return `Filee-${version}-osx-${arch}.tar.gz`;
-  return `Filee-${version}-linux-${arch}.tar.gz`;
-}
-
-/** 读盘上已装版本（安装时落盘的 version.txt；读不到 = 未安装/旧版安装）。 */
-function fileeInstalledVersion(): string {
-  try { return readFileSync(fileeVersionFile(), "utf8").trim(); } catch { return ""; }
-}
-
-/** 下载 Filee release 资产：统一镜像下载器（选最快源 + 停滞换源 + 取消 + 进度/速度 + SHA256）。 */
-async function fileeDownloadAsset(id: DevRuntimeId, urlPath: string, target: string, expectZipMagic: boolean): Promise<string> {
-  const url = `https://github.com/${FILEE_REPO}/releases/download/${urlPath}`;
-  let lastHost = "";
-  const result = await downloadThroughMirrors({
-    url,
-    target,
-    expectZipMagic,
-    isCancelled: () => isCancelRequested(id),
-    onProgress: (p) => {
-      const pct = p.total ? p.percent : 0;
-      emitRuntimeProgress(id, `@@PROGRESS ${pct}`);
-      const mbText = p.total
-        ? `${(p.received / 1048576).toFixed(1)} MB / ${(p.total / 1048576).toFixed(1)} MB`
-        : `${(p.received / 1048576).toFixed(1)} MB`;
-      const speed = p.bytesPerSec >= 1048576
-        ? `${(p.bytesPerSec / 1048576).toFixed(1)} MB/s`
-        : p.bytesPerSec > 0 ? `${Math.max(1, Math.round(p.bytesPerSec / 1024))} KB/s` : "";
-      emitRuntimeProgress(id, `@@SPEED ${speed ? `${speed} · ` : ""}${mbText}`);
-      if (p.host && p.host !== lastHost) {
-        lastHost = p.host;
-        emitRuntimeProgress(id, `正在下载（${p.host}）…`);
-      }
-    },
-  });
-  return result.sha256;
-}
-
-/** 安装 / 更新 Filee（version 传具体版本号；更新链传 GitHub 最新 tag）。 */
-async function installFileeFromGitHub(id: DevRuntimeId, version: string): Promise<void> {
-  if (!/^[0-9][0-9A-Za-z.\-]*$/.test(version)) throw new Error(`Filee 版本号异常：${version}`);
-  const dir = fileeInstallDir();
-  const staging = path.join(writeToolsRoot(), ".filee-download");
-  await fs.mkdir(staging, { recursive: true });
-  const asset = fileeAssetName(version);
-  emitRuntimeProgress(id, `@@STAGE 下载 Filee ${version}`);
-  const archive = path.join(staging, asset);
-  const actualSha = await fileeDownloadAsset(id, `v${version}/${asset}`, archive, process.platform === "win32");
-  if (isCancelRequested(id)) { await fs.rm(archive, { force: true }).catch(() => undefined); throw new Error("已取消"); }
-  // SHA256 校验（校验表也走镜像序；拿不到表或表里没这行 = 如实说明并跳过，不装哑巴包也不瞎报错）
-  emitRuntimeProgress(id, "校验 SHA256…");
-  let expectedSha = "";
-  for (const candidate of mirrorCandidates(`https://github.com/${FILEE_REPO}/releases/download/v${version}/Filee-${version}-SHA256SUMS.txt`)) {
-    try {
-      const res = await guardedFetch(candidate, { redirect: "follow", signal: AbortSignal.timeout(60_000) }, { timeoutMs: 60_000 });
-      if (!res.ok) continue;
-      const text = await res.text();
-      const row = text.split(/\r?\n/).find((line) => line.toLowerCase().includes(asset.toLowerCase()));
-      const hex = row?.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
-      if (/^[0-9a-f]{64}$/.test(hex)) { expectedSha = hex; break; }
-    } catch { /* 下一个镜像 */ }
-  }
-  if (expectedSha && actualSha && expectedSha !== actualSha) {
-    await fs.rm(archive, { force: true });
-    throw new Error(`Filee 安装包 SHA256 校验失败（下载可能被截断）：期望 ${expectedSha.slice(0, 12)}…，实际 ${actualSha.slice(0, 12)}… —— 请重试`);
-  }
-  // 清旧目录（解压目标整体重建；临时下载件在 staging、不受影响）
-  /* ⛔ 11-01「取消后装不上」系统性修法：解压先进 staging，完整后再换入安装目录。
-     取消时只会留下 .installing 目录（下次安装开头清掉），不会出现「半个 filee 但 marker 在」。 */
-  emitRuntimeProgress(id, "正在解压…");
-  const stage = `${dir}.installing`;
-  await fs.rm(stage, { recursive: true, force: true });
-  await fs.mkdir(stage, { recursive: true });
-  const zipMagic = process.platform === "win32";
-  try {
-    if (zipMagic) {
-      const sevenZip = existingToolPath("sevenzip", "7z.exe");
-      if (!sevenZip) throw new Error("缺少随包 7-Zip（sevenzip/7z.exe），解压不了 Filee 安装包");
-      await new Promise<void>((resolve, reject) => {
-        const child = spawn(sevenZip, ["x", archive, `-o${stage}`, "-y"], { windowsHide: true });
-        trackRuntimeProc(id, child);
-        let tail = "";
-        const grab = (c: unknown) => { tail = `${tail}\n${String(c)}`.slice(-2000); };
-        child.stdout?.on("data", grab);
-        child.stderr?.on("data", grab);
-        child.on("error", reject);
-        child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`解压失败（${code}）：${tail.trim().slice(-600)}`)));
-      });
-    } else {
-      // mac / linux：系统自带 tar（osx-*.tar.gz / linux-*.tar.gz）
-      await new Promise<void>((resolve, reject) => {
-        const child = spawn(tarExecutable(), ["-xzf", archive, "-C", stage], { windowsHide: true });
-        trackRuntimeProc(id, child);
-        child.on("error", reject);
-        child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`解压失败（${code}）`)));
-      });
-    }
-    await fs.rm(dir, { recursive: true, force: true });
-    await fs.rename(stage, dir);
-  } finally {
-    await fs.rm(stage, { recursive: true, force: true }).catch(() => undefined);
-  }
-  // 落版本号（更新链 installedVersionOf 读它）
-  await fs.writeFile(fileeVersionFile(), version + "\n", "utf8");
-  await fs.rm(staging, { recursive: true, force: true });
-}
-
-/* ── ApkStart 安卓运行器（11-14，RoutineMiku/apkstart，MIT）──────────────────
- * Windows 安卓应用运行器：便携 zip 约 119MB；首次启动再由它自己下载 Android 运行时。
- * 只提供 CLI 安装/启动（`ApkStart.exe <apk>` / `--launch <包名>`），不做镜像重写。 */
-export const APKSTART_REPO = "RoutineMiku/apkstart";
-function apkstartInstallDir(): string { return path.join(writeToolsRoot(), "apkstart"); }
-function apkstartVersionFile(): string { return path.join(apkstartInstallDir(), "version.txt"); }
-function apkstartAssetName(version: string): string { return `ApkStart-v${version}-win64-portable.zip`; }
-function apkstartInstalledVersion(): string {
-  try { return readFileSync(apkstartVersionFile(), "utf8").trim(); } catch { return ""; }
-}
-
-/** GitHub release 资产的官方 sha256（新版 API 带 digest；拿不到就返回空，不假装校验过）。 */
-/** GitHub release 资产的官方 sha256（新版 API 带 digest；拿不到就返回空，不假装校验过）。
- *  ⛔ 必须按**目标版本**查（tags/{version}），不能永远查 latest：装 pin/旧版时 latest 的 digest
- *     与下载包不是同一个，会误报「SHA256 校验失败」。tag 可能是 `v1.2.3` 或 `1.2.3`，两种都试。 */
-async function fetchGitHubAssetDigest(repo: string, assetName: string, version?: string): Promise<string> {
-  const endpoints = version
-    ? [`https://api.github.com/repos/${repo}/releases/tags/v${version}`, `https://api.github.com/repos/${repo}/releases/tags/${version}`]
-    : [`https://api.github.com/repos/${repo}/releases/latest`];
-  for (const endpoint of endpoints) {
-    for (const candidate of mirrorCandidates(endpoint)) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20_000);
-      try {
-        const res = await guardedFetch(candidate, { signal: controller.signal, headers: { accept: "application/vnd.github+json" } }, { timeoutMs: 20_000 });
-        if (!res.ok) continue;
-        const json = (await res.json()) as { assets?: Array<{ name?: unknown; digest?: unknown }> };
-        const row = (json.assets ?? []).find((asset) => String(asset.name ?? "") === assetName);
-        const digest = String(row?.digest ?? "").toLowerCase();
-        if (digest.startsWith("sha256:")) return digest.slice(7);
-        if (/^[0-9a-f]{64}$/.test(digest)) return digest;
-      } catch { /* 下一个镜像 */ } finally { clearTimeout(timer); }
-    }
-  }
-  return "";
-}
-
-async function findFile(dir: string, name: string, depth: number): Promise<string> {
-  if (depth < 0) return "";
-  let entries: import("node:fs").Dirent[];
-  try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return ""; }
-  for (const entry of entries) {
-    if (entry.isFile() && entry.name.toLowerCase() === name.toLowerCase()) return path.join(dir, entry.name);
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const found = await findFile(path.join(dir, entry.name), name, depth - 1);
-    if (found) return found;
-  }
-  return "";
-}
-
-async function installApkStartFromGitHub(id: DevRuntimeId, version: string): Promise<void> {
-  if (process.platform !== "win32") throw new Error("ApkStart 仅支持 Windows 10/11 x64");
-  if (!/^[0-9][0-9A-Za-z.\-]*$/.test(version)) throw new Error(`ApkStart 版本号异常：${version}`);
-  const dir = apkstartInstallDir();
-  const staging = path.join(writeToolsRoot(), ".apkstart-download");
-  await fs.mkdir(staging, { recursive: true });
-  const asset = apkstartAssetName(version);
-  emitRuntimeProgress(id, `@@STAGE 下载 ApkStart ${version}`);
-  const archive = path.join(staging, asset);
-  const actualSha = (await downloadThroughMirrors({
-    url: `https://github.com/${APKSTART_REPO}/releases/download/v${version}/${asset}`,
-    target: archive,
-    expectZipMagic: true,
-    isCancelled: () => isCancelRequested(id),
-    onProgress: (p) => {
-      const pct = p.total ? p.percent : 0;
-      emitRuntimeProgress(id, `@@PROGRESS ${pct}`);
-      const mbText = p.total
-        ? `${(p.received / 1048576).toFixed(1)} MB / ${(p.total / 1048576).toFixed(1)} MB`
-        : `${(p.received / 1048576).toFixed(1)} MB`;
-      emitRuntimeProgress(id, `正在下载 ApkStart（${mbText}，约 119 MB）`);
-    },
-  })).sha256;
-  if (isCancelRequested(id)) { await fs.rm(archive, { force: true }).catch(() => undefined); throw new Error("已取消"); }
-  emitRuntimeProgress(id, "校验 SHA256…");
-  const expectedSha = await fetchGitHubAssetDigest(APKSTART_REPO, asset, version);
-  if (expectedSha && actualSha && expectedSha !== actualSha) {
-    await fs.rm(archive, { force: true });
-    throw new Error(`ApkStart 安装包 SHA256 校验失败（下载可能被截断）：期望 ${expectedSha.slice(0, 12)}…，实际 ${actualSha.slice(0, 12)}… —— 请重试`);
-  }
-  emitRuntimeProgress(id, "正在解压…");
-  const stage = `${dir}.installing`;
-  await fs.rm(stage, { recursive: true, force: true });
-  await fs.mkdir(stage, { recursive: true });
-  try {
-    const sevenZip = existingToolPath("sevenzip", "7z.exe");
-    if (!sevenZip) throw new Error("缺少随包 7-Zip（sevenzip/7z.exe），解压不了 ApkStart 安装包");
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(sevenZip, ["x", archive, `-o${stage}`, "-y"], { windowsHide: true });
-      trackRuntimeProc(id, child);
-      let tail = "";
-      const grab = (chunk: unknown) => { tail = `${tail}\n${String(chunk)}`.slice(-2000); };
-      child.stdout?.on("data", grab);
-      child.stderr?.on("data", grab);
-      child.on("error", reject);
-      child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`解压失败（${code}）：${tail.trim().slice(-600)}`)));
-    });
-    // 便携包可能套一层目录：把 ApkStart.exe 所在目录的内容上提到 stage 根。
-    let exe = path.join(stage, "ApkStart.exe");
-    if (!existsSync(exe)) {
-      const found = await findFile(stage, "ApkStart.exe", 3);
-      if (!found) throw new Error("ApkStart 安装包解压后找不到 ApkStart.exe");
-      const root = path.dirname(found);
-      if (root !== stage) {
-        const lifted = `${stage}.root`;
-        await fs.rm(lifted, { recursive: true, force: true });
-        await fs.mkdir(lifted, { recursive: true });
-        for (const entry of await fs.readdir(root)) await fs.rename(path.join(root, entry), path.join(lifted, entry));
-        await fs.rm(stage, { recursive: true, force: true });
-        await fs.rename(lifted, stage);
-      }
-      exe = path.join(stage, "ApkStart.exe");
-    }
-    if (!existsSync(exe)) throw new Error("ApkStart 安装包不完整（缺 ApkStart.exe）");
-    await fs.rm(dir, { recursive: true, force: true });
-    await fs.rename(stage, dir);
-  } finally {
-    await fs.rm(stage, { recursive: true, force: true }).catch(() => undefined);
-    await fs.rm(`${stage}.root`, { recursive: true, force: true }).catch(() => undefined);
-  }
-  await fs.writeFile(apkstartVersionFile(), version + "\n", "utf8");
-  await fs.rm(staging, { recursive: true, force: true });
-}
-
-/* ── GitHub 直下型工具的「检查更新 / 升级」（Filee，10-30）──────────────────────
- * ⛔ 不并入 UPDATEABLE_TOOLS（那是 npm 包专用：pkg + fetchRegistryLatest）。
- *   · 查最新版走 GitHub releases/latest（api 镜像序），比 npm 慢一点但 Filee 没有 npm 源；
- *   · 升级 = 重跑同一条安装函数（带最新 tag），装完复核 version.txt。
- * ⛔ 自动更新循环不收 filee：autoUpdateItems 只认配了开关的工具（151MB 不许后台偷下），
- *   filee 只出现在「控制台 → 组件更新」的手动检查里 —— 这个边界别改。 */
-const GITHUB_UPDATEABLE: Record<string, { repo: string; label: string; platforms?: NodeJS.Platform[]; install: (id: DevRuntimeId, version: string) => Promise<void> }> = {
-  filee: { repo: FILEE_REPO, label: "Filee 文件转换", install: installFileeFromGitHub },
-  apkstart: { repo: APKSTART_REPO, label: "ApkStart 安卓运行器", platforms: ["win32"], install: installApkStartFromGitHub },
-  // OpenMAIC（11-14）：更新 = 重新下载源码并重建（5–10 分钟），课程数据保留；由卡片上的更新行列式提示。
-  openmaic: { repo: OPENMAIC_REPO, label: "OpenMAIC 互动课堂", platforms: ["win32"], install: installOpenMaicFromGitHub },
-  // Husk（11-14）：只有 iPhone 用的 IPA；电脑侧下载/更新官方安装包，真机侧载由用户完成。
-  husk: { repo: HUSK_REPO, label: "Husk（iPhone 跑 Android）", install: installHuskFromGitHub },
-  // Craft 全家桶（11-16）：Launcher 便携包（约 11MB，仅 Windows）；更新 = 重下同版本资产并替换。
-  // ⛔ PhotoCraft 不再由宿主直接下载（11-17 用户令：跟其他 App 一样走 Launcher），只在扫描到后做工具/MCP 联动。
-  artcraft: { repo: ARTCRAFT_REPO, label: "Craft 全家桶（ArtCraft Launcher）", platforms: ["win32"], install: installArtCraftFromGitHub },
-};
-
-/** 查 GitHub **最新**版本号（去 v 前缀）：tags 列表 + releases/latest 都查，取版本最大者。
- *
- * ⛔⛔ 11-15 用户实测「下载得有的时候都不是最新的，都是旧版本」：旧实现只查
- *   `/releases/latest`，而不少上游先打 tag、后发（甚至根本不发）Release ⇒
- *   latest release 长期落后于最新 tag，装下来的自然不是最新版。
- *   判定口径与 `npm-version.ts` 的 `probeNewestNpmVersion` 对齐：**候选全查、取最大、不早退**。
- * ⛔ 只认语义化版本 tag（v?x.y.z），跳过 `mobile-remote-v0.1.16` 这类别的产品线 tag。
- */
-export async function fetchGitHubLatestTag(repo: string): Promise<string> {
-  const reasons: string[] = [];
-  const versions: string[] = [];
-  const endpoints = [
-    `https://api.github.com/repos/${repo}/tags?per_page=100`,
-    `https://api.github.com/repos/${repo}/releases/latest`,
-  ];
-  for (const url of endpoints) {
-    for (const candidate of mirrorCandidates(url)) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20_000);
-      try {
-        const res = await guardedFetch(candidate, {
-          signal: controller.signal,
-          headers: { accept: "application/vnd.github+json" },
-        }, { timeoutMs: 20_000 });
-        if (!res.ok) { reasons.push(`HTTP ${res.status}`); continue; }
-        const json = (await res.json()) as unknown;
-        const raw: string[] = Array.isArray(json)
-          ? (json as { name?: unknown }[]).map((t) => String(t?.name ?? ""))
-          : [String((json as { tag_name?: unknown })?.tag_name ?? "")];
-        for (const tag of raw) {
-          const v = tag.replace(/^v/, "");
-          // ⛔ 只认**稳定版**三段号：上游常有 v1.5.0-rc.2 之类的预发布 tag，
-          //   直接取最大会把 RC 当最新版装（OpenMAIC 实测 tags[0]=v1.5.0-rc.2 而
-          //   releases/latest=v1.4.2）⇒ 装到不稳定源码 / 版本校验失败。
-          if (/^\d+\.\d+\.\d+$/.test(v)) versions.push(v);
-        }
-        break; // 这个端点成功了就换下一个端点（两个端点都要查，不能因为第一个成功就 return）
-      } catch (error) {
-        reasons.push(String((error as Error)?.message ?? error));
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-  }
-  if (!versions.length) throw new Error(`查 GitHub 最新版失败：${reasons.slice(0, 3).join("；") || "没有可用版本 tag"}`);
-  return versions.reduce((best, v) => (compareVersions(v, best) > 0 ? v : best), versions[0]);
-}
-
-/** 按需安装工具的版本解析：**在线查最新**，只有彻底查不到才退回随包版本表。
- *  ⛔⛔ 11-15 用户令「下载得有的时候都不是最新的，都是旧版本」：旧代码直接吃
- *    `TOOLS_VERSIONS.filee / feishuCli` 这类固定表值，表里停在 2.2.0 / 1.0.98，
- *    上游早就发新版了还在装旧的。固定表从今往后只是**离线兜底**，不是安装首选。 */
-async function latestInstallVersion(tableKey: string, repo: string): Promise<string> {
-  try { return await fetchGitHubLatestTag(repo); }
-  catch { return TOOLS_VERSIONS[tableKey] ?? ""; }
-}
-
-export type DevRuntimeHealth = {
-  id: string;
-  name: string;
-  /** 文件在不在（与卡片同一份判定）。 */
-  installed: boolean;
-  /** 装了的能不能真跑起来。 */
-  ok: boolean;
-  /** 给人看的一行结论（版本串 / 失败原因）。 */
-  detail: string;
-};
-
-/** 自检时让工具自报版本的参数（只列**可执行文件型**；其余只验存在性）。 */
-const HEALTH_ARGS: Partial<Record<DevRuntimeId, string[]>> = {
-  node: ["-v"], python: ["--version"], git: ["--version"], rg: ["--version"], uv: ["--version"],
-  jq: ["--version"], ninja: ["--version"], sevenzip: [], "yt-dlp": ["--version"], cmake: ["--version"],
-  ffmpeg: ["-version"], "platform-tools": ["version"],
-  filee: ["--version"],
-  pwsh: ["-NoLogo", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"],
-  "vscode-cli": ["--version"], conda: ["--version"], mingw: ["--version"],
-};
-
-/** 跑一次命令拿首行输出；**任何异常都收敛成一行文字**，不抛。 */
-function probeTool(file: string, args: string[]): Promise<{ ok: boolean; detail: string }> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (ok: boolean, detail: string) => {
-      if (settled) return;
-      settled = true;
-      resolve({ ok, detail });
-    };
-    if (!existsSync(file)) return done(false, "已安装但找不到可执行文件（目录可能被手动删过，点「修复安装」）");
-    try {
-      /* ⛔⛔ 11-01 用户实测「Miniconda 检查报 Traceback，是不是用不了」：实测 cd 到安装目录里跑
-         conda --version 完全正常（conda 25.1.1 / Python 3.12.9），报错是**探测方式**造成的 ——
-         conda 的启动器要先定位自己的安装根，没有正确 cwd / CONDA_PREFIX 时会抛 Python Traceback。
-         ⇒ 探测一律在该工具自己的目录里跑；conda 额外把 cwd 落到 miniconda 根并给 CONDA_PREFIX。 */
-      const baseDir = require("node:path").dirname(file);
-      const isConda = /conda(.exe)?$/i.test(file);
-      const condaRoot = isConda ? require("node:path").dirname(baseDir) : "";
-      const child = spawn(file, args, {
-        windowsHide: true,
-        cwd: isConda ? condaRoot : baseDir,
-        /* conda 的 launcher 还要能找到自己的 python 与 conda 包：只给 CONDA_PREFIX 不够，
-           必须把 miniconda 根 / Scripts / Libraryin 放进 PATH，并指认 CONDA_EXE。 */
-        env: isConda
-          ? (() => {
-              const base = toolchainEnv() as Record<string, string>;
-              const sep = process.platform === "win32" ? ";" : ":";
-              const pathKey = Object.keys(base).find((k) => k.toUpperCase() === "PATH") || "PATH";
-              const extra = [condaRoot, condaRoot + sep + "Scripts", condaRoot + sep + "Library" + sep + "bin"].join(sep);
-              /* ⛔⛔ 实测关键：conda.exe 本身是 Python 启动器，若继承了 toolchainEnv 里的
-                 PYTHONHOME / PYTHONPATH（指向随包 python），它会用自己的解释器去加载别的标准库
-                 ⇒ 直接抛 Traceback（「退出码 1」就是这么来的）。手动跑（不带这些变量）一直是正常的。
-                 ⇒ conda 探测前把这三个变量剔除。 */
-              for (const k of ["PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE"]) {
-                for (const real of Object.keys(base)) if (real.toUpperCase() === k) delete (base as any)[real];
-              }
-              return { ...base, [pathKey]: extra + sep + String(base[pathKey] || ""), CONDA_PREFIX: condaRoot, CONDA_EXE: file };
-            })()
-          : toolchainEnv(),
-        timeout: 8000,
-      });
-      let out = "";
-      const grab = (chunk: unknown) => { out += String(chunk); };
-      child.stdout?.on("data", grab);
-      child.stderr?.on("data", grab);
-      child.on("error", (error) => done(false, `无法启动：${String((error as Error).message || error).slice(0, 140)}`));
-      child.on("close", (code) => {
-        const first = out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0] ?? "";
-        if (code === 0) done(true, first.slice(0, 120) || "可运行");
-        else done(false, `退出码 ${code}${first ? `：${first.slice(0, 100)}` : ""}`);
-      });
-    } catch (error) {
-      done(false, String(error).slice(0, 140));
-    }
-  });
-}
-
-/** 可执行文件的落点：Windows 用 spec.marker，mac 走 DARWIN_MARKERS 覆盖。 */
-function healthExecPath(id: DevRuntimeId, spec: DevRuntimeSpec): string {
-  const rel = IS_MAC ? (DARWIN_MARKERS[id] ?? spec.marker) : spec.marker;
-  /* 随包 / 用户下载两个根都查；未安装时返回 **userData** 预期落位（提示用户装到哪）。 */
-  return existingToolPath(rel) || path.join(writeToolsRoot(), rel);
-}
-
-/**
- * 工具自检（10-02 用户：「工具给老子一个检查，有一个报错，下载按不了」）。
- * 卡片上的「已安装」只证明**文件在**，不证明**能跑** —— 用户要的是后者。
- * ⛔ 单项失败绝不抛出：一个工具探不通不能让整页自检崩掉。
- * ⛔ 探测必须带超时（8s）；hidden 项也要查（用户照样会问「装了没、能不能用」）。
- */
-async function devRuntimeHealth(): Promise<DevRuntimeHealth[]> {
-  const specs = devRuntimeSpecs;
-  const rows: DevRuntimeHealth[] = [];
-  for (const [rawId, spec] of Object.entries(specs) as [DevRuntimeId, DevRuntimeSpec][]) {
-    // 系统级安装项（Docker / OpenSSL，点按钮去官网）不参与自检 —— 我们没装它、也无从探测
-    if (spec.kind === "guide") continue;
-    const installed = runtimeInstalled(rawId, spec);
-    if (!installed) {
-      rows.push({ id: rawId, name: spec.name, installed: false, ok: false, detail: "未安装" });
-      continue;
-    }
-    const args = HEALTH_ARGS[rawId];
-    if (!args) {
-      rows.push({ id: rawId, name: spec.name, installed: true, ok: true, detail: "已安装（无需可执行探测）" });
-      continue;
-    }
-    const file = healthExecPath(rawId, spec);
-    const probe = await probeTool(file, args);
-    let ok = probe.ok;
-    let detail = probe.detail;
-    // Python 是最容易「在但不好用」的一个：装得上全看 pip（历史踩过 embeddable 版无 pip）。
-    if (rawId === "python" && probe.ok) {
-      const pip = pythonPipReady(file);
-      if (!pip.ok) { ok = false; detail = pip.reason; }
-      else detail = `${detail}｜pip 可用`;
-    }
-    rows.push({ id: rawId, name: spec.name, installed: true, ok, detail });
-  }
-  return rows;
-}
-
-/* ── 工具链「检查更新 / 升级」（10-12 用户要求）────────────────────────────────
- * 用户原话：「nuphus 和 browser 能不能留好国内镜像源更新入口，这个界面加上两个更新功能」。
- * ⛔ 与「修复安装」的分工（两者不可互相替代，界面文案也要分清）：
- *   · 修复安装 = 从**随包 zip** 重解压 ⇒ 版本回到「包内版本」（离线、永远可用）；
- *   · 在线更新 = 从 **npm 国内镜像**装 `<pkg>@latest` ⇒ 真升级（联网、版本跟着 npm 走）。
- *   ⇒ 用户点过在线更新后，日后再点修复安装会**降级**回包内版本 —— 这是设计使然，不是 bug。
- * ⛔ 包名与落位都取既有真相源（npmGlobalRootCandidates），别在这里手拼 `npm-global/node_modules`。
- * ⛔ 装完必须**复核磁盘上的版本**，读不到就报错 —— 不许「看起来装好了」。
- * ⛔ 必须重启引擎：nuphus 是引擎 spawn 的 MCP 子进程，CLI 也在引擎的 PATH 上。
- * ⛔ 新增可更新工具时，**同时**改这里与界面侧清单（界面侧从 runtime:update-check 全量拉，不用改）。
- */
-const UPDATEABLE_TOOLS: Record<string, { pkg: string; label: string; platforms?: NodeJS.Platform[]; pin?: string }> = {
-  nuphus: { pkg: "@nuphus/nuphus-mcp", label: "Nuphus 桌面自动化" },
-  /* 11-13：Nuphus / Computer Use 默认关，但仍是可安装/可更新的可选后端
-     （用户显式开启后参与兜底；computer-use 仅 darwin/win32 有二进制）。 */
-  "computer-use": { pkg: "open-computer-use", label: "电脑操作（Computer Use）", platforms: ["darwin", "win32"] },
-  // 11-13 agent-desktop（Vercel Labs，Apache-2.0）：无障碍树桌面后端，npm 包自带上三平台二进制。
-  "agent-desktop": { pkg: "agent-desktop", label: "Agent Desktop（无障碍树）", platforms: ["darwin", "win32", "linux"] },
-  /* REA 逆向分析（10-13）：同一条在线更新链（fetchRegistryLatest = 国内镜像优先 + 官方回落）。
-     ⛔ 11-14 起**锁版本**：随包 Node v24.19.0 不满足 6.8.0+ 的 engines（^24.22.1），追 latest
-     会把刚装好的包装成「一启动就 exit 1」。pin = 兼容上限，理由与解除条件见 rea-gateway.ts。 */
-  rea: { pkg: "rea-agents", label: "REA 逆向分析", pin: REA_PINNED_VERSION },
-  "feishu-cli": { pkg: "@larksuite/cli", label: "飞书 CLI" },
-};
-
-/** pip 型可更新工具（PyPI）：id → PyPI 包名 + 显示名。
- *
- *  ⛔ 为什么要单开一张表：`UPDATEABLE_TOOLS` 是 npm 包（查 dist-tags、装 `<pkg>@<ver>`），
- *    `GITHUB_UPDATEABLE` 是 release 直下（查 tag、下资产）；Laya / 手机控制 / 文档转换三个是
- *    pip 包，两条链都不认 ⇒ 卡片上根本没有「检查更新」（11-14 用户实测「这里没有更新功能啊」）。
- *  ⛔⛔ 故意**不进** `updateableToolIds()`：那张表被后台「自动更新」消费，而 laya 带 PyTorch
- *    依赖（几百 MB 到上千 MB），不能无人值守重装。这里只服务卡片里的手动检查/升级。
- *  ⛔ 升级复用各自既有安装器（都已带 `-U`/`--upgrade` 语义 + 多镜像回落 + 装后复核），
- *    不在这里另写一条 pip 命令。
- */
-const PIP_UPDATEABLE: Record<string, { pkg: string; label: string }> = {
-  laya: { pkg: "laya", label: "Laya 智能判断" },
-};
-
-/** 读 pip 包的已装版本（`python -m pip show`）；没装 / 读不到返回空串（界面据此判「未装」）。 */
-function pipInstalledVersion(pkg: string): string {
-  const bin = bundledPython();
-  if (!bin) return "";
-  try {
-    const out = spawnSync(bin, ["-m", "pip", "show", pkg], { encoding: "utf8", timeout: 20_000, windowsHide: true });
-    return /^Version:\s*(\S+)/m.exec(String(out.stdout ?? ""))?.[1] ?? "";
-  } catch {
-    return "";
-  }
-}
-
-/** 查 PyPI 最新版：官方 JSON + 清华镜像 JSON 都试，取第一个有效值。
- *  ⛔ 镜像的 `/pypi/<name>/json` 与官方同构；两边都失败就**抛错**，
- *    让界面显示「检查更新失败：…」而不是假装「已是最新」（项目硬约定：不许假成功）。 */
-async function fetchPypiLatest(pkg: string): Promise<string> {
-  const endpoints = [
-    `https://pypi.org/pypi/${encodeURIComponent(pkg)}/json`,
-    `https://pypi.tuna.tsinghua.edu.cn/pypi/${encodeURIComponent(pkg)}/json`,
-  ];
-  const reasons: string[] = [];
-  for (const url of endpoints) {
-    try {
-      const res = await guardedFetch(url, { headers: { accept: "application/json" } }, { timeoutMs: 15_000 });
-      if (!res.ok) { reasons.push(`${new URL(url).host} → HTTP ${res.status}`); continue; }
-      const json = (await res.json()) as { info?: { version?: unknown } };
-      const version = String(json?.info?.version ?? "").trim();
-      if (version) return version;
-      reasons.push(`${new URL(url).host} → 没有 info.version`);
-    } catch (error) {
-      reasons.push(`${new URL(url).host} → ${(error as Error)?.message ?? String(error)}`);
-    }
-  }
-  throw new Error(`查不到 PyPI 最新版（${reasons.join("；")}）`);
-}
-
-/** 单个可更新工具的包名 / 显示名（**唯一真相源**）：自动更新板块从这里取，⛔ 不许另抄一份包名。 */
-export function updateableToolMeta(id: string): { pkg: string; label: string } | null {
-  const tool = UPDATEABLE_TOOLS[id];
-  if (tool) return { pkg: tool.pkg, label: tool.label };
-  const pip = PIP_UPDATEABLE[id];
-  if (pip) return { pkg: `pypi:${pip.pkg}`, label: pip.label };
-  const gh = GITHUB_UPDATEABLE[id];
-  if (gh) return { pkg: `github:${gh.repo}`, label: gh.label };
-  return null;
-}
-
-export type RuntimeUpdateRow = {
-  id: string;
-  name: string;
-  pkg: string;
-  current: string;
-  latest: string;
-  registry: string;
-  hasUpdate: boolean;
-  error: string;
-};
-
-/** 当前平台**真正**可更新的工具 id（桌面 → 浏览器 → 电脑操作 → GitHub 直下型，顺序稳定）。
- *  ⛔ 界面与后台调度都必须走这里，别各写一份清单（本项目反复栽在两处各写一套上）。 */
-export function updateableToolIds(): string[] {
-  return [...Object.keys(UPDATEABLE_TOOLS), ...Object.keys(GITHUB_UPDATEABLE)].filter((id) => {
-    const platforms = UPDATEABLE_TOOLS[id]?.platforms ?? GITHUB_UPDATEABLE[id]?.platforms;
-    return !platforms || platforms.includes(process.platform);
-  });
-}
-
-/** 读磁盘上已装的版本号（npm 包读 package.json；GitHub 直下型读安装时落的 version.txt）。 */
-/** 安装 Craft 全家桶后重写 config.toml：每个 App 的 MCP 段（含 PhotoCraft）的唯一来源是 applyCustomModel。 */
-async function refreshConfigForGatewayTools(): Promise<void> {
-  try {
-    const { readCustomModel } = await import("../main/01-model-catalog");
-    const { applyCustomModel } = await import("./custom-model-apply");
-    const model = await readCustomModel();
-    if (model) await applyCustomModel(model, { restart: false });
-  } catch { /* 没有模型档案时跳过：下一次 applyCustomModel 会按安装状态收敛 */ }
-}
-
-function installedVersionOf(id: string): string {
-  const gh = GITHUB_UPDATEABLE[id];
-  if (gh) {
-    if (id === "filee") return fileeInstalledVersion();
-    if (id === "apkstart") return apkstartInstalledVersion();
-    if (id === "openmaic") return openmaicInstalledVersion();
-    if (id === "husk") return huskInstalledVersion();
-    if (id === "artcraft") return artcraftInstalledVersion();
-    return "";
-  }
-  const tool = UPDATEABLE_TOOLS[id];
-  if (!tool) return "";
-  // ⛔ rea 的「已装版本」必须等于「能用的安装」（11-07 修「启动失败」自愈）：更新中断会掏空 dist、
-  //    只留 package.json —— 若仍按版本号回报，更新链会判「已是最新」永不重装，坏包永久卡死。
-  //    编译产物缺失（reaServerScript() 空）⇒ 当作未装 ⇒ checkRuntimeUpdateRow 报 hasUpdate ⇒ 重装自愈。
-  if (id === "rea" && !reaServerScript()) return "";
-  const segments = tool.pkg.split("/");
-  for (const root of npmGlobalRootCandidates()) {
-    try {
-      const pkgJson = path.join(root, ...segments, "package.json");
-      if (!existsSync(pkgJson)) continue;
-      const parsed = JSON.parse(readFileSync(pkgJson, "utf8")) as { version?: unknown };
-      if (typeof parsed.version === "string" && parsed.version) return parsed.version;
-    } catch { /* 读不到就换下一个落位 */ }
-  }
-  return "";
-}
-
-/**
- * 查 npm 上某包的最新版：**镜像 + 官方都查，取真正最新的那个**（11-10 用户令）。
- *
- * ⛔ 旧实现「第一个成功就 return」被 npmmirror 的缓存快照骗过：镜像成功但滞后数天，
- *    官方源永远没机会说话 ⇒ 组件更新清单恒显示「已是最新」。判定层在 npm-version.ts，
- *    这里只负责「按下载源列出候选」+「用 fetch 探测」，不自己判谁新。
- */
-async function fetchRegistryLatest(
-  pkg: string,
-  source: NonNullable<AppSettings["downloadSource"]>,
-  timeoutMs = 20000,
-): Promise<{ version: string; registry: string }> {
-  const userRegistry = process.env.npm_config_registry || process.env.NPM_CONFIG_REGISTRY || "";
-  const registries = userRegistry
-    ? [userRegistry]
-    : source === "direct"
-      ? ["https://registry.npmjs.org", CHINA_NPM_REGISTRY]
-      : [CHINA_NPM_REGISTRY, "https://registry.npmjs.org"];
-  const result = await probeNewestNpmVersion(registries, async (registry) => {
-    // ⛔ 必须带超时：镜像站偶发挂住时不能让「检查更新」按钮永远转圈
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await guardedFetch(`${registry}/${pkg.replace("/", "%2F")}`, {
-        signal: controller.signal,
-        // 精简 packument：只要 dist-tags，不要每个版本的完整元数据（镜像与官方源都支持）
-        headers: { accept: "application/vnd.npm.install-v1+json, application/json" },
-      }, { timeoutMs });
-      if (!res.ok) throw new Error(`返回 HTTP ${res.status}`);
-      const json = (await res.json()) as { "dist-tags"?: { latest?: unknown } };
-      const latest = json?.["dist-tags"]?.latest;
-      if (typeof latest !== "string" || !latest) throw new Error("响应里没有 dist-tags.latest");
-      return latest;
-    } finally {
-      clearTimeout(timer);
-    }
-  }, timeoutMs + 2000);
-  if (result.errors.length) {
-    console.warn(`[runtime-ipc] ${pkg} 部分更新源不可用，已按其余源判定：${result.errors.join("；")}`);
-  }
-  return { version: result.version, registry: result.registry };
-}
-
-/* ── 手动/自动共用的两条链路（10-13 抽出）────────────────────────────────────
- * ⛔⛔ **手动链 = 自动链，物理同一份函数**：后台自动更新（auto-update-ipc）必须调这两个函数，
- *    不许在主进程再抄一遍「查最新版 → 装 → 复核 → 重启引擎」——两处各写判据必漂移
- *    （症状：界面说「已是最新」、后台却在偷偷装，或反之）。界面按钮只是这两个函数的薄包装。
- */
-export async function checkRuntimeUpdateRow(id: string): Promise<RuntimeUpdateRow> {
-  /* pip 型（11-14）：查 PyPI 最新版与 `pip show` 已装版本。⛔ 必须排在 npm 分支之前 ——
-     否则 `!UPDATEABLE_TOOLS[id]` 会直接抛「该工具不支持在线更新」，Laya 卡片永远没有更新入口。 */
-  const pip = PIP_UPDATEABLE[id];
-  if (pip) {
-    const current = pipInstalledVersion(pip.pkg);
-    try {
-      const latest = await fetchPypiLatest(pip.pkg);
-      return { id, name: pip.label, pkg: `pypi:${pip.pkg}`, current, latest, registry: "pypi", hasUpdate: !current || compareVersions(latest, current) > 0, error: "" };
-    } catch (error) {
-      return { id, name: pip.label, pkg: `pypi:${pip.pkg}`, current, latest: "", registry: "", hasUpdate: false, error: (error as Error)?.message ?? String(error) };
-    }
-  }
-  const gh = GITHUB_UPDATEABLE[id];
-  if (gh) {
-    // GitHub 直下型（Filee）：查 releases/latest tag，与盘上 version.txt 比
-    const current = installedVersionOf(id);
-    try {
-      const latest = await fetchGitHubLatestTag(gh.repo);
-      return { id, name: gh.label, pkg: `github:${gh.repo}`, current, latest, registry: "github", hasUpdate: !current || compareVersions(latest, current) > 0, error: "" };
-    } catch (error) {
-      return { id, name: gh.label, pkg: `github:${gh.repo}`, current, latest: "", registry: "", hasUpdate: false, error: (error as Error)?.message ?? String(error) };
-    }
-  }
-  const tool = UPDATEABLE_TOOLS[id];
-  if (!tool) throw new Error(`该工具不支持在线更新：${id}`);
-  const source = await readDownloadSource();
-  const current = installedVersionOf(id);
-  /* ⛔ 11-14 pin 工具（REA）：目标版本 = pin，不查上游 latest —— 否则界面会一直提示
-     「有更新 6.9.0」，用户一点就把能被内置 Node 跑起来的包换成 exit 1 的死包。 */
-  if (tool.pin) {
-    return {
-      id, name: tool.label, pkg: tool.pkg, current, latest: tool.pin, registry: CHINA_NPM_REGISTRY,
-      hasUpdate: current !== tool.pin, error: "",
-    };
-  }
-  try {
-    const { version: latest, registry } = await fetchRegistryLatest(tool.pkg, source);
-    return { id, name: tool.label, pkg: tool.pkg, current, latest, registry, hasUpdate: !current || compareVersions(latest, current) > 0, error: "" };
-  } catch (error) {
-    // ⛔ 查不到最新版**不是致命错**：照常返回已装版本，错误原文给人看（网络问题用户自己能判断）
-    return { id, name: tool.label, pkg: tool.pkg, current, latest: "", registry: "", hasUpdate: false, error: (error as Error)?.message ?? String(error) };
-  }
-}
-
-/** 返回 `joined` = 同一工具已有更新在跑，本次只是等它跑完（与 install 同语义，不抛「正在安装」）。 */
-export async function performRuntimeUpdate(
-  id: string,
-): Promise<{ ok: boolean; from: string; to: string; cancelled?: boolean; joined?: boolean }> {
-  /* pip 型（11-14）：升级 = 重跑该工具**既有**的安装器（已带 `-U`、多镜像回落、装后复核）。
-     ⛔ 不复用 `runNpmInstall`：那是 npm 专用（写 npm-global、改 shim）。
-     ⛔ 装完必须再读一次 `pip show`：读不到就是没装成，不许只凭安装器 exit 0 报成功。 */
-  const pip = PIP_UPDATEABLE[id];
-  if (pip) {
-    const inFlight = runtimeInstalls.get(id);
-    if (inFlight) { await inFlight; return { ok: true, joined: true, from: "", to: pipInstalledVersion(pip.pkg) }; }
-    const from = pipInstalledVersion(pip.pkg);
-    const task = (async () => {
-      emitRuntimeProgress(id, `@@STAGE 更新 ${pip.label}`);
-      emitRuntimeProgress(id, `正在更新 ${pip.pkg}（当前 ${from || "未装"}）…`);
-      if (id === "laya") {
-        const result = await layaInstall();
-        if (!result.ok) throw new Error(result.log.slice(-600) || "Laya 更新失败");
-      } else {
-        /* ⛔ 只登记表不补分派 = 一定会走错安装器（phone-harness 有专用链，markitdown 走通用脚本）。
-           宁可显式报错，也不许静默用 npm 安装器或别的工具链去「升级」一个 pip 包。 */
-        throw new Error(`pip 更新缺少安装器分派：${id}（在 performRuntimeUpdate 的 pip 分支补一条）`);
-      }
-      await restartServerWhenIdle(id);
-    })();
-    runtimeInstalls.set(id, task);
-    try {
-      await task;
-      const to = pipInstalledVersion(pip.pkg);
-      if (!to) throw new Error(`${pip.label} 更新流程已结束，但读不到已装版本 —— 请重试或重新安装`);
-      sendToWindow("runtime:progress", { id, message: `已更新到 ${to}`, percent: 100, speed: "", done: true });
-      return { ok: true, from, to };
-    } catch (error) {
-      if (isCancelRequested(id)) return { ok: true, cancelled: true, from, to: "" };
-      throw error;
-    } finally {
-      runtimeInstalls.delete(id);
-      clearCancelRequest(id);
-    }
-  }
-  const gh = GITHUB_UPDATEABLE[id];
-  if (gh) {
-    // GitHub 直下型（Filee）：升级 = 重跑同一条安装函数（最新 tag），装完复核 version.txt
-    const inFlight = runtimeInstalls.get(id);
-    if (inFlight) { await inFlight; return { ok: true, joined: true, from: "", to: installedVersionOf(id) }; }
-    const from = installedVersionOf(id);
-    const task = (async () => {
-      emitRuntimeProgress(id, `@@STAGE 更新 ${gh.label}`);
-      const latest = await fetchGitHubLatestTag(gh.repo);
-      await gh.install(id as DevRuntimeId, latest);
-      await restartServerWhenIdle(id);
-    })();
-    runtimeInstalls.set(id, task);
-    try {
-      await task;
-      const to = installedVersionOf(id);
-      if (!to) throw new Error(`${gh.label} 更新流程已结束，但读不到已装版本 —— 请重试或重新安装`);
-      sendToWindow("runtime:progress", { id, message: `已更新到 ${to}`, percent: 100, speed: "", done: true });
-      return { ok: true, from, to };
-    } catch (error) {
-      if (isCancelRequested(id)) return { ok: true, cancelled: true, from, to: "" };
-      throw error;
-    } finally {
-      runtimeInstalls.delete(id);
-      clearCancelRequest(id);
-    }
-  }
-  const tool = UPDATEABLE_TOOLS[id];
-  if (!tool) throw new Error(`该工具不支持在线更新：${id}`);
-  const inFlight = runtimeInstalls.get(id);
-  if (inFlight) { await inFlight; return { ok: true, joined: true, from: "", to: installedVersionOf(id) }; }
-  const from = installedVersionOf(id);
-  const downloadSource = await readDownloadSource();
-  /* ⛔ 11-10：检查更新已按「所有源取最大」判版本，安装必须复用**同一份结论** ——
-     装 <pkg>@<具体版本> 并优先从胜出源装，最后复核磁盘版本确实等于目标。
-     否则镜像还没同步新版时，@latest 会装回旧版：界面显示「有更新」却永远点不动。 */
-  // ⛔ pin 工具的安装结论必须与 checkRuntimeUpdateRow 同源（11-14：一个查 latest 一个装 pin ⇒ 界面显示的版本与实装不符）。
-  let target: { version: string; registry: string } | null = tool.pin
-    ? { version: tool.pin, registry: CHINA_NPM_REGISTRY }
-    : null;
-  if (!target) {
-    try {
-      target = await fetchRegistryLatest(tool.pkg, downloadSource);
-    } catch (error) {
-      emitRuntimeProgress(id, `查最新版本失败，改用 @latest 与默认源序：${(error as Error)?.message ?? String(error)}`);
-    }
-  }
-  const pkgSpec = target ? `${tool.pkg}@${target.version}` : `${tool.pkg}@latest`;
-  // 官方源映射成 ""（npm 不设 registry）；镜像本来就是默认首选项 ⇒ 不必插队；
-  // 用户私有源原样传入，安装器把它排到最前。
-  const preferredRegistry = target
-    ? target.registry === NPM_SOURCES.official
-      ? ""
-      : target.registry === CHINA_NPM_REGISTRY
-        ? undefined
-        : target.registry
-    : undefined;
-  const task = (async () => {
-    emitRuntimeProgress(id, `@@STAGE 更新 ${tool.label}`);
-    emitRuntimeProgress(id, `正在更新 ${pkgSpec}（当前 ${from || "未知"}）…`);
-    await runNpmInstall(id, pkgSpec, tool.label, downloadSource, NPM_ALLOW_SCRIPTS[id as DevRuntimeId], preferredRegistry);
-    // 引擎重启会等当前任务跑完（闸门），期间界面显示「等待任务结束后刷新引擎」
-    await restartServerWhenIdle(id);
-  })();
-  runtimeInstalls.set(id, task);
-  try {
-    await task;
-    const to = installedVersionOf(id);
-    // ⛔ 复核：命令退出码 0 ≠ 装上了（落位/权限/半截网络都可能「成功退出」）
-    if (!to) throw new Error(`${tool.label} 更新命令已跑完，但读不到已装版本 —— 请点「修复安装」回到随包版本`);
-    if (target && compareVersions(to, target.version) !== 0) {
-      throw new Error(`${tool.label} 装完是 ${to}，但目标版本是 ${target.version} —— 该版本可能还没同步到所选源，请稍后重试或把下载源切到「官方直连」`);
-    }
-    sendToWindow("runtime:progress", { id, message: `已更新到 ${to}`, percent: 100, speed: "", done: true });
-    return { ok: true, from, to };
-  } catch (error) {
-    // 取消（杀进程导致的非零退出）不算错误：回执 cancelled，与 install 同一口径
-    if (isCancelRequested(id)) return { ok: true, cancelled: true, from, to: "" };
-    throw error;
-  } finally {
-    runtimeInstalls.delete(id);
-    clearCancelRequest(id);
-  }
-}
-
-const RUNTIME_CHANNELS = ["runtime:list", "runtime:install", "runtime:uninstall", "runtime:cancel", "runtime:health", "runtime:update-check", "runtime:update"];
-
-/* 装不上的备用方案文案生成器：导出**只为可验证**（探针/守卫能真跑它），业务侧一律经 runtime:list 取。 */
-export { fallbackPromptFor };
-
-export const runtimeFeature = defineFeature<null>({
-  id: "runtime",
-  inject: ["ipc"],
-  setup: (ctx) => {
-    const ipcHost = ctx.get<IpcHost>("ipc");
-    if (!ipcHost) throw new Error("runtime: 缺少 ipc 服务（宿主未提供）");
-
-    ipcHost.handle("runtime:list", () => runtimeList());
-    ctx.effect(provideRuntimeInventory(runtimeList));
-
-    ipcHost.handle("runtime:uninstall", async (_event, idValue: string) => {
-      const id = idValue as DevRuntimeId;
-      const spec = devRuntimeSpecs[id];
-      if (!spec) throw new Error("未知开发工具");
-      /* ⛔⛔ 11-15 用户实测「安装中点卸载，应用直接干死」：安装进程正往同一个 5GB 目录写，
-         卸载同时遍历+删除同一棵树，两边互踩且进度永远走不完。安装未结束一律拒绝卸载，
-         先让用户点「取消」，等 in-flight 清空再操作。 */
-      if (runtimeInstalls.has(id)) throw new Error(`「${spec.name}」正在安装或更新，请先点「取消」等它停下，再卸载`);
-      if (spec.builtIn) throw new Error("内置工具不可卸载");
-      if (spec.kind === "guide") throw new Error("该工具是系统级安装，请到系统的「应用与功能」里卸载");
-      // 随包内置能力（nuphus / ponytail 插件），不是联网下载 —— 删了没有可靠的重取途径
-      if (spec.bundled) throw new Error("该工具随应用内置，删除后只能从随包资源恢复，因此不支持卸载");
-      // 随包内置资源（zip / 插件目录），不是联网下载 —— 删了没有可靠的重取途径，直接拒绝
-      if (spec.noUninstall) throw new Error("该工具来自随包内置资源，删除后难以恢复，因此不支持卸载");
-      const targets = runtimeUninstallTargets(id, spec);
-      /* ⛔⛔ 11-01 用户实测「都不是内置的，怎么卸载还删不掉」：
-         工具被装/解到了 resources/tools（随包根）时，删除目标只解析到可写根 ⇒ 删了个不存在的位置。
-         ⇒ 把同一相对路径在随包根里的副本也加入删除清单（两边都删，状态才会真的回落）。 */
-      /* ⛔ 11-01：两个根**互为镜像**展开 —— 不管原目标算在哪个根下，
-         都把同一相对路径在另一个根里的副本补进删除清单（pip 包 / zip 解包 / npm 前缀都在两处出现过）。 */
-      /* ⛔⛔ 审查修正（11-01）：随包根的镜像展开**只在开发态**做。
-         打包安装后 resources/tools 属于安装目录：删了没有自动恢复途径，而且下次更新又会回来
-         （用户会看到「卸载了但更新后复活」）。打包态只删可写根，删不掉就按既有逻辑如实报错。 */
-      for (const from of (app.isPackaged ? [writeToolsRoot()] : [writeToolsRoot(), toolsRoot()])) {
-        for (const to of (app.isPackaged ? [writeToolsRoot()] : [writeToolsRoot(), toolsRoot()])) {
-          if (!from || !to || from === to) continue;
-          for (const target of [...targets]) {
-            try {
-              const rel = path.relative(from, target);
-              if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) continue;
-              const alt = path.join(to, rel);
-              if (existsSync(alt) && !targets.includes(alt)) targets.push(alt);
-            } catch { /* 相对化失败就跳过 */ }
-          }
-        }
-      }
-      // 防御：marker 解析异常时 target 可能退化成某个根目录 —— 那会把**所有**工具/插件删光。
-      // 要求每个 target 必须落在允许根之内，且不等于这些根本身。
-      // ⛔ 10-07：kb-embedding 装在 <userData>/kb-backend（userData 下），需要放行。
-      //   ⛔⛔ 但它**不是「根」而是「恰好等于允许值的具体目录」** ⇒ 放进 allowedRoots 会与
-      //   上面「不得等于根」那条自相矛盾（target === 允许根 ⇒ 直接被拒，症状仍是卸不掉）。
-      //   ⇒ 故拆成两个概念：allowedRoots = 可以往里删的**根**（不得相等）；
-      //      exactAllowed = 允许**整体删除**的具体目录（target 就等于它）。
-      const allowedRoots = [...toolRootsRead(), codexHome].filter(Boolean).map((r) => path.resolve(r));
-      const exactAllowed = new Set([path.resolve(kbBackendDir())]);
-      for (const target of targets) {
-        const resolvedTarget = path.resolve(target);
-        const underAllowed = allowedRoots.some((r) => resolvedTarget.startsWith(r + path.sep));
-        if (!resolvedTarget || allowedRoots.includes(resolvedTarget)
-          || (!underAllowed && !exactAllowed.has(resolvedTarget))) {
-          throw new Error("安装路径解析异常，已取消卸载");
-        }
-      }
-      // 逐个删（先包体、再 shim；marker 是文件还是目录都适用）—— 大目录按字节比例发卸载进度
-      // ⛔⛔ 10-07：kb-embedding 必须走它**自己的**卸载函数，不能用通用分批删除 ——
-      //   常驻 embedding worker 子进程正抱着模型文件，Windows 上文件被占用时 fs.rm 直接 EBUSY/EPERM
-      //   （try/catch 还把它吞成「删成功」）⇒ 又一个「卸载了但一直显示已安装」。
-      //   uninstallKbEmbedding() 内部先 disposeKbEmbedWorker() 再删，与 10-04 的安装/卸载设计同源。
-      /* ⛔⛔ 11-01 用户实测「文档转换怎么都卸不掉」：它是 **pip 包**，文件在 python/Lib/site-packages 里，
-         靠「按路径删目录」在不同根/不同大小写布局下极易漏 ⇒ 残文件仍在，判定依旧是已安装。
-         ⇒ 先走包管理器真正卸载（它自己清 pkg / dist-info / entry-points），再走目录清理兜底。 */
-      if (PIP_PACKAGE_DIRS[id]) {
-        const pyCandidates = [
-          path.join(toolsRoot(), "python", process.platform === "win32" ? "python.exe" : "bin/python3"),
-          path.join(writeToolsRoot(), "python", process.platform === "win32" ? "python.exe" : "bin/python3"),
-        ];
-        const py = pyCandidates.find((c) => { try { return existsSync(c); } catch { return false; } });
-        if (py) {
-          sendToWindow("runtime:progress", { id, stage: "正在卸载 pip 包", percent: 0 });
-          /* ⛔⛔ 11-15：原来用 spawnSync 在主进程同步等 pip 最多 180 秒 ⇒ 界面整个无响应。
-             改成异步 spawn + 超时 kill，期间事件循环照常跑（Laya / 手机控制 / 文档转换都走这里）。 */
-          await new Promise<void>((resolve) => {
-            let settled = false;
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            const done = () => { if (!settled) { settled = true; if (timer) clearTimeout(timer); resolve(); } };
-            try {
-              const child = spawn(py, ["-m", "pip", "uninstall", "-y", String(PIP_PACKAGE_DIRS[id])], {
-                windowsHide: true, stdio: "ignore",
-              });
-              timer = setTimeout(() => { try { child.kill(); } catch { /* 已退出 */ } done(); }, 180_000);
-              child.on("error", done);
-              child.on("close", done);
-            } catch { done(); } // pip 起不来就走下面的目录清理兜底
-          });
-        }
-      }
-      if (id === "kb-embedding") {
-        sendToWindow("runtime:progress", { id, stage: "正在删除文件", percent: 0 });
-        await uninstallKbEmbedding();
-        sendToWindow("runtime:progress", { id, message: "卸载完成", percent: 100, done: true });
-        return { ok: true, runtimes: runtimeList() };
-      }
-      await removeTargetsWithProgress(id, targets);
-      /* ⛔⛔ 11-01 用户实测「这个是假卸载吧」：PS7 等实际来自**随包资源**（resources/tools），
-         而这里只删可写根里的同名目录 ⇒ 文件根本没删，界面仍显示已安装，却弹了已卸载。
-         ⇒ 删完必须**回读判定**：仍装着就如实报错，绝不再谎报成功。 */
-      if (runtimeList().find((r) => r.id === id)?.installed) {
-        throw new Error("该工具来自随包内置资源（resources/tools），无法从这里删除；如需移除请重装应用包");
-      }
-      // ponytail 卸载后要显式关掉 config.toml 里的注册段（否则引擎重启找不到已删的 cache）：
-      // 插件 key 是 **"ponytail@ponytail"**（见 ponytail-plugin.ts 的 MARKETPLACE_SECTION）。
-      // ⛔ 引擎必填 mergeStrategy：缺了整条请求被判 Invalid request，而这里是 catch 静默吞掉
-      //    —— 表现为「卸载了但 enabled 还是 true」。
-      if (id === "ponytail") {
-        await server.request("config/value/write", {
-          filePath: path.join(codexHome, "config.toml"),
-          keyPath: 'plugins."ponytail@ponytail".enabled',
-          value: false,
-          mergeStrategy: "replace",
-        }).catch(() => undefined);
-      }
-      // Craft 全家桶（11-16）：卸载只删 Launcher 目录；同时摘掉每个已装 App 的独立 MCP 段。
-      if (id === "artcraft") {
-        const { removeCraftAppMcpSections } = await import("../artcraft");
-        removeCraftAppMcpSections();
-        await restartServerWhenIdle(id);
-      }
-      sendToWindow("runtime:progress", { id, message: "卸载完成", percent: 100, done: true });
-      // ⛔ 10-12 同步清账：留着记录的话，更新后的「你装过哪些工具」会把一个**用户主动卸载**的
-      //   工具算成「待重装」并提示恢复 —— 账本必须跟着真实状态走，不是只增不减。
-      try { recordToolRemoved(id); } catch { /* 记账失败不影响卸载结果 */ }
-      return { ok: true, runtimes: runtimeList() };
-    });
-
-    // 取消安装（10-07 用户要求）：杀掉该工具名下的安装子进程 + 清半截下载产物。
-    // 「已取消」经 runtime:progress(cancelled) 推给界面；正在等的 install 调用随后会以
-    // 非零码 reject —— install handler 查 isCancelRequested 把它改判成 cancelled 回执。
-    ipcHost.handle("runtime:cancel", (_event, idValue: string) => {
-      const id = idValue as DevRuntimeId;
-      if (!devRuntimeSpecs[id]) return { ok: false, reason: "unknown" };
-      if (!runtimeInstalls.has(id)) return { ok: false, reason: "not-running" };
-      requestRuntimeCancel(id);
-      const killed = cancelRuntimeInstall(id);
-      cleanupRuntimeTempFiles(id);
-      /* ⛔ 11-01：立刻把这条安装从「进行中」表里摘掉 —— 渲染层的 `busy` 判据是
-         `runtimeInstalls.has(id)`（经 runtime:list 下发），不摘的话取消后界面仍显示
-         「正在下载」并继续画进度条（用户实测：「取消都不刷新状态，界面还在走下载」）。
-         安装 promise 收尾时还会 delete 一次，Map.delete 幂等。 */
-      runtimeInstalls.delete(id);
-      sendToWindow("runtime:progress", { id, message: "已取消下载，临时文件已清理", cancelled: true, done: true });
-      return { ok: true, killed };
-    });
-
-    ipcHost.handle("runtime:health", () => devRuntimeHealth());
-
-    ipcHost.handle("runtime:install", async (_event, idValue: string) => {
-      try {
-      const id = idValue as DevRuntimeId;
-      if (!devRuntimeSpecs[id]) throw new Error("未知开发工具");
-      if (devRuntimeSpecs[id].builtIn) return { ok: true, runtimes: runtimeList() };
-      // ⛔ 09-20 下载源选择：所有按需下载通道统一从这里读源（每次现读 app-settings，不缓存）。
-      const downloadSource = await readDownloadSource();
-      // ⛔ 同一工具并发安装：**等它跑完**，不要抛「该工具正在安装」（09-18 用户反馈截图）。
-      //   抛错既看不懂，又让**整批安装被中断**（后两项也没装）。等待语义对用户才是正确的。
-      const inFlight = runtimeInstalls.get(id);
-      if (inFlight) {
-        await inFlight;
-        return { ok: true, joined: true, runtimes: runtimeList() };
-      }
-      const spec = devRuntimeSpecs[id];
-      // 引导型（docker/openssl）：静默安装需要管理员/重启/登录，这里打开官方下载页由用户自己装
-      if (spec.kind === "guide") {
-        /* ⛔ mac 的 openssl 是系统自带件（见 runtimeInstalledBySystem 的 darwin 分支）⇒
-           不给 Windows 下载页（slproweb 是 Win32 构建，mac 上装了也用不了），guide 留空。 */
-        const url = id === "openssl"
-          ? (IS_MAC ? "" : "https://slproweb.com/products/Win32OpenSSL.html")
-          : "https://www.docker.com/products/docker-desktop/";
-        if (url) await shell.openExternal(url);
-        return { ok: true, guide: url, runtimes: runtimeList() };
-      }
-      // 随包内置且已就位：无需「修复」。再解压/重种一遍只会覆盖同名文件（无收益，还多一次引擎重启）。
-      if (spec.bundled && runtimeInstalled(id, spec)) return { ok: true, runtimes: runtimeList() };
-      // ⛔ 10-01：Laya / 手机控制是 pip 包（各有专用安装器）——必须走它们自己的安装链，
-      //   绝不能落到 install-runtimes.cjs（那里没有这两个 id，会静默什么也不做）。
-      if (id === "kb-embedding") {
-        // 知识库本地 embedding 后端（10-04 改判：npm 树 463MB 远超 50MB 内置线 ⇒ 不随包，按需下载）。
-        // npm 装 @huggingface/transformers 到 <userData>/kb-backend + 预下载 bge 模型（hf-mirror）。
-        // 进度事件直接透传给渲染层（知识库页与开发工具页共用 runtime:progress）。
-        /* ⛔ 11-01 用户实测「取消是假的」：这条链原来不看取消标记 ⇒ 界面回落了、npm/模型下载还在跑。
-           ⇒ 把 isCancelRequested 传进去（npm 子进程 kill、模型下载 abort），取消后清掉半成品。 */
-        const task = (async () => {
-          if (kbEmbeddingInstalled()) return; // 已装好（三件齐）⇒ 幂等早退，不重下 463MB
-          sendToWindow("runtime:progress", { id, message: "正在安装本地 embedding 运行库（npmmirror + hf-mirror）…" });
-          await installKbEmbedding((p) => sendToWindow("runtime:progress", { id, ...p }), () => isCancelRequested(id));
-          if (isCancelRequested(id)) throw new Error("已取消安装（知识库本地语义检索）");
-          // ⛔ 这里**不许**发 done:true 的「安装完成」：紧随其后的 assertInstallVerified 才是判据
-          //   （10-08 自审抓到：旧写法在这条分支上先报完成、再复核 —— 复核失败就成了
-          //   「先绿条后报错」，正是本次要根除的那类「假成功」。真正的那条完成消息在复核之后发。）
-          sendToWindow("runtime:progress", { id, message: "正在复核安装结果…" });
-        })();
-        runtimeInstalls.set(id, task.finally(() => runtimeInstalls.delete(id)) as Promise<void>);
-        try {
-          await task;
-        } catch (error) {
-          if (isCancelRequested(id)) {
-            // 半装的 node_modules / 下载中的模型文件都不留（否则下次安装判定混乱、也占 400MB+）
-            await uninstallKbEmbedding().catch(() => undefined);
-            sendToWindow("runtime:progress", { id, message: "已取消安装，临时文件已清理", cancelled: true, done: true });
-            return { ok: true, cancelled: true, runtimes: runtimeList() };
-          }
-          throw error instanceof Error ? error : new Error(String(error));
-        } finally {
-          clearCancelRequest(id);
-        }
-        assertInstallVerified(id, spec);
-        return { ok: true, runtimes: runtimeList() };
-      }
-      if (id === "laya" || id === "phone-harness") {
-        const task = (async () => {
-          const result = id === "laya" ? await layaInstall() : await installPhoneHarness();
-          if (!result.ok) throw new Error(result.log.split("\n").filter(Boolean).slice(-1)[0] || `${spec.name} 安装失败`);
-        })();
-        runtimeInstalls.set(id, task.finally(() => runtimeInstalls.delete(id)) as Promise<void>);
-        await task.catch((error) => { throw error instanceof Error ? error : new Error(String(error)); });
-        assertInstallVerified(id, spec);
-        return { ok: true, runtimes: runtimeList() };
-      }
-      /* MoeKoe Music（10-20）：系统级外部客户端，不能走 install-runtimes.cjs。
-         下载/安装由 moekoe.ts 负责；这里只发进度、等安装向导完成（exe 出现）再启动。
-         ⛔ 用户完成 NSIS 向导前 exe 不存在 —— 不能提前报「安装完成」。 */
-      if (id === "moekoe") {
-        const task = (async () => {
-          const { findMoeKoeExe, installMoeKoe } = await import("../moekoe");
-          if (findMoeKoeExe()) {
-            const launched = await installMoeKoe({ confirm: true });
-            sendToWindow("runtime:progress", { id, message: launched.message || "MoeKoe Music 已启动", percent: 100, done: true });
-            return;
-          }
-          sendToWindow("runtime:progress", { id, message: "正在从国内镜像下载 MoeKoe Music（约 133 MB）…", percent: 1 });
-          const started = await installMoeKoe({ confirm: true });
-          sendToWindow("runtime:progress", { id, message: started.message || "安装程序已启动，请完成安装向导…", percent: 3 });
-          for (let attempt = 0; attempt < 300; attempt++) {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            if (!findMoeKoeExe()) continue;
-            await installMoeKoe({ confirm: true }).catch(() => undefined); // 装好就启动；启动失败不影响「已安装」
-            sendToWindow("runtime:progress", { id, message: "MoeKoe Music 已安装并启动", percent: 100, done: true });
-            return;
-          }
-          throw new Error("安装程序已启动，但 5 分钟内未检测到安装完成；请完成安装后回来刷新");
-        })();
-        runtimeInstalls.set(id, task.finally(() => runtimeInstalls.delete(id)) as Promise<void>);
-        await task.catch((error) => { throw error instanceof Error ? error : new Error(String(error)); });
-        return { ok: true, runtimes: runtimeList() };
-      }
-      const task = (async () => {
-        if (id === "ponytail") {
-          // ⛔ 必须排在 spec.bundled 分支**之前**：ponytail 也是 bundled，但它的修复路径是「重种插件」
-          //    而不是「解压 automation-tools.zip」——漏了会让「修复安装 ponytail」把 zip 解到 npm-global。
-          /* 10-30：改走 healPonytailInstall（重建**带清单文件**的本地市场 + 引擎 plugin/install
-             + enabled=true + 按 currentHash 信任钩子）。旧做法把 marketplaces 指到插件目录本身，
-             引擎 0.16x 不认 ⇒ 插件/技能/钩子一起消失（用户实测）。 */
-          const heal = await healPonytailInstall({ restart: true });
-          if (!heal.ok) throw new Error(heal.message);
-        } else if (spec.bundled) {
-          // 随包内置能力的「修复安装」（nuphus）：从随包 zip 重新解压。
-          if (!bundledNode()) await runRuntimeInstaller("node", runtimeInstaller("install-runtimes.cjs"), ["node"], process.execPath, { DOWNLOAD_SOURCE: downloadSource });
-          // ⛔ 只认随包 zip（解压安装），**不再回落在线下载**（09-12 用户实测发布包故障）：
-          //   GitHub Release 那个 automation-tools.zip 资产根本不存在，回落只会撞死地址。
-          const bundledAutomationZip = existingToolPath("automation-tools.zip") || path.join(toolsRoot(), "automation-tools.zip");
-          if (!existsSync(bundledAutomationZip)) {
-            throw new Error(
-              `随包缺少 tools/automation-tools.zip —— 这一版安装包不完整，装不了「${spec.name}」。`
-              + "请更新到带该文件的版本；自建包时先在本机装一次自动化工具链再执行打包。"
-            );
-          }
-          await runRuntimeInstaller(id, runtimeInstaller("install-automation.cjs"), ["--zip", bundledAutomationZip], bundledNode());
-          // 解压安装成功后自动激活「桌面自动化」「浏览器自动化」联动开关
-          await saveAppSettings(app.getPath("userData"), { desktopAutomation: true, browserAutomation: true });
-        } else if (id === "feishu-cli") {
-          /* 飞书官方 CLI（10-29）：npm 包自身 postinstall 会按平台下载 Go 二进制（约 50MB）⇒ 必须放行该包的脚本。
-             ⛔ 11-15：装 `@latest` 之前先查**具体最新版本**并写进包名，避免镜像 dist-tags 滞后时装回旧版；
-             `fetchRegistryLatest` 会把国内镜像与官方源都查一遍取最大，查不到才退回随包表。 */
-          let cliVersion = TOOLS_VERSIONS.feishuCli ?? "latest";
-          try { cliVersion = (await fetchRegistryLatest("@larksuite/cli", downloadSource)).version; } catch { /* 离线兜底 */ }
-          await runNpmInstall(id, `@larksuite/cli@${cliVersion}`, "飞书 CLI", downloadSource, NPM_ALLOW_SCRIPTS["feishu-cli"]);
-        } else if (id === "filee") {
-          /* Filee 文件转换（10-30）：GitHub release 直下型（151MB，镜像序 + SHA256 校验）。
-             更新链（performRuntimeUpdate 的 GITHUB_UPDATEABLE 分支）也走这一个函数。 */
-          await installFileeFromGitHub(id, await latestInstallVersion("filee", FILEE_REPO));
-        } else if (id === "apkstart") {
-          /* ApkStart 安卓运行器（11-14）：GitHub release 直下型（119MB 便携 zip）。
-             首启再由它自己下载 Android 运行时；更新链同上（GITHUB_UPDATEABLE.install）。 */
-          await installApkStartFromGitHub(id, await latestInstallVersion("apkstart", APKSTART_REPO));
-        } else if (id === "openmaic") {
-          /* OpenMAIC 互动课堂（11-14）：源码 + pnpm 依赖 + 便携 PostgreSQL 本机构建（约 5GB）。
-             ⛔ 不进自动/手动更新链：更新 = 重新安装（重建 5–10 分钟，不适合一键静默跑）。 */
-          await installOpenMaicFromGitHub(id, await latestInstallVersion("openmaic", OPENMAIC_REPO));
-        } else if (id === "husk") {
-          /* Husk（11-14）：只下载官方 Husk.ipa（约 142MB，SHA256 校验），真机侧载在 iPhone 上完成。 */
-          await installHuskFromGitHub(id, await latestInstallVersion("husk", HUSK_REPO));
-        } else if (id === "husk-tipa") {
-          /* Husk TIPA（11-14）：TrollStore 专用 .tipa，同版本；与 IPA 分文件、分版本号。 */
-          await installHuskTipaFromGitHub(id, await latestInstallVersion("husk", HUSK_REPO));
-        } else if (id === "artcraft") {
-          /* Craft 全家桶（11-16）：Launcher 便携包（约 11MB）。装完立刻重写 config.toml
-             （每个已装 App 各自的 MCP 段；PhotoCraft 也走这里），再走统一重启链。 */
-          await installArtCraftFromGitHub(id, await latestInstallVersion("artcraft", ARTCRAFT_REPO));
-          await refreshConfigForGatewayTools();
-        } else if (id === "rea") {
-          /* REA 逆向分析（10-13）：npm 国内镜像装，失败回落官方源；重跑同一入口 = 重装/更新。
-             ⛔ 11-14 锁 pin（REA_PINNED_VERSION）：随包 Node v24.19.0 跑不了 6.8.0+，
-             装 @latest 会得到一个一启动就 exit 1 的死包。理由与解除条件见 rea-gateway.ts。 */
-          await runNpmInstall(id, `rea-agents@${REA_PINNED_VERSION}`, "REA 逆向分析", downloadSource);
-        } else {
-          // ⛔ DOWNLOAD_SOURCE 经环境变量传给安装脚本 —— 脚本 argv 的裸词会被当成工具 id。
-          await runRuntimeInstaller(id, runtimeInstaller("install-runtimes.cjs"), [id], process.execPath, { DOWNLOAD_SOURCE: downloadSource });
-        }
-        await restartServerWhenIdle(id);
-      })();
-      runtimeInstalls.set(id, task);
-      try {
-        await task;
-        // ⛔ 成功绿条只在**复核通过**之后发 —— 否则界面会先报「安装完成」再报错，把一次假成功演成两次消息。
-        assertInstallVerified(id, spec);
-        sendToWindow("runtime:progress", { id, message: "安装完成", percent: 100, speed: "", done: true });
-        return { ok: true, runtimes: runtimeList() };
-      } catch (error) {
-        // 取消（杀进程导致的非零退出）不算错误：回执 cancelled，渲染层按「已取消」处理而不是报红
-        if (isCancelRequested(id)) return { ok: true, cancelled: true, runtimes: runtimeList() };
-        throw error;
-      } finally {
-        runtimeInstalls.delete(id);
-        clearCancelRequest(id);
-      }
-      } catch (error) {
-        /* ⛔ 用户报「安装报错」时界面只有一行截断文案：这里把完整 stack / 子进程输出留盘 */
-        await recordInstallFailure(idValue, "install", error);
-        throw error;
-      }
-    });
-
-    /* ── 工具链更新（10-12 新增；界面在「设置 → 自动化」）───────────────────────
-     * runtime:update-check —— 只读：查 npm 最新版 + 读盘上已装版，给 hasUpdate。
-     * runtime:update       —— 真装：`<pkg>@latest` 从国内镜像进 tools/npm-global，复核版本后重启引擎。
-     * ⛔ 传 id 返回单条；不传返回**全部**可更新工具（界面一次拿全，免得渲染层再抄一份清单）。 */
-    ipcHost.handle("runtime:update-check", async (_event, idValue?: string) => {
-      // ⛔ 清单走 updateableToolIds()（按平台过滤），别用 Object.keys(UPDATEABLE_TOOLS)
-      const ids = idValue ? [idValue] : updateableToolIds();
-      const rows = await Promise.all(ids.map((id) => checkRuntimeUpdateRow(id)));
-      return idValue ? rows[0] : rows;
-    });
-
-    ipcHost.handle("runtime:update", async (_event, idValue: string) => {
-      const result = await performRuntimeUpdate(idValue);
-      return { ...result, runtimes: runtimeList() };
-    });
-
-    ctx.effect(() => {
-      for (const ch of RUNTIME_CHANNELS) ipcHost.removeHandler(ch);
-    });
-  },
-});
+/**
+ * runtime-ipc（10-03 从 `features/engine-ipc/03-dev-runtime` + `04-dev-runtime-install` 合并成单前缀板块，
+ * 同时改为**插件形态**）
+ *
+ * 域：runtime(7)
+ * 通道：runtime:list / install / uninstall / cancel / health / update-check / update
+ *
+ * ⛔⛔ 四条实证口径（本次纯搬迁，一字未改）：
+ *   1. **卸载落点不能按 marker 首段推导**（10-01 用户报「卸载不真」的根因）：首段会得到
+ *      `tools/npm-global` 或 `tools/python` —— 那是多个 npm 包 / 整个 Python 运行时的**共同
+ *      家目录**，卸载一个会把其它一起删光。npm 包要删「包体目录 + 它自己的 shim」。
+ *   2. **ponytail 卸载/重装必须显式写 config.toml 的 enabled**：插件 key 是
+ *      `"ponytail@ponytail"`（写成 "ponytail-plugin" 会静默无效）；且必须带 `mergeStrategy`
+ *      —— 缺了整条请求被判 Invalid request，而这里是 `.catch(() => undefined)` 静默吞掉。
+ *      install 分支必须把 enabled 置回 true（seedConfigSections 幂等，不会自己翻回 true）。
+ *   3. **同一工具并发安装要「等它跑完」而不是抛错**（09-18 用户反馈）：抛错会让整批安装中断。
+ *   4. **随包内置只认 zip，不回落在线下载**（09-12 实测发布包故障）：GitHub Release 那个
+ *      automation-tools.zip 资产根本不存在，回落只会撞死地址 —— 装不上就当场说清楚。
+ * ⛔ 自检（`runtime:health`）单项失败绝不抛出，探测带 8s 超时：一个工具探不通不能让整页崩。
+ * ⛔ 待接缝化（阶段 2）：app / shell / spawn 为宿主能力。
+ */
+import fs from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { once } from "node:events";
+import { createHash } from "node:crypto";
+import net from "node:net";
+import path from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { app, shell } from "electron";
+import { CHINA_NPM_REGISTRY, bundledNode, bundledNpmCli, bundledPython, existingToolPath, npmGlobalRoot, npmGlobalRootCandidates, npmPackagePath, pythonPipReady, reaServerScript, tarExecutable, toolchainEnv, toolRootsRead, toolsRoot, userToolsRoot, writeToolsRoot } from "../toolchain";
+import { mirrorCandidates } from "../gh-mirror";
+import { contentPredictionRow } from "../content-prediction";
+import { provideRuntimeInventory } from "../expert-equipment-report";
+import { downloadThroughMirrors } from "../mirror-download";
+import { OPENMAIC_REPO, installOpenMaicFromGitHub, openmaicInstalledVersion } from "../openmaic-install";
+import { HUSK_REPO, huskInstalledVersion, installHuskFromGitHub, installHuskTipaFromGitHub } from "../husk-install";
+import { ARTCRAFT_REPO, artcraftInstalledVersion, installArtCraftFromGitHub } from "../artcraft";
+import { installKbEmbedding, kbBackendDir, kbEmbeddingInstalled, uninstallKbEmbedding } from "./kb-embed-backend";
+import { DARWIN_HIDDEN, DARWIN_MARKERS, DARWIN_SPEC_TEXT, IS_MAC, PIP_PACKAGE_DIRS, cancelRuntimeInstall, cleanupRuntimeTempFiles, clearCancelRequest, devRuntimeSpecs, emitRuntimeProgress, isCancelRequested, pipMetadataDirs, pythonSiteDir, readDownloadSource, requestRuntimeCancel, restartServerWhenIdle, runRuntimeInstaller, runtimeInstalled, runtimeInstaller, runtimeInstalls, trackRuntimeProc } from "./dev-runtimes";
+import type { DevRuntimeId, DevRuntimeSpec } from "./dev-runtimes";
+import { sendToWindow } from "./window-bus";
+import { readAppSettings, saveAppSettings } from "../app-settings";
+import type { AppSettings } from "../app-settings";
+import { healPonytailInstall } from "../ponytail-heal";
+import { REA_PINNED_VERSION } from "../rea-gateway";
+import { layaInstall } from "./laya-service";
+import { installPhoneHarness } from "./phone-harness";
+import { codexHome, server } from "../runtime-refs";
+import { defineFeature } from "../context";
+import { recordToolRemoved } from "./tool-persistence";
+import type { IpcHost } from "../ipc-host";
+// 版本比较统一走 `../updates`（含预发布语义：1.2.3-beta < 1.2.3）——⛔ 别再写第二份。
+import { compareVersions } from "../version-utils";
+/* 11-10：查最新版本走统一判定层（所有源都查 + 取最大，官方源兜底）；
+   NPM_SOURCES 用于把「胜出源」映射成安装器认识的取值，不在这里再抄一份 URL。 */
+import { probeNewestNpmVersion } from "../npm-version";
+import { guardedFetch } from "../net-guard";
+import { NPM_SOURCES } from "../update-registry";
+/* ⛔⛔ 10-30 Windows 真机事故（0.0.51 装了打不开，用户截图：Cannot find module
+   '../../scripts/lib/tools-versions.cjs'）：这张**版本表**原先在模块顶层裸 require，而 build.files
+   白名单里没有 scripts/** ⇒ 文件没进 asar ⇒ 主进程启动即死。两件事都要有：
+   ① 已经把它加进 build.files（守卫【96】② /【288】钉住「产物树外的 require 必须被覆盖」）；
+   ② 这里**降级**：读不到就给空表 —— 用到它的地方（飞书 CLI 的版本号）自己退化成 latest。
+   ⛔ 原则：一张数据表读不到，绝不允许把应用搞崩（这条比"一定要读到"更重要）。 */
+const TOOLS_VERSIONS: Record<string, string> = (() => {
+  try {
+    const loaded = (require("../../scripts/lib/tools-versions.cjs") as { TOOLS_VERSIONS?: Record<string, string> }).TOOLS_VERSIONS;
+    return loaded && typeof loaded === "object" ? loaded : {};
+  } catch (error) {
+    console.warn("[runtime-ipc] 读不到 scripts/lib/tools-versions.cjs（打包缺文件？）—— 版本号退化为 latest", error);
+    return {};
+  }
+})();
+
+function specFor(id: DevRuntimeId, spec: DevRuntimeSpec): DevRuntimeSpec {
+  if (!IS_MAC) return spec;
+  const override = DARWIN_SPEC_TEXT[id];
+  return override ? { ...spec, ...override } : spec;
+}
+
+function runtimeInstalledBySystem(id: DevRuntimeId): boolean {
+  if (IS_MAC) {
+    if (id === "git") return ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"].some((p) => existsSync(p));
+    if (id === "openssl") return existsSync("/usr/bin/openssl");
+    // ⛔ mac 适配（09-17 审计）：Docker Desktop for Mac 装完是 /Applications/Docker.app，
+    //    CLI 落在 /usr/local/bin/docker（或 Apple Silicon 的 /opt/homebrew/bin/docker）。
+    //    旧实现只探测 Windows 的 docker.exe，mac 用户装好 Docker 也一直显示「未安装」。
+    if (id === "docker") {
+      return ["/usr/local/bin/docker", "/opt/homebrew/bin/docker", "/Applications/Docker.app"].some((p) => existsSync(p));
+    }
+    return false;
+  }
+  // docker 是系统级安装：未在工具目录时也探测系统 PATH 上的 docker.exe（已装则视为完成）
+  return (id === "docker" || id === "openssl") && (process.env.PATH ?? "").split(path.delimiter).some(dir => dir && existsSync(path.join(dir.trim(), `${id}.exe`)));
+}
+
+/* ── 「装不上就让 Codex 自己装」（10-08 用户要求）─────────────────────────────
+ * 用户原话：「加一个开发工具备用方案，每个工具后面如果安装不上，可以预置一个提示词，提示用户，
+ * 发 codex 自行安装就行，有的电脑网不好，容易下载报错」。
+ * ⛔ 文案**只在主进程生成**（单一真相源）：渲染层只负责展示 + 复制，不许再拼一份 —— 否则又是
+ *   「两处口径各自为政」（本项目当天刚栽过三次：见【286】/【241】）。
+ * ⛔ 路径一律取自与「判定 / 卸载」同源的来源（toolsRoot / codexHome / kbBackendDir / pythonSiteDir /
+ *   npmGlobalRoot），别再写第三套。
+ * ⛔ 网络兜底文案里的镜像站必须与实际代码里用的**同一批**（npmmirror / 清华 pypi / 清华 miniconda），
+ *   不要凭空发明源。 */
+
+/** 该工具的「首选做法」一句话；没登记的走通用的一键脚本文案。 */
+const FALLBACK_STEPS: Partial<Record<DevRuntimeId, string>> = {
+  filee: "使用开发工具页 Filee 专用安装器：从 GitHub Release 依次经 gh-proxy、ghfast、官方直连下载便携包，保留校验并重新检测 CLI。不要用通用运行时脚本。",
+  apkstart: "通过 ApkStart 卡片安装 Windows 便携版，使用内置 GitHub 镜像候选；首次运行由 ApkStart 下载安卓运行时。",
+  artcraft: "通过 Craft 全家桶卡片获取并校验 Launcher；Windows 使用发布包镜像，其他系统按卡片的平台说明。创作 App 由 Launcher 按需安装。",
+  openmaic: "使用 OpenMAIC 卡片的安装器，通过项目配置的镜像获取源码、pnpm 依赖和便携数据库，再在本机构建；开始前检查磁盘空间。",
+  husk: "使用 Husk 卡片下载官方 IPA 并校验，镜像不可用时回落官方源。只在电脑上准备文件，侧载需我在 iPhone 上确认。",
+  "husk-tipa": "在 Husk 卡片选择 TrollStore 版本，通过内置镜像下载并校验 TIPA。不要用 IPA 替代，仅供兼容设备手动安装。",
+  "feishu-cli": "在飞书 CLI 卡片通过应用的 npm 安装器获取 @larksuite/cli（镜像与官方版本对照）。完成后由我登录授权。",
+  nuphus: "通过桌面自动化卡片恢复随包自动化资源；缺少归档时请提示我检查应用安装包。",
+  rea: "从开发工具页安装应用固定的兼容版本，使用配置的 npm 镜像，必要时回落官方源，不自行改装 latest。",
+  python: "删掉损坏的 python 目录后重跑一键脚本 —— 脚本装的是 python-build-standalone 整包（自带 pip 与 Tkinter），走 npmmirror 镜像",
+  node: "重跑一键脚本装回内置 Node（体积不大，一般不会失败）",
+  git: "重跑一键脚本装 MinGit（约 90 MB）：npmmirror 镜像优先，失败自动回落官方源",
+  pwsh: "从 GitHub 的 PowerShell release 下 win-x64 的 zip（约 282 MB）后解压；下载慢就给链接加 gh-proxy / ghfast 加速前缀（一键脚本会自动这么干）",
+  ffmpeg: "从 BtbN/FFmpeg-Builds 或 gyan.dev 下 win64 构建，取出 ffmpeg.exe 与 ffprobe.exe 放进去",
+  mingw: "从 winlibs 的 release 下 winlibs-x86_64-posix-seh 的 zip（约 267 MB），解压后把里面的 mingw64 目录整体放进去",
+  conda: "用清华镜像的 Miniconda3 Windows 安装器静默装到目标目录（清华镜像实测比官方站快很多）",
+  markitdown: "在目标 python 下执行：python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple \"markitdown[pdf,docx,pptx]\" openpyxl",
+  laya: "在目标 python 下执行：python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple laya[serve]（含 PyTorch，约 800 MB，要耐心等）",
+  "phone-harness": "在目标 python 下执行：python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple phone-harness，装完把它的 CLI 注册成引擎技能",
+  "kb-embedding": "让 Codex 读项目里的工具链文档，用 npmmirror 装 npm 运行库、用 hf-mirror 下模型，都放目标目录",
+  docker: "系统级安装：界面按钮会打开官网，按官网步骤装完需要重启电脑",
+  openssl: "系统级安装：界面按钮会打开官网（slproweb 的 Windows 版），按官网步骤装",
+  ponytail: "重跑一键脚本重新种插件（界面上的「修复安装」走的是同一条路）",
+};
+
+/**
+ * mac 专用「首选做法」（10-30 全链路审计）。
+ *
+ * ⛔⛔ 上面那批文案是**按 Windows 写的**（MinGit / win-x64 zip / `.exe` / slproweb），而这段提示词
+ *   会被用户**原样复制给 Codex 照着装** ⇒ 在 mac 上等于让模型去下 Windows 包，然后反复失败。
+ *   只覆盖 darwin 上说法确实会错的条目；`mingw` 在 mac 已被隐藏（DARWIN_HIDDEN），不必覆盖。
+ *   镜像站与 install-runtimes.cjs 的 mac 分支同源（清华 miniconda / 清华 pypi / evermeet 兜底）。
+ */
+const DARWIN_FALLBACK_STEPS: Partial<Record<DevRuntimeId, string>> = {
+  git: "mac 不装 MinGit：直接用系统自带 git（随 Xcode 命令行工具）。若 `git --version` 报错就执行 `xcode-select --install`，系统弹窗里点安装，装完再验证一次",
+  pwsh: "从 GitHub 的 PowerShell release 下 **osx-arm64 / osx-x64 的 tar.gz**（约 70 MB），解压后把 `pwsh` 可执行文件放进 tools/pwsh（mac 上没有 .exe 后缀、也不是 zip）",
+  ffmpeg: "下 **darwin** 构建（ffmpeg-static 的 ffmpeg-darwin-<arch>.gz，或 evermeet 的 zip），把 `ffmpeg` 与 `ffprobe` 两个可执行文件放进 tools/ffmpeg/bin（无 .exe）",
+  conda: "用清华镜像的 Miniconda3-**MacOSX**-<arch>.sh 安装器：`bash Miniconda3-*.sh -b -p <tools>/miniconda`（静默装到目标目录，不要用 Windows 安装器）",
+  openssl: "mac 用系统自带的 LibreSSL（`/usr/bin/openssl`），一般无需安装；确实需要新版才 `brew install openssl` 并把它加进 PATH",
+  markitdown: "在随包 python 下执行：`<tools>/python/bin/python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple \"markitdown[pdf,docx,pptx]\" openpyxl`（mac 的 python 是 python3，没有裸 python）",
+  laya: "在随包 python 下执行：`<tools>/python/bin/python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple laya[serve]`（含 PyTorch，约 800 MB，要耐心等）",
+  "phone-harness": "在随包 python 下执行：`<tools>/python/bin/python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple phone-harness`，装完把它的 CLI 注册成引擎技能",
+};
+
+/** 该工具在本机平台的「首选做法」（darwin 先查专用表，其余沿用上面那份）。 */
+function fallbackStepsOf(id: DevRuntimeId): string | undefined {
+  return (process.platform === "darwin" ? DARWIN_FALLBACK_STEPS[id] : undefined) ?? FALLBACK_STEPS[id];
+}
+
+/** 发命令用的解释器与脚本路径：优先用随包 node（与主进程跑安装时同源）。
+ *  ⛔ 10-08 自审改：**不要写成 `VAR="x" cmd`**（POSIX 写法在 Windows 的 cmd/PowerShell 里跑不了，
+ *    而这份提示词恰恰是给 Windows 机器准备的）。改成「命令 + 需要时先设哪个环境变量」的自然语言，
+ *    跨平台都读得懂，也不会让人照抄一条必然报错的命令。 */
+function fallbackRunner(): string {
+  const node = bundledNode() || "node";
+  return `"${node}" "${runtimeInstaller("install-runtimes.cjs")}"（若脚本要求指定工具目录，先设环境变量 TOOLS_ROOT=${writeToolsRoot()}）`;
+}
+
+/** 「装到哪个目录」——按工具类型给**语义正确**的落点（⛔ 不是 marker 首段推导）。 */
+function fallbackTargetDir(id: DevRuntimeId, spec: DevRuntimeSpec): string {
+  if (id === "moekoe") return IS_MAC ? "/Applications/MoeKoe Music.app 或 ~/Applications" : "系统 Program Files 下的 MoeKoe Music（由外部安装器管理）";
+  if (IS_MAC && id === "git") return "系统 Git（/usr/bin/git 或 Homebrew bin）";
+  if (id === "ponytail") return path.join(codexHome, "plugins", "cache");
+  if (id === "kb-embedding") return kbBackendDir();
+  if (PIP_PACKAGE_DIRS[id]) return path.join(writeToolsRoot(), "python");
+  if (NPM_PACKAGE_ARTIFACTS[id]) return path.join(writeToolsRoot(), "npm-global");
+  if (spec.kind === "guide") return IS_MAC ? (id === "docker" ? "/Applications/Docker.app" : "/usr/bin/openssl") : `系统安装器选择的目录；将 ${id}.exe 所在目录加入 PATH，重启应用后检测`;
+  // 其余落在 tools/<marker 首段> —— 与 runtimeUninstallTargets 的通用分支同源
+  return path.join(writeToolsRoot(), spec.marker.split(/[\\/]/)[0]);
+}
+
+/** 装完怎么确认：可执行文件型给一条**真能跑**的验证命令（与自检同口径）。
+ *  ⛔⛔ 不许按 marker 推导「该出现什么」：pip 包的 marker 是**占位**（见 dev-runtimes 的注释），
+ *    照它拼出来的 `tools\markitdown` 是一个**根本不存在的路径** —— 这正是 10-08 当天修过的
+ *    「marker 推导出不存在的路径」同款坑（探针真跑时当场抓到，不能只看类型通过就发）。 */
+function fallbackExpectLine(id: DevRuntimeId, spec: DevRuntimeSpec): string {
+  if (id === "ponytail") return `这个目录存在：${path.join(codexHome, "plugins", "cache", "ponytail")}`;
+  if (id === "kb-embedding") return `这个目录存在（npm 包 + worker + 模型三件齐）：${kbBackendDir()}`;
+  if (PIP_PACKAGE_DIRS[id]) {
+    const site = pythonSiteDir(path.join(writeToolsRoot(), "python"));
+    const pkg = PIP_PACKAGE_DIRS[id]!;
+    return site
+      ? `这个包目录存在：${path.join(site, pkg)}；也可以跑 python -c "import ${pkg}" 看能不能导入`
+      : `在 ${path.join(writeToolsRoot(), "python")} 下跑 python -m pip show ${pkg} 确认`;
+  }
+  if (spec.kind === "guide") {
+    return `在终端跑 ${id === "docker" ? "docker --version" : "openssl version"}，能打印版本就说明装好了`;
+  }
+  if (NPM_PACKAGE_ARTIFACTS[id]) {
+    const root = npmGlobalRoot() || path.join(writeToolsRoot(), "npm-global");
+    const rel = NPM_PACKAGE_ARTIFACTS[id]!.dirs[0].replace(/^node_modules[\\/]/, "");
+    return `这个目录存在：${path.join(root, rel)}`;
+  }
+  const args = HEALTH_ARGS[id];
+  const file = healthExecPath(id, spec);
+  if (!args) return `这个文件存在：${file}`;
+  return `"${file}" ${args.join(" ")}（能打印版本就说明装好了）`;
+}
+
+/** 拼出「发给 Codex 让它自己装」的提示词。⛔ 只在主进程生成（渲染层只展示 + 复制）。 */
+function fallbackPromptFor(id: DevRuntimeId, spec: DevRuntimeSpec): string {
+  // MoeKoe 是系统级外部客户端：不能套用 install-runtimes.cjs 的「装到 tools/moekoe」模板。
+  if (id === "moekoe") {
+    return [
+      "帮我在这台电脑上安装开发工具「MoeKoe Music（酷狗客户端）」。",
+      "背景：应用里「设置 → 开发工具 → MoeKoe 音乐」有手动安装入口；如果下载失败，请按下面的首选做法继续。",
+      "",
+      "· 用途：外部酷狗客户端，Codex 通过它的 6521 API 搜歌/播放",
+      process.platform === "darwin"
+        ? "· 装到哪：/Applications/MoeKoe Music.app（无权限时回落 ~/Applications）；macOS 首次打开如被拦截，去「系统设置 → 隐私与安全性」允许"
+        : "· 装到哪：默认 Program Files\\MoeKoe Music（可在安装向导里改盘）",
+      "· 首选做法：在 Harness 会话里调用能力网关 moekoe_install（confirm=true），它会从官方下载源（music.moekoe.cn 同款 release，中国大陆走 gh-proxy 镜像）按系统/架构选包并启动安装；⛔ 不要用 install-runtimes.cjs（那里没有 moekoe，MoeKoe 也不是装到 tools 目录）。",
+      "· 网络兜底：官方下载页 https://music.moekoe.cn/download.html 勾选「我是来自中国大陆（使用镜像加速下载）」，或给 GitHub 直链加 gh-proxy / ghfast 前缀；下载失败先删掉半截文件再完整重下（续传修不好坏文件）。",
+      "· 装完请验证：MoeKoe Music 能启动，且 http://127.0.0.1:6521/register/dev 返回 dfid；把结果发给我。",
+    ].join("\n");
+  }
+  const steps = fallbackStepsOf(id) ?? `重跑本机的一键安装脚本（一条命令只装这一个工具，脚本自带「国内镜像优先 + 逐通道回落 + 坏缓存先删」）：\n    ${fallbackRunner()} ${id}`;
+  const head = spec.description.split("；")[0];
+  const purpose = head.length > 70 ? `${head.slice(0, 70)}…` : head;
+  const lines = [
+    `帮我在这台电脑上装好开发工具「${spec.name}」。`,
+    "请先检测是否已就绪，不重复安装。优先使用应用提供的安装或修复入口；需要系统授权时请让我确认。",
+    "",
+    `· 用途：${purpose}`,
+    `· 装到哪：${fallbackTargetDir(id, spec)}`,
+    `· 首选做法：${steps}`,
+    spec.kind === "guide" ? "· 网络兜底：只用该平台的官方安装入口；系统已提供时不要重复下载。" : "· 网络兜底：按该工具支持的通道选择国内源：npm 用 npmmirror、pip 用清华镜像，GitHub 发布包走 gh-proxy → ghfast → 官方直连。保留版本和完整性校验。",
+    `· 装完请验证：${fallbackExpectLine(id, spec)}，并把命令输出发给我。`,
+  ];
+  if (spec.builtIn || spec.bundled) {
+    lines.push("· 注意：这个工具本来是随应用内置的，如果只是文件损坏，优先从随包的备份/归档恢复，不要另外装一份不同版本。");
+  }
+  return lines.join("\n");
+}
+
+/** marker 落在**随包根**（resources/tools）即为随包内置，删不掉。 */
+function installedFromBundle(spec: DevRuntimeSpec): boolean {
+  const marker = (spec as any).marker;
+  const rels: string[] = Array.isArray(marker) ? marker : marker ? [marker] : [];
+  return rels.some((rel) => { try { return existsSync(path.join(toolsRoot(), rel)); } catch { return false; } });
+}
+
+/** 开发工具页与专家查缺共用本机检测和安装提示。 */
+function runtimeList() {
+  const rows = (Object.entries(devRuntimeSpecs) as [DevRuntimeId, DevRuntimeSpec][])
+    .filter(([id]) => !(IS_MAC && DARWIN_HIDDEN.has(id)))
+    .map(([id, spec]) => ({
+      id, ...specFor(id, spec),
+      installed: runtimeInstalled(id, spec),
+      /* ⛔ 11-01：随包资源（resources/tools）里的工具**删不掉**，但原来照样给「卸载」按钮，
+         点了才报错 —— 用户原话「搞笑吗这是」。这里把来源标出来，让界面直接显示「内置」。 */
+      fromBundle: installedFromBundle(spec),
+      installedBySystem: runtimeInstalledBySystem(id),
+      installTarget: fallbackTargetDir(id, spec),
+      installing: runtimeInstalls.has(id),
+      // 装不上时的备用方案：预置一段可直接发给 Codex 的提示词（渲染层只展示 + 复制）
+      fallbackPrompt: fallbackPromptFor(id, spec),
+    }));
+  return [...rows, contentPredictionRow()];
+}
+
+/** 卸载也要有进度（10-07 用户要求「不允许出现无响应状态」）：pw-browsers ~170MB / ffmpeg ~300MB
+ *  这种大目录逐文件删要几秒，一句「正在卸载…」闷到结束就是无响应。
+ *  做法：先盘点（收集全部文件 + 字节数），再分批删（每批 ~4MB 或 200 个文件），按字节比例发
+ *  `runtime:progress`；删完文件再把（现在已空的）目录树整体摘掉。批次间 setImmediate 让事件循环
+ *  喘口气，进度事件才能真的发出去。 */
+/** ⛔⛔ 11-15：安装/卸载失败的真实原因必须落盘。
+ *  界面只显示进度条最后一行（且应用一重启就没了），用户报「安装报错」时开发者拿不到任何证据；
+ *  OpenMAIC 的构建日志、pip 的多源失败明细都在这里留全文，便于下次直接定位而不是靠猜。 */
+async function recordInstallFailure(id: string, phase: "install" | "uninstall", error: unknown): Promise<void> {
+  try {
+    const dir = path.join(app.getPath("userData"), "logs");
+    await fs.mkdir(dir, { recursive: true });
+    const text = String((error as Error)?.stack ?? (error as Error)?.message ?? error);
+    await fs.appendFile(path.join(dir, "install-errors.log"),
+      `\n===== ${new Date().toISOString()} ${phase} ${id} =====\n${text.slice(0, 10_000)}\n`, "utf8");
+  } catch { /* 日志写不了不能影响主流程 */ }
+}
+
+async function removeTargetsWithProgress(id: DevRuntimeId, targets: string[]): Promise<void> {
+  const jobs: { file: string; size: number }[] = [];
+  let totalBytes = 0;
+  /* ⛔⛔ 11-15 用户实测「卸载直接把应用干死」：OpenMAIC 装完后 app/node_modules 有几十万个
+     小文件，旧实现用同步 readdirSync/statSync **递归遍历整棵树**，主进程事件循环被整段堵住
+     （几十秒到几分钟）⇒ Windows 弹「Electron 未响应」。改成异步遍历 + 每 200 项让出一次事件循环，
+     删除本身本来就是 await fs.rm（异步），界面全程可响应、可取消。 */
+  let scanned = 0;
+  const yieldToLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+  /* ⛔ 11-15：统计阶段本身也要给反馈 —— 20 万个小文件遍历要十几秒，
+     期间一条事件都不发，用户看到的就是「点了卸载没反应」。 */
+  sendToWindow("runtime:progress", { id, stage: "正在统计要删除的文件", percent: 0 });
+  const collectDir = async (dir: string): Promise<void> => {
+    let entries: import("node:fs").Dirent[];
+    try { entries = await fs.readdir(dir, { withFileTypes: true }) as import("node:fs").Dirent[]; } catch { return; }
+    for (const entry of entries) {
+      const childPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) await collectDir(childPath);
+      else {
+        let size = 0;
+        try { size = (await fs.stat(childPath)).size; } catch { /* 竞态：文件刚没了 */ }
+        jobs.push({ file: childPath, size });
+        totalBytes += size;
+      }
+      if (++scanned % 200 === 0) await yieldToLoop();
+    }
+  };
+  const roots: string[] = [];
+  for (const target of targets) {
+    const resolved = path.resolve(target);
+    roots.push(resolved);
+    let stat;
+    try { stat = await fs.stat(resolved); } catch { continue; } // 目标不在了 = 已经卸载好
+    if (stat.isDirectory()) await collectDir(resolved);
+    else { jobs.push({ file: resolved, size: stat.size }); totalBytes += stat.size; }
+  }
+  sendToWindow("runtime:progress", { id, stage: "正在删除文件", percent: 0 });
+  const BATCH_BYTES = 4 * 1024 * 1024;
+  const BATCH_FILES = 200;
+  let batch: string[] = [];
+  let batchBytes = 0;
+  let removedBytes = 0;
+  let failedCount = 0;
+  let firstFailure = "";
+  const flush = async () => {
+    const pending = batch;
+    batch = [];
+    batchBytes = 0;
+    /* ⛔⛔ 11-15 用户实测「点了卸载半天不动」：旧实现逐个 `await fs.rm`，20 万个小文件
+       等于 20 万次串行系统调用（几分钟）。改成 32 路并发 —— 总耗时降到秒级。
+       失败语义不变：被占用文件照样计数（10-07 那条「不谎报成功」的规矩），首个样本留证。 */
+    for (let index = 0; index < pending.length; index += 32) {
+      await Promise.all(pending.slice(index, index + 32).map((file) => fs.rm(file, { force: true }).catch((error: Error) => {
+        failedCount++;
+        if (!firstFailure) firstFailure = `${file}（${String(error?.message ?? error).slice(0, 80)}）`;
+      })));
+    }
+    if (totalBytes > 0) {
+      const percent = Math.min(99, Math.round((removedBytes / totalBytes) * 100));
+      sendToWindow("runtime:progress", { id, stage: "正在删除文件", percent });
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+  for (const job of jobs) {
+    batch.push(job.file);
+    batchBytes += job.size;
+    removedBytes += job.size;
+    if (batchBytes >= BATCH_BYTES || batch.length >= BATCH_FILES) await flush();
+  }
+  if (batch.length) await flush();
+  // 文件删完后摘目录树（recursive 对已空目录是瞬时操作，顺带兜走漏网文件）
+  for (const root of roots) {
+    try { await fs.rm(root, { recursive: true, force: true }); } catch (error) {
+      failedCount++;
+      if (!firstFailure) firstFailure = `${root}（${String((error as Error)?.message ?? error).slice(0, 80)}）`;
+    }
+  }
+  // ⛔ 如实报错而不是「假装卸载成功」——失败最常见的原因是文件被占用（Windows 常驻子进程、
+  //   浏览器内核缓存被引用），提示必须能指导用户下一步动作。
+  if (failedCount > 0) {
+    throw new Error(
+      `有 ${failedCount} 个文件删不掉（常见原因：被其它程序占用）。首个失败：${firstFailure}`
+      + " —— 请关闭占用它的程序（浏览器 / 后台工具）后重试，或重启应用再卸载。"
+    );
+  }
+}
+
+/** npm 包（nuphus / rea）的卸载落点：**包体目录 + 它自己的 shim**。
+ *  ⛔⛔ 为什么不能按 marker 首段推导：marker 是 `npm-global\node_modules\@nuphus\nuphus-mcp\package.json`，
+ *    首段推导会得到 `tools/npm-global` —— 那是几个 npm 能力的**共同家目录**，卸载一个会把其它一起删光。
+ *  ⛔ 10-01 用户报「卸载不真」的根因：旧实现只删 `npm-global/<pkg>`（那是 **shim 文件**），
+ *    真正的包体 `npm-global/node_modules/<pkg>` 原地不动 ⇒ 卡片显示「未安装」但包还在。 */
+const NPM_PACKAGE_ARTIFACTS: Partial<Record<DevRuntimeId, { dirs: string[]; shims: string[] }>> = {
+  nuphus: { dirs: ["node_modules/@nuphus"], shims: ["nuphus-mcp", "nuphus-call"] },
+  // REA（10-13）：包体目录 + rea / rea-agents 两个 shim；删完引擎重启后 [mcp_servers.rea]
+  // 段自动消失（custom-model-apply 按 reaServerScript() 的存在性生成，见 ownedMcpServers）。
+  rea: { dirs: ["node_modules/rea-agents"], shims: ["rea", "rea-agents"] },
+  // 飞书 CLI（10-29）：包体 @larksuite/cli + 前缀根上的 lark-cli / lark-cli.cmd
+  "feishu-cli": { dirs: ["node_modules/@larksuite"], shims: ["lark-cli"] },
+};
+
+/** 需要放行 postinstall 的包（**只放行点名的包**，⛔ 不全局放开脚本）。
+ *  ⛔ 安装与**在线更新**是两条调用路径，名单必须同一份 —— 只在安装分支放行的话，
+ *    更新走的就是「装出空壳」（飞书 CLI 的二进制全靠 postinstall 下载）。 */
+const NPM_ALLOW_SCRIPTS: Partial<Record<DevRuntimeId, string[]>> = {
+  "feishu-cli": ["@larksuite/cli"],
+};
+
+
+/** npm 包在某个 npm-global 根下留的 shim（不是包体，删完包体要顺手清掉）。
+ *  ⛔ 10-07：显式接 `globalRoot` 参数，不再内部取 `npmGlobalRoot()` ——
+ *   卸载要遍历**全部候选落位**，内部只取一个就又回到「删不干净」的旧 bug。 */
+function npmShimPaths(globalRoot: string, ...pkgs: string[]): string[] {
+  const globalDir = path.dirname(globalRoot);
+  const out: string[] = [];
+  for (const pkg of pkgs) {
+    out.push(
+      path.join(globalDir, pkg),
+      // ⛔ mac 适配（09-17 审计）：POSIX 的 npm 全局 shim 落在 `<prefix>/bin/<pkg>`（不带后缀、
+      //    symlink 到包内 bin），prepare-mac-tools 正是这么写的（npm-global/bin/nuphus-call）。
+      //    旧清单只有 Windows 的 .cmd/.ps1 ⇒ mac 上卸载包后 shim 残留，PATH 里继续指向空目录。
+      path.join(globalDir, "bin", pkg),
+      path.join(globalDir, `${pkg}.cmd`),
+      path.join(globalDir, `${pkg}.ps1`),
+      path.join(globalDir, "node_modules", ".bin", pkg),
+      path.join(globalDir, "node_modules", ".bin", `${pkg}.cmd`),
+      path.join(globalDir, "node_modules", ".bin", `${pkg}.ps1`),
+    );
+  }
+  return out;
+}
+
+/** 卸载落点（**全部**要删的路径；调用方逐条做安全校验后再删）。 */
+function runtimeUninstallTargets(id: DevRuntimeId, spec: DevRuntimeSpec): string[] {
+  // 引擎侧安装：ponytail 在 codex-home/plugins/cache/ponytail
+  if (id === "ponytail") return [path.join(codexHome, "plugins", "cache", "ponytail")];
+  // ⛔⛔ 10-07 用户实测「知识库本地语义检索卸载不更新状态，一直显示已安装」：
+  //   kb-embedding 装在 **<userData>/kb-backend**（runtimeInstalled 的判据
+  //   kbEmbeddingInstalled() 读的就是这个目录），而通用分支按 marker 首段推出的是
+  //   `tools/kb-embedding` —— **一个根本不存在的路径** ⇒ 卸载「删成功」但文件原地不动，
+  //   界面永远显示已安装。⇒ 这类「装在 tools 之外」的项必须**显式给真实目录**，不能靠 marker 推导。
+  if (id === "kb-embedding") return [kbBackendDir()];
+  const pkg = NPM_PACKAGE_ARTIFACTS[id];
+  if (pkg) {
+    // ⛔⛔ 同源纪律（10-07 同一批实测）：判定侧认**全部候选落位**（mac 双布局），
+    //   卸载侧也必须逐个删 —— 只删 npmGlobalRoot() 那一个，装在另一个落位的包会
+    //   「卸载了但仍显示已安装」（历史实测）。落位清单来自单一真相源，别手拼。
+    // ⛔⛔⛔ dirs 里的路径是相对 **npm-global 前缀**的（`node_modules/cloakbrowser`），
+    //   而候选落位 npmGlobalRootCandidates() 返回的**已含 node_modules 一段** ——
+    //   直接 join 会拼出 `node_modules/node_modules/cloakbrowser` ⇒ **包体从来就没被删过**
+    //   （Windows 同样中招，10-07 实测才抓到）。所以这里必须 join 到前缀（= 落位的上一级）。
+    return npmGlobalRootCandidates(true).flatMap((root) => {
+      const prefix = path.dirname(root);
+      return [
+        ...pkg.dirs.map((dir) => path.join(prefix, dir)),
+        ...npmShimPaths(root, ...pkg.shims),
+      ];
+    });
+  }
+  // ⛔ pip 包（markitdown / laya / phone-harness）：只能删**包目录本身**。按 marker 首段推导会得到
+  //    `tools/python` —— 那是整个 Python 运行时（含 pip 与引擎依赖），卸载一个包会把 Python 一起删光。
+  const pipDir = PIP_PACKAGE_DIRS[id];
+  if (pipDir) {
+    const site = pythonSiteDir(path.join(writeToolsRoot(), "python"));
+    if (!site) return [path.join(writeToolsRoot(), pipDir)];
+    // ⛔⛔ 必须连**元数据目录**一起删（10-08 用户实测事故「开发工具装完不更新」）：只删包目录会留下
+    //   `<name>-<ver>.dist-info`，pip 据此认为「已安装」⇒ 重装时回 `Requirement already satisfied`
+    //   且 exit 0（什么都不做），而判定看的是包目录 ⇒ 界面报「安装成功」但卡片永远显示未安装。
+    //   markitdown / laya / phone-harness 三个 pip 包都在这个分支上，一起覆盖。
+    return [path.join(site, pipDir), ...pipMetadataDirs(site, pipDir)];
+  }
+  // 工具侧：安装根 = marker 路径的第一段（git -> git / ffmpeg -> ffmpeg / …）
+  // ⛔ 卸载只删 **userData** 里的下载件；随包 resources 的目录不归用户可卸载。
+  return [path.join(writeToolsRoot(), spec.marker.split(/[\\/]/)[0])];
+}
+
+/** ⛔⛔ 安装成功后**必须回读「装没装」的判定**（10-08 用户报「开发工具安装完不更新」的整类根因）。
+ *  子进程 exit 0 只证明「命令跑完了」，不证明「东西真装上了」：pip 见到孤儿 `*.dist-info` 就会
+ *  回一句 `Requirement already satisfied` 然后**什么都不做**（同样 exit 0），安装脚本照样报到界面
+ *  ⇒ 用户看到「开发工具安装成功」的绿条 + 卡片仍显示「下载」，点多少次都一样（markitdown 实测：
+ *  包目录 83 个文件全丢、只剩 dist-info；`import` 报 ModuleNotFoundError 而 `pip show` 说装着）。
+ *  ⇒ 判据必须与卡片**同源**（就是同一个 runtimeInstalled），否则又造出第二套口径。
+ *  ⛔ 只在「真跑过安装」的分支调用：guide（去官网）/ builtIn（无需安装）/ 已就绪 三条不算。 */
+function assertInstallVerified(id: DevRuntimeId, spec: DevRuntimeSpec): void {
+  // ⛔ 11-14：REA 的 marker 只查 package.json，半截安装（缺 rea.mjs / dist chunk）照样会过
+  //    ⇒ 界面报「安装完成」但专家永远不出现。复核必须再过一次「能用的安装」口径（reaServerScript 三查）。
+  if (runtimeInstalled(id, spec) && (id !== "rea" || Boolean(reaServerScript()))) return;
+  throw new Error(
+    `「${spec.name}」安装流程已结束，但复核未通过 —— 在预期位置找不到已安装产物`
+    + `（安装根目录：${writeToolsRoot()}）。这通常是安装器「假成功」（命令退出码 0 但没落盘），`
+    + "请把本页日志反馈给开发者；重复点「下载」不会自愈。"
+  );
+}
+
+/** npm 包按需安装：用**内置 node 自带的 npm**，registry 国内镜像优先、失败回落官方源。 */
+async function runNpmInstall(id: string, pkg: string, label: string, source: NonNullable<AppSettings["downloadSource"]> = "auto", allowScripts: string[] = [], preferredRegistry?: string): Promise<void> {
+  const node = bundledNode();
+  if (!node) throw new Error(`缺少内置 Node，无法安装 ${label}`);
+  // ⛔ 按平台候选探测（Windows zip 布局 / mac tar.gz 布局）—— 别在这里复制路径字面量，见 toolchain.bundledNpmCli
+  const npmCli = bundledNpmCli();
+  if (!npmCli) throw new Error(`内置 Node 缺少 npm（候选中无 npm-cli.js，tools 根：${toolsRoot()}），无法安装 ${label}`);
+  const globalDir = path.join(writeToolsRoot(), "npm-global");
+  await fs.mkdir(globalDir, { recursive: true });
+  const userRegistry = process.env.npm_config_registry || process.env.NPM_CONFIG_REGISTRY || "";
+  const registries = userRegistry ? [userRegistry] : source === "direct" ? [""] : [CHINA_NPM_REGISTRY, ""];
+  /* ⛔ 11-10：检查更新已按「所有源查完取最大」判版本 ⇒ 安装必须优先走**同一个胜出源**。
+     否则 @latest 在还没同步的镜像上会装回旧版：界面显示「有更新」，点完仍是旧版。
+     传 "" = 不设 registry（npm 回落官方源）；undefined = 沿用默认源序。 */
+  const ordered = preferredRegistry === undefined
+    ? registries
+    : [preferredRegistry, ...registries.filter((entry) => entry !== preferredRegistry)];
+  let lastError: Error | null = null;
+  for (const registry of ordered) {
+    const via = registry ? (userRegistry ? "用户配置的源" : "国内镜像") : "官方源";
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const env: Record<string, string> = {
+          ...toolchainEnv(),
+          npm_config_audit: "false",
+          npm_config_fund: "false",
+          npm_config_loglevel: "error",
+          npm_config_update_notifier: "false",
+          NO_UPDATE_NOTIFIER: "1",
+        };
+        // 空串 = 不设 registry，npm 回落到官方源
+        if (registry) env.npm_config_registry = registry;
+        const scriptFlags = allowScripts.map((name) => `--allow-scripts=${name}`);
+        const child = spawn(node, [npmCli, "install", "--global", "--prefix", globalDir, pkg, "--no-audit", "--no-fund", ...scriptFlags], { windowsHide: true, env });
+        trackRuntimeProc(id, child);
+        let tail = "";
+        const report = (chunk: Buffer | string) => {
+          const text = String(chunk);
+          if (!text.trim()) return;
+          tail = `${tail}\n${text}`.slice(-4000);
+          emitRuntimeProgress(id, text, `（${via}）`);
+        };
+        child.stdout?.on("data", report);
+        child.stderr?.on("data", report);
+        child.on("error", reject);
+        child.on("close", (code) => code === 0 ? resolve() : reject(new Error(tail.trim().slice(-1200) || `${label} 安装失败（${code}）`)));
+      });
+      return;
+    } catch (error) {
+      lastError = error as Error;
+      if (registry) sendToWindow("runtime:progress", { id, message: `${label} 从${via}安装失败，改用官方源重试…`, percent: 0 });
+    }
+  }
+  throw lastError ?? new Error(`${label} 安装失败`);
+}
+
+/* ── Filee 文件转换（10-30）───────────────────────────────────────────────────
+ * GitHub release 直下型（**不是 npm 包**）：镜像序下载便携包 → SHA256 校验 → 解压 tools/filee/。
+ * ⛔ 镜像序单一真相源 = gh-mirror.mirrorCandidates（gh-proxy → ghfast → 直连），别在这里另写一份。
+ * ⛔ 151MB 大包必须 SHA256 校验（release 自带 Filee-<ver>-SHA256SUMS.txt）：镜像转发偶发截断，
+ *   坏包解压一半比「下载失败」更难排查（10-30 实测 CLI 真跑通过后定的口径）。
+ * ⛔ 装完写 version.txt：更新链的 installedVersionOf 读它 —— `filee-cli --version` 要 spawn 一次太慢。
+ * ⛔ CLI 输出/取消：下载用流式 + 进度（同 skill-packs 的 10-30 口径「要真安装」），取消走
+ *   isCancelRequested 轮询（fetch 不能被 trackRuntimeProc 杀，每 chunk 自查）。
+ * ⛔ 导出 FILEE_REPO：filee:status 的声明区（FileeCard 跳转按钮）从它取 —— 前端不写第二份 URL。 */
+export const FILEE_REPO = "KnifeLemon/Filee";
+function fileeInstallDir(): string { return path.join(writeToolsRoot(), "filee"); }
+function fileeVersionFile(): string { return path.join(fileeInstallDir(), "version.txt"); }
+
+/** Filee 便携包资产名（按平台/架构；资产名规律 10-30 实测自 GitHub release v2.2.0）。 */
+function fileeAssetName(version: string): string {
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  if (process.platform === "win32") return `Filee-${version}-win-Portable.zip`;
+  if (process.platform === "darwin") return `Filee-${version}-osx-${arch}.tar.gz`;
+  return `Filee-${version}-linux-${arch}.tar.gz`;
+}
+
+/** 读盘上已装版本（安装时落盘的 version.txt；读不到 = 未安装/旧版安装）。 */
+function fileeInstalledVersion(): string {
+  try { return readFileSync(fileeVersionFile(), "utf8").trim(); } catch { return ""; }
+}
+
+/** 下载 Filee release 资产：统一镜像下载器（选最快源 + 停滞换源 + 取消 + 进度/速度 + SHA256）。 */
+async function fileeDownloadAsset(id: DevRuntimeId, urlPath: string, target: string, expectZipMagic: boolean): Promise<string> {
+  const url = `https://github.com/${FILEE_REPO}/releases/download/${urlPath}`;
+  let lastHost = "";
+  const result = await downloadThroughMirrors({
+    url,
+    target,
+    expectZipMagic,
+    isCancelled: () => isCancelRequested(id),
+    onProgress: (p) => {
+      const pct = p.total ? p.percent : 0;
+      emitRuntimeProgress(id, `@@PROGRESS ${pct}`);
+      const mbText = p.total
+        ? `${(p.received / 1048576).toFixed(1)} MB / ${(p.total / 1048576).toFixed(1)} MB`
+        : `${(p.received / 1048576).toFixed(1)} MB`;
+      const speed = p.bytesPerSec >= 1048576
+        ? `${(p.bytesPerSec / 1048576).toFixed(1)} MB/s`
+        : p.bytesPerSec > 0 ? `${Math.max(1, Math.round(p.bytesPerSec / 1024))} KB/s` : "";
+      emitRuntimeProgress(id, `@@SPEED ${speed ? `${speed} · ` : ""}${mbText}`);
+      if (p.host && p.host !== lastHost) {
+        lastHost = p.host;
+        emitRuntimeProgress(id, `正在下载（${p.host}）…`);
+      }
+    },
+  });
+  return result.sha256;
+}
+
+/** 安装 / 更新 Filee（version 传具体版本号；更新链传 GitHub 最新 tag）。 */
+async function installFileeFromGitHub(id: DevRuntimeId, version: string): Promise<void> {
+  if (!/^[0-9][0-9A-Za-z.\-]*$/.test(version)) throw new Error(`Filee 版本号异常：${version}`);
+  const dir = fileeInstallDir();
+  const staging = path.join(writeToolsRoot(), ".filee-download");
+  await fs.mkdir(staging, { recursive: true });
+  const asset = fileeAssetName(version);
+  emitRuntimeProgress(id, `@@STAGE 下载 Filee ${version}`);
+  const archive = path.join(staging, asset);
+  const actualSha = await fileeDownloadAsset(id, `v${version}/${asset}`, archive, process.platform === "win32");
+  if (isCancelRequested(id)) { await fs.rm(archive, { force: true }).catch(() => undefined); throw new Error("已取消"); }
+  // SHA256 校验（校验表也走镜像序；拿不到表或表里没这行 = 如实说明并跳过，不装哑巴包也不瞎报错）
+  emitRuntimeProgress(id, "校验 SHA256…");
+  let expectedSha = "";
+  for (const candidate of mirrorCandidates(`https://github.com/${FILEE_REPO}/releases/download/v${version}/Filee-${version}-SHA256SUMS.txt`)) {
+    try {
+      const res = await guardedFetch(candidate, { redirect: "follow", signal: AbortSignal.timeout(60_000) }, { timeoutMs: 60_000 });
+      if (!res.ok) continue;
+      const text = await res.text();
+      const row = text.split(/\r?\n/).find((line) => line.toLowerCase().includes(asset.toLowerCase()));
+      const hex = row?.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+      if (/^[0-9a-f]{64}$/.test(hex)) { expectedSha = hex; break; }
+    } catch { /* 下一个镜像 */ }
+  }
+  if (expectedSha && actualSha && expectedSha !== actualSha) {
+    await fs.rm(archive, { force: true });
+    throw new Error(`Filee 安装包 SHA256 校验失败（下载可能被截断）：期望 ${expectedSha.slice(0, 12)}…，实际 ${actualSha.slice(0, 12)}… —— 请重试`);
+  }
+  // 清旧目录（解压目标整体重建；临时下载件在 staging、不受影响）
+  /* ⛔ 11-01「取消后装不上」系统性修法：解压先进 staging，完整后再换入安装目录。
+     取消时只会留下 .installing 目录（下次安装开头清掉），不会出现「半个 filee 但 marker 在」。 */
+  emitRuntimeProgress(id, "正在解压…");
+  const stage = `${dir}.installing`;
+  await fs.rm(stage, { recursive: true, force: true });
+  await fs.mkdir(stage, { recursive: true });
+  const zipMagic = process.platform === "win32";
+  try {
+    if (zipMagic) {
+      const sevenZip = existingToolPath("sevenzip", "7z.exe");
+      if (!sevenZip) throw new Error("缺少随包 7-Zip（sevenzip/7z.exe），解压不了 Filee 安装包");
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(sevenZip, ["x", archive, `-o${stage}`, "-y"], { windowsHide: true });
+        trackRuntimeProc(id, child);
+        let tail = "";
+        const grab = (c: unknown) => { tail = `${tail}\n${String(c)}`.slice(-2000); };
+        child.stdout?.on("data", grab);
+        child.stderr?.on("data", grab);
+        child.on("error", reject);
+        child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`解压失败（${code}）：${tail.trim().slice(-600)}`)));
+      });
+    } else {
+      // mac / linux：系统自带 tar（osx-*.tar.gz / linux-*.tar.gz）
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(tarExecutable(), ["-xzf", archive, "-C", stage], { windowsHide: true });
+        trackRuntimeProc(id, child);
+        child.on("error", reject);
+        child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`解压失败（${code}）`)));
+      });
+    }
+    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rename(stage, dir);
+  } finally {
+    await fs.rm(stage, { recursive: true, force: true }).catch(() => undefined);
+  }
+  // 落版本号（更新链 installedVersionOf 读它）
+  await fs.writeFile(fileeVersionFile(), version + "\n", "utf8");
+  await fs.rm(staging, { recursive: true, force: true });
+}
+
+/* ── ApkStart 安卓运行器（11-14，RoutineMiku/apkstart，MIT）──────────────────
+ * Windows 安卓应用运行器：便携 zip 约 119MB；首次启动再由它自己下载 Android 运行时。
+ * 只提供 CLI 安装/启动（`ApkStart.exe <apk>` / `--launch <包名>`），不做镜像重写。 */
+export const APKSTART_REPO = "RoutineMiku/apkstart";
+function apkstartInstallDir(): string { return path.join(writeToolsRoot(), "apkstart"); }
+function apkstartVersionFile(): string { return path.join(apkstartInstallDir(), "version.txt"); }
+function apkstartAssetName(version: string): string { return `ApkStart-v${version}-win64-portable.zip`; }
+function apkstartInstalledVersion(): string {
+  try { return readFileSync(apkstartVersionFile(), "utf8").trim(); } catch { return ""; }
+}
+
+/** GitHub release 资产的官方 sha256（新版 API 带 digest；拿不到就返回空，不假装校验过）。 */
+/** GitHub release 资产的官方 sha256（新版 API 带 digest；拿不到就返回空，不假装校验过）。
+ *  ⛔ 必须按**目标版本**查（tags/{version}），不能永远查 latest：装 pin/旧版时 latest 的 digest
+ *     与下载包不是同一个，会误报「SHA256 校验失败」。tag 可能是 `v1.2.3` 或 `1.2.3`，两种都试。 */
+async function fetchGitHubAssetDigest(repo: string, assetName: string, version?: string): Promise<string> {
+  const endpoints = version
+    ? [`https://api.github.com/repos/${repo}/releases/tags/v${version}`, `https://api.github.com/repos/${repo}/releases/tags/${version}`]
+    : [`https://api.github.com/repos/${repo}/releases/latest`];
+  for (const endpoint of endpoints) {
+    for (const candidate of mirrorCandidates(endpoint)) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20_000);
+      try {
+        const res = await guardedFetch(candidate, { signal: controller.signal, headers: { accept: "application/vnd.github+json" } }, { timeoutMs: 20_000 });
+        if (!res.ok) continue;
+        const json = (await res.json()) as { assets?: Array<{ name?: unknown; digest?: unknown }> };
+        const row = (json.assets ?? []).find((asset) => String(asset.name ?? "") === assetName);
+        const digest = String(row?.digest ?? "").toLowerCase();
+        if (digest.startsWith("sha256:")) return digest.slice(7);
+        if (/^[0-9a-f]{64}$/.test(digest)) return digest;
+      } catch { /* 下一个镜像 */ } finally { clearTimeout(timer); }
+    }
+  }
+  return "";
+}
+
+async function findFile(dir: string, name: string, depth: number): Promise<string> {
+  if (depth < 0) return "";
+  let entries: import("node:fs").Dirent[];
+  try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return ""; }
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name.toLowerCase() === name.toLowerCase()) return path.join(dir, entry.name);
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const found = await findFile(path.join(dir, entry.name), name, depth - 1);
+    if (found) return found;
+  }
+  return "";
+}
+
+async function installApkStartFromGitHub(id: DevRuntimeId, version: string): Promise<void> {
+  if (process.platform !== "win32") throw new Error("ApkStart 仅支持 Windows 10/11 x64");
+  if (!/^[0-9][0-9A-Za-z.\-]*$/.test(version)) throw new Error(`ApkStart 版本号异常：${version}`);
+  const dir = apkstartInstallDir();
+  const staging = path.join(writeToolsRoot(), ".apkstart-download");
+  await fs.mkdir(staging, { recursive: true });
+  const asset = apkstartAssetName(version);
+  emitRuntimeProgress(id, `@@STAGE 下载 ApkStart ${version}`);
+  const archive = path.join(staging, asset);
+  const actualSha = (await downloadThroughMirrors({
+    url: `https://github.com/${APKSTART_REPO}/releases/download/v${version}/${asset}`,
+    target: archive,
+    expectZipMagic: true,
+    isCancelled: () => isCancelRequested(id),
+    onProgress: (p) => {
+      const pct = p.total ? p.percent : 0;
+      emitRuntimeProgress(id, `@@PROGRESS ${pct}`);
+      const mbText = p.total
+        ? `${(p.received / 1048576).toFixed(1)} MB / ${(p.total / 1048576).toFixed(1)} MB`
+        : `${(p.received / 1048576).toFixed(1)} MB`;
+      emitRuntimeProgress(id, `正在下载 ApkStart（${mbText}，约 119 MB）`);
+    },
+  })).sha256;
+  if (isCancelRequested(id)) { await fs.rm(archive, { force: true }).catch(() => undefined); throw new Error("已取消"); }
+  emitRuntimeProgress(id, "校验 SHA256…");
+  const expectedSha = await fetchGitHubAssetDigest(APKSTART_REPO, asset, version);
+  if (expectedSha && actualSha && expectedSha !== actualSha) {
+    await fs.rm(archive, { force: true });
+    throw new Error(`ApkStart 安装包 SHA256 校验失败（下载可能被截断）：期望 ${expectedSha.slice(0, 12)}…，实际 ${actualSha.slice(0, 12)}… —— 请重试`);
+  }
+  emitRuntimeProgress(id, "正在解压…");
+  const stage = `${dir}.installing`;
+  await fs.rm(stage, { recursive: true, force: true });
+  await fs.mkdir(stage, { recursive: true });
+  try {
+    const sevenZip = existingToolPath("sevenzip", "7z.exe");
+    if (!sevenZip) throw new Error("缺少随包 7-Zip（sevenzip/7z.exe），解压不了 ApkStart 安装包");
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(sevenZip, ["x", archive, `-o${stage}`, "-y"], { windowsHide: true });
+      trackRuntimeProc(id, child);
+      let tail = "";
+      const grab = (chunk: unknown) => { tail = `${tail}\n${String(chunk)}`.slice(-2000); };
+      child.stdout?.on("data", grab);
+      child.stderr?.on("data", grab);
+      child.on("error", reject);
+      child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`解压失败（${code}）：${tail.trim().slice(-600)}`)));
+    });
+    // 便携包可能套一层目录：把 ApkStart.exe 所在目录的内容上提到 stage 根。
+    let exe = path.join(stage, "ApkStart.exe");
+    if (!existsSync(exe)) {
+      const found = await findFile(stage, "ApkStart.exe", 3);
+      if (!found) throw new Error("ApkStart 安装包解压后找不到 ApkStart.exe");
+      const root = path.dirname(found);
+      if (root !== stage) {
+        const lifted = `${stage}.root`;
+        await fs.rm(lifted, { recursive: true, force: true });
+        await fs.mkdir(lifted, { recursive: true });
+        for (const entry of await fs.readdir(root)) await fs.rename(path.join(root, entry), path.join(lifted, entry));
+        await fs.rm(stage, { recursive: true, force: true });
+        await fs.rename(lifted, stage);
+      }
+      exe = path.join(stage, "ApkStart.exe");
+    }
+    if (!existsSync(exe)) throw new Error("ApkStart 安装包不完整（缺 ApkStart.exe）");
+    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rename(stage, dir);
+  } finally {
+    await fs.rm(stage, { recursive: true, force: true }).catch(() => undefined);
+    await fs.rm(`${stage}.root`, { recursive: true, force: true }).catch(() => undefined);
+  }
+  await fs.writeFile(apkstartVersionFile(), version + "\n", "utf8");
+  await fs.rm(staging, { recursive: true, force: true });
+}
+
+/* ── GitHub 直下型工具的「检查更新 / 升级」（Filee，10-30）──────────────────────
+ * ⛔ 不并入 UPDATEABLE_TOOLS（那是 npm 包专用：pkg + fetchRegistryLatest）。
+ *   · 查最新版走 GitHub releases/latest（api 镜像序），比 npm 慢一点但 Filee 没有 npm 源；
+ *   · 升级 = 重跑同一条安装函数（带最新 tag），装完复核 version.txt。
+ * ⛔ 自动更新循环不收 filee：autoUpdateItems 只认配了开关的工具（151MB 不许后台偷下），
+ *   filee 只出现在「控制台 → 组件更新」的手动检查里 —— 这个边界别改。 */
+const GITHUB_UPDATEABLE: Record<string, { repo: string; label: string; platforms?: NodeJS.Platform[]; install: (id: DevRuntimeId, version: string) => Promise<void> }> = {
+  filee: { repo: FILEE_REPO, label: "Filee 文件转换", install: installFileeFromGitHub },
+  apkstart: { repo: APKSTART_REPO, label: "ApkStart 安卓运行器", platforms: ["win32"], install: installApkStartFromGitHub },
+  // OpenMAIC（11-14）：更新 = 重新下载源码并重建（5–10 分钟），课程数据保留；由卡片上的更新行列式提示。
+  openmaic: { repo: OPENMAIC_REPO, label: "OpenMAIC 互动课堂", platforms: ["win32"], install: installOpenMaicFromGitHub },
+  // Husk（11-14）：只有 iPhone 用的 IPA；电脑侧下载/更新官方安装包，真机侧载由用户完成。
+  husk: { repo: HUSK_REPO, label: "Husk（iPhone 跑 Android）", install: installHuskFromGitHub },
+  // Craft 全家桶（11-16）：Launcher 便携包（约 11MB，仅 Windows）；更新 = 重下同版本资产并替换。
+  // ⛔ PhotoCraft 不再由宿主直接下载（11-17 用户令：跟其他 App 一样走 Launcher），只在扫描到后做工具/MCP 联动。
+  artcraft: { repo: ARTCRAFT_REPO, label: "Craft 全家桶（ArtCraft Launcher）", platforms: ["win32"], install: installArtCraftFromGitHub },
+};
+
+/** 查 GitHub **最新**版本号（去 v 前缀）：tags 列表 + releases/latest 都查，取版本最大者。
+ *
+ * ⛔⛔ 11-15 用户实测「下载得有的时候都不是最新的，都是旧版本」：旧实现只查
+ *   `/releases/latest`，而不少上游先打 tag、后发（甚至根本不发）Release ⇒
+ *   latest release 长期落后于最新 tag，装下来的自然不是最新版。
+ *   判定口径与 `npm-version.ts` 的 `probeNewestNpmVersion` 对齐：**候选全查、取最大、不早退**。
+ * ⛔ 只认语义化版本 tag（v?x.y.z），跳过 `mobile-remote-v0.1.16` 这类别的产品线 tag。
+ */
+export async function fetchGitHubLatestTag(repo: string): Promise<string> {
+  const reasons: string[] = [];
+  const versions: string[] = [];
+  const endpoints = [
+    `https://api.github.com/repos/${repo}/tags?per_page=100`,
+    `https://api.github.com/repos/${repo}/releases/latest`,
+  ];
+  for (const url of endpoints) {
+    for (const candidate of mirrorCandidates(url)) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20_000);
+      try {
+        const res = await guardedFetch(candidate, {
+          signal: controller.signal,
+          headers: { accept: "application/vnd.github+json" },
+        }, { timeoutMs: 20_000 });
+        if (!res.ok) { reasons.push(`HTTP ${res.status}`); continue; }
+        const json = (await res.json()) as unknown;
+        const raw: string[] = Array.isArray(json)
+          ? (json as { name?: unknown }[]).map((t) => String(t?.name ?? ""))
+          : [String((json as { tag_name?: unknown })?.tag_name ?? "")];
+        for (const tag of raw) {
+          const v = tag.replace(/^v/, "");
+          // ⛔ 只认**稳定版**三段号：上游常有 v1.5.0-rc.2 之类的预发布 tag，
+          //   直接取最大会把 RC 当最新版装（OpenMAIC 实测 tags[0]=v1.5.0-rc.2 而
+          //   releases/latest=v1.4.2）⇒ 装到不稳定源码 / 版本校验失败。
+          if (/^\d+\.\d+\.\d+$/.test(v)) versions.push(v);
+        }
+        break; // 这个端点成功了就换下一个端点（两个端点都要查，不能因为第一个成功就 return）
+      } catch (error) {
+        reasons.push(String((error as Error)?.message ?? error));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+  if (!versions.length) throw new Error(`查 GitHub 最新版失败：${reasons.slice(0, 3).join("；") || "没有可用版本 tag"}`);
+  return versions.reduce((best, v) => (compareVersions(v, best) > 0 ? v : best), versions[0]);
+}
+
+/** 按需安装工具的版本解析：**在线查最新**，只有彻底查不到才退回随包版本表。
+ *  ⛔⛔ 11-15 用户令「下载得有的时候都不是最新的，都是旧版本」：旧代码直接吃
+ *    `TOOLS_VERSIONS.filee / feishuCli` 这类固定表值，表里停在 2.2.0 / 1.0.98，
+ *    上游早就发新版了还在装旧的。固定表从今往后只是**离线兜底**，不是安装首选。 */
+async function latestInstallVersion(tableKey: string, repo: string): Promise<string> {
+  try { return await fetchGitHubLatestTag(repo); }
+  catch { return TOOLS_VERSIONS[tableKey] ?? ""; }
+}
+
+export type DevRuntimeHealth = {
+  id: string;
+  name: string;
+  /** 文件在不在（与卡片同一份判定）。 */
+  installed: boolean;
+  /** 装了的能不能真跑起来。 */
+  ok: boolean;
+  /** 给人看的一行结论（版本串 / 失败原因）。 */
+  detail: string;
+};
+
+/** 自检时让工具自报版本的参数（只列**可执行文件型**；其余只验存在性）。 */
+const HEALTH_ARGS: Partial<Record<DevRuntimeId, string[]>> = {
+  node: ["-v"], python: ["--version"], git: ["--version"], rg: ["--version"], uv: ["--version"],
+  jq: ["--version"], ninja: ["--version"], sevenzip: [], "yt-dlp": ["--version"], cmake: ["--version"],
+  ffmpeg: ["-version"], "platform-tools": ["version"],
+  filee: ["--version"],
+  pwsh: ["-NoLogo", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"],
+  "vscode-cli": ["--version"], conda: ["--version"], mingw: ["--version"],
+};
+
+/** 跑一次命令拿首行输出；**任何异常都收敛成一行文字**，不抛。 */
+function probeTool(file: string, args: string[]): Promise<{ ok: boolean; detail: string }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (ok: boolean, detail: string) => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok, detail });
+    };
+    if (!existsSync(file)) return done(false, "已安装但找不到可执行文件（目录可能被手动删过，点「修复安装」）");
+    try {
+      /* ⛔⛔ 11-01 用户实测「Miniconda 检查报 Traceback，是不是用不了」：实测 cd 到安装目录里跑
+         conda --version 完全正常（conda 25.1.1 / Python 3.12.9），报错是**探测方式**造成的 ——
+         conda 的启动器要先定位自己的安装根，没有正确 cwd / CONDA_PREFIX 时会抛 Python Traceback。
+         ⇒ 探测一律在该工具自己的目录里跑；conda 额外把 cwd 落到 miniconda 根并给 CONDA_PREFIX。 */
+      const baseDir = require("node:path").dirname(file);
+      const isConda = /conda(.exe)?$/i.test(file);
+      const condaRoot = isConda ? require("node:path").dirname(baseDir) : "";
+      const child = spawn(file, args, {
+        windowsHide: true,
+        cwd: isConda ? condaRoot : baseDir,
+        /* conda 的 launcher 还要能找到自己的 python 与 conda 包：只给 CONDA_PREFIX 不够，
+           必须把 miniconda 根 / Scripts / Libraryin 放进 PATH，并指认 CONDA_EXE。 */
+        env: isConda
+          ? (() => {
+              const base = toolchainEnv() as Record<string, string>;
+              const sep = process.platform === "win32" ? ";" : ":";
+              const pathKey = Object.keys(base).find((k) => k.toUpperCase() === "PATH") || "PATH";
+              const extra = [condaRoot, condaRoot + sep + "Scripts", condaRoot + sep + "Library" + sep + "bin"].join(sep);
+              /* ⛔⛔ 实测关键：conda.exe 本身是 Python 启动器，若继承了 toolchainEnv 里的
+                 PYTHONHOME / PYTHONPATH（指向随包 python），它会用自己的解释器去加载别的标准库
+                 ⇒ 直接抛 Traceback（「退出码 1」就是这么来的）。手动跑（不带这些变量）一直是正常的。
+                 ⇒ conda 探测前把这三个变量剔除。 */
+              for (const k of ["PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE"]) {
+                for (const real of Object.keys(base)) if (real.toUpperCase() === k) delete (base as any)[real];
+              }
+              return { ...base, [pathKey]: extra + sep + String(base[pathKey] || ""), CONDA_PREFIX: condaRoot, CONDA_EXE: file };
+            })()
+          : toolchainEnv(),
+        timeout: 8000,
+      });
+      let out = "";
+      const grab = (chunk: unknown) => { out += String(chunk); };
+      child.stdout?.on("data", grab);
+      child.stderr?.on("data", grab);
+      child.on("error", (error) => done(false, `无法启动：${String((error as Error).message || error).slice(0, 140)}`));
+      child.on("close", (code) => {
+        const first = out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0] ?? "";
+        if (code === 0) done(true, first.slice(0, 120) || "可运行");
+        else done(false, `退出码 ${code}${first ? `：${first.slice(0, 100)}` : ""}`);
+      });
+    } catch (error) {
+      done(false, String(error).slice(0, 140));
+    }
+  });
+}
+
+/** 可执行文件的落点：Windows 用 spec.marker，mac 走 DARWIN_MARKERS 覆盖。 */
+function healthExecPath(id: DevRuntimeId, spec: DevRuntimeSpec): string {
+  const rel = IS_MAC ? (DARWIN_MARKERS[id] ?? spec.marker) : spec.marker;
+  /* 随包 / 用户下载两个根都查；未安装时返回 **userData** 预期落位（提示用户装到哪）。 */
+  return existingToolPath(rel) || path.join(writeToolsRoot(), rel);
+}
+
+/**
+ * 工具自检（10-02 用户：「工具给老子一个检查，有一个报错，下载按不了」）。
+ * 卡片上的「已安装」只证明**文件在**，不证明**能跑** —— 用户要的是后者。
+ * ⛔ 单项失败绝不抛出：一个工具探不通不能让整页自检崩掉。
+ * ⛔ 探测必须带超时（8s）；hidden 项也要查（用户照样会问「装了没、能不能用」）。
+ */
+async function devRuntimeHealth(): Promise<DevRuntimeHealth[]> {
+  const specs = devRuntimeSpecs;
+  const rows: DevRuntimeHealth[] = [];
+  for (const [rawId, spec] of Object.entries(specs) as [DevRuntimeId, DevRuntimeSpec][]) {
+    // 系统级安装项（Docker / OpenSSL，点按钮去官网）不参与自检 —— 我们没装它、也无从探测
+    if (spec.kind === "guide") continue;
+    const installed = runtimeInstalled(rawId, spec);
+    if (!installed) {
+      rows.push({ id: rawId, name: spec.name, installed: false, ok: false, detail: "未安装" });
+      continue;
+    }
+    const args = HEALTH_ARGS[rawId];
+    if (!args) {
+      rows.push({ id: rawId, name: spec.name, installed: true, ok: true, detail: "已安装（无需可执行探测）" });
+      continue;
+    }
+    const file = healthExecPath(rawId, spec);
+    const probe = await probeTool(file, args);
+    let ok = probe.ok;
+    let detail = probe.detail;
+    // Python 是最容易「在但不好用」的一个：装得上全看 pip（历史踩过 embeddable 版无 pip）。
+    if (rawId === "python" && probe.ok) {
+      const pip = pythonPipReady(file);
+      if (!pip.ok) { ok = false; detail = pip.reason; }
+      else detail = `${detail}｜pip 可用`;
+    }
+    rows.push({ id: rawId, name: spec.name, installed: true, ok, detail });
+  }
+  return rows;
+}
+
+/* ── 工具链「检查更新 / 升级」（10-12 用户要求）────────────────────────────────
+ * 用户原话：「nuphus 和 browser 能不能留好国内镜像源更新入口，这个界面加上两个更新功能」。
+ * ⛔ 与「修复安装」的分工（两者不可互相替代，界面文案也要分清）：
+ *   · 修复安装 = 从**随包 zip** 重解压 ⇒ 版本回到「包内版本」（离线、永远可用）；
+ *   · 在线更新 = 从 **npm 国内镜像**装 `<pkg>@latest` ⇒ 真升级（联网、版本跟着 npm 走）。
+ *   ⇒ 用户点过在线更新后，日后再点修复安装会**降级**回包内版本 —— 这是设计使然，不是 bug。
+ * ⛔ 包名与落位都取既有真相源（npmGlobalRootCandidates），别在这里手拼 `npm-global/node_modules`。
+ * ⛔ 装完必须**复核磁盘上的版本**，读不到就报错 —— 不许「看起来装好了」。
+ * ⛔ 必须重启引擎：nuphus 是引擎 spawn 的 MCP 子进程，CLI 也在引擎的 PATH 上。
+ * ⛔ 新增可更新工具时，**同时**改这里与界面侧清单（界面侧从 runtime:update-check 全量拉，不用改）。
+ */
+const UPDATEABLE_TOOLS: Record<string, { pkg: string; label: string; platforms?: NodeJS.Platform[]; pin?: string }> = {
+  nuphus: { pkg: "@nuphus/nuphus-mcp", label: "Nuphus 桌面自动化" },
+  /* 11-13：Nuphus / Computer Use 默认关，但仍是可安装/可更新的可选后端
+     （用户显式开启后参与兜底；computer-use 仅 darwin/win32 有二进制）。 */
+  "computer-use": { pkg: "open-computer-use", label: "电脑操作（Computer Use）", platforms: ["darwin", "win32"] },
+  // 11-13 agent-desktop（Vercel Labs，Apache-2.0）：无障碍树桌面后端，npm 包自带上三平台二进制。
+  "agent-desktop": { pkg: "agent-desktop", label: "Agent Desktop（无障碍树）", platforms: ["darwin", "win32", "linux"] },
+  /* REA 逆向分析（10-13）：同一条在线更新链（fetchRegistryLatest = 国内镜像优先 + 官方回落）。
+     ⛔ 11-14 起**锁版本**：随包 Node v24.19.0 不满足 6.8.0+ 的 engines（^24.22.1），追 latest
+     会把刚装好的包装成「一启动就 exit 1」。pin = 兼容上限，理由与解除条件见 rea-gateway.ts。 */
+  rea: { pkg: "rea-agents", label: "REA 逆向分析", pin: REA_PINNED_VERSION },
+  "feishu-cli": { pkg: "@larksuite/cli", label: "飞书 CLI" },
+};
+
+/** pip 型可更新工具（PyPI）：id → PyPI 包名 + 显示名。
+ *
+ *  ⛔ 为什么要单开一张表：`UPDATEABLE_TOOLS` 是 npm 包（查 dist-tags、装 `<pkg>@<ver>`），
+ *    `GITHUB_UPDATEABLE` 是 release 直下（查 tag、下资产）；Laya / 手机控制 / 文档转换三个是
+ *    pip 包，两条链都不认 ⇒ 卡片上根本没有「检查更新」（11-14 用户实测「这里没有更新功能啊」）。
+ *  ⛔⛔ 故意**不进** `updateableToolIds()`：那张表被后台「自动更新」消费，而 laya 带 PyTorch
+ *    依赖（几百 MB 到上千 MB），不能无人值守重装。这里只服务卡片里的手动检查/升级。
+ *  ⛔ 升级复用各自既有安装器（都已带 `-U`/`--upgrade` 语义 + 多镜像回落 + 装后复核），
+ *    不在这里另写一条 pip 命令。
+ */
+const PIP_UPDATEABLE: Record<string, { pkg: string; label: string }> = {
+  laya: { pkg: "laya", label: "Laya 智能判断" },
+};
+
+/** 读 pip 包的已装版本（`python -m pip show`）；没装 / 读不到返回空串（界面据此判「未装」）。 */
+function pipInstalledVersion(pkg: string): string {
+  const bin = bundledPython();
+  if (!bin) return "";
+  try {
+    const out = spawnSync(bin, ["-m", "pip", "show", pkg], { encoding: "utf8", timeout: 20_000, windowsHide: true });
+    return /^Version:\s*(\S+)/m.exec(String(out.stdout ?? ""))?.[1] ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** 查 PyPI 最新版：官方 JSON + 清华镜像 JSON 都试，取第一个有效值。
+ *  ⛔ 镜像的 `/pypi/<name>/json` 与官方同构；两边都失败就**抛错**，
+ *    让界面显示「检查更新失败：…」而不是假装「已是最新」（项目硬约定：不许假成功）。 */
+async function fetchPypiLatest(pkg: string): Promise<string> {
+  const endpoints = [
+    `https://pypi.org/pypi/${encodeURIComponent(pkg)}/json`,
+    `https://pypi.tuna.tsinghua.edu.cn/pypi/${encodeURIComponent(pkg)}/json`,
+  ];
+  const reasons: string[] = [];
+  for (const url of endpoints) {
+    try {
+      const res = await guardedFetch(url, { headers: { accept: "application/json" } }, { timeoutMs: 15_000 });
+      if (!res.ok) { reasons.push(`${new URL(url).host} → HTTP ${res.status}`); continue; }
+      const json = (await res.json()) as { info?: { version?: unknown } };
+      const version = String(json?.info?.version ?? "").trim();
+      if (version) return version;
+      reasons.push(`${new URL(url).host} → 没有 info.version`);
+    } catch (error) {
+      reasons.push(`${new URL(url).host} → ${(error as Error)?.message ?? String(error)}`);
+    }
+  }
+  throw new Error(`查不到 PyPI 最新版（${reasons.join("；")}）`);
+}
+
+/** 单个可更新工具的包名 / 显示名（**唯一真相源**）：自动更新板块从这里取，⛔ 不许另抄一份包名。 */
+export function updateableToolMeta(id: string): { pkg: string; label: string } | null {
+  const tool = UPDATEABLE_TOOLS[id];
+  if (tool) return { pkg: tool.pkg, label: tool.label };
+  const pip = PIP_UPDATEABLE[id];
+  if (pip) return { pkg: `pypi:${pip.pkg}`, label: pip.label };
+  const gh = GITHUB_UPDATEABLE[id];
+  if (gh) return { pkg: `github:${gh.repo}`, label: gh.label };
+  return null;
+}
+
+export type RuntimeUpdateRow = {
+  id: string;
+  name: string;
+  pkg: string;
+  current: string;
+  latest: string;
+  registry: string;
+  hasUpdate: boolean;
+  error: string;
+};
+
+/** 当前平台**真正**可更新的工具 id（桌面 → 浏览器 → 电脑操作 → GitHub 直下型，顺序稳定）。
+ *  ⛔ 界面与后台调度都必须走这里，别各写一份清单（本项目反复栽在两处各写一套上）。 */
+export function updateableToolIds(): string[] {
+  return [...Object.keys(UPDATEABLE_TOOLS), ...Object.keys(GITHUB_UPDATEABLE)].filter((id) => {
+    const platforms = UPDATEABLE_TOOLS[id]?.platforms ?? GITHUB_UPDATEABLE[id]?.platforms;
+    return !platforms || platforms.includes(process.platform);
+  });
+}
+
+/** 读磁盘上已装的版本号（npm 包读 package.json；GitHub 直下型读安装时落的 version.txt）。 */
+/** 安装 Craft 全家桶后重写 config.toml：每个 App 的 MCP 段（含 PhotoCraft）的唯一来源是 applyCustomModel。 */
+async function refreshConfigForGatewayTools(): Promise<void> {
+  try {
+    const { readCustomModel } = await import("../main/01-model-catalog");
+    const { applyCustomModel } = await import("./custom-model-apply");
+    const model = await readCustomModel();
+    if (model) await applyCustomModel(model, { restart: false });
+  } catch { /* 没有模型档案时跳过：下一次 applyCustomModel 会按安装状态收敛 */ }
+}
+
+function installedVersionOf(id: string): string {
+  const gh = GITHUB_UPDATEABLE[id];
+  if (gh) {
+    if (id === "filee") return fileeInstalledVersion();
+    if (id === "apkstart") return apkstartInstalledVersion();
+    if (id === "openmaic") return openmaicInstalledVersion();
+    if (id === "husk") return huskInstalledVersion();
+    if (id === "artcraft") return artcraftInstalledVersion();
+    return "";
+  }
+  const tool = UPDATEABLE_TOOLS[id];
+  if (!tool) return "";
+  // ⛔ rea 的「已装版本」必须等于「能用的安装」（11-07 修「启动失败」自愈）：更新中断会掏空 dist、
+  //    只留 package.json —— 若仍按版本号回报，更新链会判「已是最新」永不重装，坏包永久卡死。
+  //    编译产物缺失（reaServerScript() 空）⇒ 当作未装 ⇒ checkRuntimeUpdateRow 报 hasUpdate ⇒ 重装自愈。
+  if (id === "rea" && !reaServerScript()) return "";
+  const segments = tool.pkg.split("/");
+  for (const root of npmGlobalRootCandidates()) {
+    try {
+      const pkgJson = path.join(root, ...segments, "package.json");
+      if (!existsSync(pkgJson)) continue;
+      const parsed = JSON.parse(readFileSync(pkgJson, "utf8")) as { version?: unknown };
+      if (typeof parsed.version === "string" && parsed.version) return parsed.version;
+    } catch { /* 读不到就换下一个落位 */ }
+  }
+  return "";
+}
+
+/**
+ * 查 npm 上某包的最新版：**镜像 + 官方都查，取真正最新的那个**（11-10 用户令）。
+ *
+ * ⛔ 旧实现「第一个成功就 return」被 npmmirror 的缓存快照骗过：镜像成功但滞后数天，
+ *    官方源永远没机会说话 ⇒ 组件更新清单恒显示「已是最新」。判定层在 npm-version.ts，
+ *    这里只负责「按下载源列出候选」+「用 fetch 探测」，不自己判谁新。
+ */
+async function fetchRegistryLatest(
+  pkg: string,
+  source: NonNullable<AppSettings["downloadSource"]>,
+  timeoutMs = 20000,
+): Promise<{ version: string; registry: string }> {
+  const userRegistry = process.env.npm_config_registry || process.env.NPM_CONFIG_REGISTRY || "";
+  const registries = userRegistry
+    ? [userRegistry]
+    : source === "direct"
+      ? ["https://registry.npmjs.org", CHINA_NPM_REGISTRY]
+      : [CHINA_NPM_REGISTRY, "https://registry.npmjs.org"];
+  const result = await probeNewestNpmVersion(registries, async (registry) => {
+    // ⛔ 必须带超时：镜像站偶发挂住时不能让「检查更新」按钮永远转圈
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await guardedFetch(`${registry}/${pkg.replace("/", "%2F")}`, {
+        signal: controller.signal,
+        // 精简 packument：只要 dist-tags，不要每个版本的完整元数据（镜像与官方源都支持）
+        headers: { accept: "application/vnd.npm.install-v1+json, application/json" },
+      }, { timeoutMs });
+      if (!res.ok) throw new Error(`返回 HTTP ${res.status}`);
+      const json = (await res.json()) as { "dist-tags"?: { latest?: unknown } };
+      const latest = json?.["dist-tags"]?.latest;
+      if (typeof latest !== "string" || !latest) throw new Error("响应里没有 dist-tags.latest");
+      return latest;
+    } finally {
+      clearTimeout(timer);
+    }
+  }, timeoutMs + 2000);
+  if (result.errors.length) {
+    console.warn(`[runtime-ipc] ${pkg} 部分更新源不可用，已按其余源判定：${result.errors.join("；")}`);
+  }
+  return { version: result.version, registry: result.registry };
+}
+
+/* ── 手动/自动共用的两条链路（10-13 抽出）────────────────────────────────────
+ * ⛔⛔ **手动链 = 自动链，物理同一份函数**：后台自动更新（auto-update-ipc）必须调这两个函数，
+ *    不许在主进程再抄一遍「查最新版 → 装 → 复核 → 重启引擎」——两处各写判据必漂移
+ *    （症状：界面说「已是最新」、后台却在偷偷装，或反之）。界面按钮只是这两个函数的薄包装。
+ */
+export async function checkRuntimeUpdateRow(id: string): Promise<RuntimeUpdateRow> {
+  /* pip 型（11-14）：查 PyPI 最新版与 `pip show` 已装版本。⛔ 必须排在 npm 分支之前 ——
+     否则 `!UPDATEABLE_TOOLS[id]` 会直接抛「该工具不支持在线更新」，Laya 卡片永远没有更新入口。 */
+  const pip = PIP_UPDATEABLE[id];
+  if (pip) {
+    const current = pipInstalledVersion(pip.pkg);
+    try {
+      const latest = await fetchPypiLatest(pip.pkg);
+      return { id, name: pip.label, pkg: `pypi:${pip.pkg}`, current, latest, registry: "pypi", hasUpdate: !current || compareVersions(latest, current) > 0, error: "" };
+    } catch (error) {
+      return { id, name: pip.label, pkg: `pypi:${pip.pkg}`, current, latest: "", registry: "", hasUpdate: false, error: (error as Error)?.message ?? String(error) };
+    }
+  }
+  const gh = GITHUB_UPDATEABLE[id];
+  if (gh) {
+    // GitHub 直下型（Filee）：查 releases/latest tag，与盘上 version.txt 比
+    const current = installedVersionOf(id);
+    try {
+      const latest = await fetchGitHubLatestTag(gh.repo);
+      return { id, name: gh.label, pkg: `github:${gh.repo}`, current, latest, registry: "github", hasUpdate: !current || compareVersions(latest, current) > 0, error: "" };
+    } catch (error) {
+      return { id, name: gh.label, pkg: `github:${gh.repo}`, current, latest: "", registry: "", hasUpdate: false, error: (error as Error)?.message ?? String(error) };
+    }
+  }
+  const tool = UPDATEABLE_TOOLS[id];
+  if (!tool) throw new Error(`该工具不支持在线更新：${id}`);
+  const source = await readDownloadSource();
+  const current = installedVersionOf(id);
+  /* ⛔ 11-14 pin 工具（REA）：目标版本 = pin，不查上游 latest —— 否则界面会一直提示
+     「有更新 6.9.0」，用户一点就把能被内置 Node 跑起来的包换成 exit 1 的死包。 */
+  if (tool.pin) {
+    return {
+      id, name: tool.label, pkg: tool.pkg, current, latest: tool.pin, registry: CHINA_NPM_REGISTRY,
+      hasUpdate: current !== tool.pin, error: "",
+    };
+  }
+  try {
+    const { version: latest, registry } = await fetchRegistryLatest(tool.pkg, source);
+    return { id, name: tool.label, pkg: tool.pkg, current, latest, registry, hasUpdate: !current || compareVersions(latest, current) > 0, error: "" };
+  } catch (error) {
+    // ⛔ 查不到最新版**不是致命错**：照常返回已装版本，错误原文给人看（网络问题用户自己能判断）
+    return { id, name: tool.label, pkg: tool.pkg, current, latest: "", registry: "", hasUpdate: false, error: (error as Error)?.message ?? String(error) };
+  }
+}
+
+/** 返回 `joined` = 同一工具已有更新在跑，本次只是等它跑完（与 install 同语义，不抛「正在安装」）。 */
+export async function performRuntimeUpdate(
+  id: string,
+): Promise<{ ok: boolean; from: string; to: string; cancelled?: boolean; joined?: boolean }> {
+  /* pip 型（11-14）：升级 = 重跑该工具**既有**的安装器（已带 `-U`、多镜像回落、装后复核）。
+     ⛔ 不复用 `runNpmInstall`：那是 npm 专用（写 npm-global、改 shim）。
+     ⛔ 装完必须再读一次 `pip show`：读不到就是没装成，不许只凭安装器 exit 0 报成功。 */
+  const pip = PIP_UPDATEABLE[id];
+  if (pip) {
+    const inFlight = runtimeInstalls.get(id);
+    if (inFlight) { await inFlight; return { ok: true, joined: true, from: "", to: pipInstalledVersion(pip.pkg) }; }
+    const from = pipInstalledVersion(pip.pkg);
+    const task = (async () => {
+      emitRuntimeProgress(id, `@@STAGE 更新 ${pip.label}`);
+      emitRuntimeProgress(id, `正在更新 ${pip.pkg}（当前 ${from || "未装"}）…`);
+      if (id === "laya") {
+        const result = await layaInstall();
+        if (!result.ok) throw new Error(result.log.slice(-600) || "Laya 更新失败");
+      } else {
+        /* ⛔ 只登记表不补分派 = 一定会走错安装器（phone-harness 有专用链，markitdown 走通用脚本）。
+           宁可显式报错，也不许静默用 npm 安装器或别的工具链去「升级」一个 pip 包。 */
+        throw new Error(`pip 更新缺少安装器分派：${id}（在 performRuntimeUpdate 的 pip 分支补一条）`);
+      }
+      await restartServerWhenIdle(id);
+    })();
+    runtimeInstalls.set(id, task);
+    try {
+      await task;
+      const to = pipInstalledVersion(pip.pkg);
+      if (!to) throw new Error(`${pip.label} 更新流程已结束，但读不到已装版本 —— 请重试或重新安装`);
+      sendToWindow("runtime:progress", { id, message: `已更新到 ${to}`, percent: 100, speed: "", done: true });
+      return { ok: true, from, to };
+    } catch (error) {
+      if (isCancelRequested(id)) return { ok: true, cancelled: true, from, to: "" };
+      throw error;
+    } finally {
+      runtimeInstalls.delete(id);
+      clearCancelRequest(id);
+    }
+  }
+  const gh = GITHUB_UPDATEABLE[id];
+  if (gh) {
+    // GitHub 直下型（Filee）：升级 = 重跑同一条安装函数（最新 tag），装完复核 version.txt
+    const inFlight = runtimeInstalls.get(id);
+    if (inFlight) { await inFlight; return { ok: true, joined: true, from: "", to: installedVersionOf(id) }; }
+    const from = installedVersionOf(id);
+    const task = (async () => {
+      emitRuntimeProgress(id, `@@STAGE 更新 ${gh.label}`);
+      const latest = await fetchGitHubLatestTag(gh.repo);
+      await gh.install(id as DevRuntimeId, latest);
+      await restartServerWhenIdle(id);
+    })();
+    runtimeInstalls.set(id, task);
+    try {
+      await task;
+      const to = installedVersionOf(id);
+      if (!to) throw new Error(`${gh.label} 更新流程已结束，但读不到已装版本 —— 请重试或重新安装`);
+      sendToWindow("runtime:progress", { id, message: `已更新到 ${to}`, percent: 100, speed: "", done: true });
+      return { ok: true, from, to };
+    } catch (error) {
+      if (isCancelRequested(id)) return { ok: true, cancelled: true, from, to: "" };
+      throw error;
+    } finally {
+      runtimeInstalls.delete(id);
+      clearCancelRequest(id);
+    }
+  }
+  const tool = UPDATEABLE_TOOLS[id];
+  if (!tool) throw new Error(`该工具不支持在线更新：${id}`);
+  const inFlight = runtimeInstalls.get(id);
+  if (inFlight) { await inFlight; return { ok: true, joined: true, from: "", to: installedVersionOf(id) }; }
+  const from = installedVersionOf(id);
+  const downloadSource = await readDownloadSource();
+  /* ⛔ 11-10：检查更新已按「所有源取最大」判版本，安装必须复用**同一份结论** ——
+     装 <pkg>@<具体版本> 并优先从胜出源装，最后复核磁盘版本确实等于目标。
+     否则镜像还没同步新版时，@latest 会装回旧版：界面显示「有更新」却永远点不动。 */
+  // ⛔ pin 工具的安装结论必须与 checkRuntimeUpdateRow 同源（11-14：一个查 latest 一个装 pin ⇒ 界面显示的版本与实装不符）。
+  let target: { version: string; registry: string } | null = tool.pin
+    ? { version: tool.pin, registry: CHINA_NPM_REGISTRY }
+    : null;
+  if (!target) {
+    try {
+      target = await fetchRegistryLatest(tool.pkg, downloadSource);
+    } catch (error) {
+      emitRuntimeProgress(id, `查最新版本失败，改用 @latest 与默认源序：${(error as Error)?.message ?? String(error)}`);
+    }
+  }
+  const pkgSpec = target ? `${tool.pkg}@${target.version}` : `${tool.pkg}@latest`;
+  // 官方源映射成 ""（npm 不设 registry）；镜像本来就是默认首选项 ⇒ 不必插队；
+  // 用户私有源原样传入，安装器把它排到最前。
+  const preferredRegistry = target
+    ? target.registry === NPM_SOURCES.official
+      ? ""
+      : target.registry === CHINA_NPM_REGISTRY
+        ? undefined
+        : target.registry
+    : undefined;
+  const task = (async () => {
+    emitRuntimeProgress(id, `@@STAGE 更新 ${tool.label}`);
+    emitRuntimeProgress(id, `正在更新 ${pkgSpec}（当前 ${from || "未知"}）…`);
+    await runNpmInstall(id, pkgSpec, tool.label, downloadSource, NPM_ALLOW_SCRIPTS[id as DevRuntimeId], preferredRegistry);
+    // 引擎重启会等当前任务跑完（闸门），期间界面显示「等待任务结束后刷新引擎」
+    await restartServerWhenIdle(id);
+  })();
+  runtimeInstalls.set(id, task);
+  try {
+    await task;
+    const to = installedVersionOf(id);
+    // ⛔ 复核：命令退出码 0 ≠ 装上了（落位/权限/半截网络都可能「成功退出」）
+    if (!to) throw new Error(`${tool.label} 更新命令已跑完，但读不到已装版本 —— 请点「修复安装」回到随包版本`);
+    if (target && compareVersions(to, target.version) !== 0) {
+      throw new Error(`${tool.label} 装完是 ${to}，但目标版本是 ${target.version} —— 该版本可能还没同步到所选源，请稍后重试或把下载源切到「官方直连」`);
+    }
+    sendToWindow("runtime:progress", { id, message: `已更新到 ${to}`, percent: 100, speed: "", done: true });
+    return { ok: true, from, to };
+  } catch (error) {
+    // 取消（杀进程导致的非零退出）不算错误：回执 cancelled，与 install 同一口径
+    if (isCancelRequested(id)) return { ok: true, cancelled: true, from, to: "" };
+    throw error;
+  } finally {
+    runtimeInstalls.delete(id);
+    clearCancelRequest(id);
+  }
+}
+
+const RUNTIME_CHANNELS = ["runtime:list", "runtime:install", "runtime:uninstall", "runtime:cancel", "runtime:health", "runtime:update-check", "runtime:update"];
+
+/* 装不上的备用方案文案生成器：导出**只为可验证**（探针/守卫能真跑它），业务侧一律经 runtime:list 取。 */
+export { fallbackPromptFor };
+
+export const runtimeFeature = defineFeature<null>({
+  id: "runtime",
+  inject: ["ipc"],
+  setup: (ctx) => {
+    const ipcHost = ctx.get<IpcHost>("ipc");
+    if (!ipcHost) throw new Error("runtime: 缺少 ipc 服务（宿主未提供）");
+
+    ipcHost.handle("runtime:list", () => runtimeList());
+    ctx.effect(provideRuntimeInventory(runtimeList));
+
+    ipcHost.handle("runtime:uninstall", async (_event, idValue: string) => {
+      const id = idValue as DevRuntimeId;
+      const spec = devRuntimeSpecs[id];
+      if (!spec) throw new Error("未知开发工具");
+      /* ⛔⛔ 11-15 用户实测「安装中点卸载，应用直接干死」：安装进程正往同一个 5GB 目录写，
+         卸载同时遍历+删除同一棵树，两边互踩且进度永远走不完。安装未结束一律拒绝卸载，
+         先让用户点「取消」，等 in-flight 清空再操作。 */
+      if (runtimeInstalls.has(id)) throw new Error(`「${spec.name}」正在安装或更新，请先点「取消」等它停下，再卸载`);
+      if (spec.builtIn) throw new Error("内置工具不可卸载");
+      if (spec.kind === "guide") throw new Error("该工具是系统级安装，请到系统的「应用与功能」里卸载");
+      // 随包内置能力（nuphus / ponytail 插件），不是联网下载 —— 删了没有可靠的重取途径
+      if (spec.bundled) throw new Error("该工具随应用内置，删除后只能从随包资源恢复，因此不支持卸载");
+      // 随包内置资源（zip / 插件目录），不是联网下载 —— 删了没有可靠的重取途径，直接拒绝
+      if (spec.noUninstall) throw new Error("该工具来自随包内置资源，删除后难以恢复，因此不支持卸载");
+      const targets = runtimeUninstallTargets(id, spec);
+      /* ⛔⛔ 11-01 用户实测「都不是内置的，怎么卸载还删不掉」：
+         工具被装/解到了 resources/tools（随包根）时，删除目标只解析到可写根 ⇒ 删了个不存在的位置。
+         ⇒ 把同一相对路径在随包根里的副本也加入删除清单（两边都删，状态才会真的回落）。 */
+      /* ⛔ 11-01：两个根**互为镜像**展开 —— 不管原目标算在哪个根下，
+         都把同一相对路径在另一个根里的副本补进删除清单（pip 包 / zip 解包 / npm 前缀都在两处出现过）。 */
+      /* ⛔⛔ 审查修正（11-01）：随包根的镜像展开**只在开发态**做。
+         打包安装后 resources/tools 属于安装目录：删了没有自动恢复途径，而且下次更新又会回来
+         （用户会看到「卸载了但更新后复活」）。打包态只删可写根，删不掉就按既有逻辑如实报错。 */
+      for (const from of (app.isPackaged ? [writeToolsRoot()] : [writeToolsRoot(), toolsRoot()])) {
+        for (const to of (app.isPackaged ? [writeToolsRoot()] : [writeToolsRoot(), toolsRoot()])) {
+          if (!from || !to || from === to) continue;
+          for (const target of [...targets]) {
+            try {
+              const rel = path.relative(from, target);
+              if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) continue;
+              const alt = path.join(to, rel);
+              if (existsSync(alt) && !targets.includes(alt)) targets.push(alt);
+            } catch { /* 相对化失败就跳过 */ }
+          }
+        }
+      }
+      // 防御：marker 解析异常时 target 可能退化成某个根目录 —— 那会把**所有**工具/插件删光。
+      // 要求每个 target 必须落在允许根之内，且不等于这些根本身。
+      // ⛔ 10-07：kb-embedding 装在 <userData>/kb-backend（userData 下），需要放行。
+      //   ⛔⛔ 但它**不是「根」而是「恰好等于允许值的具体目录」** ⇒ 放进 allowedRoots 会与
+      //   上面「不得等于根」那条自相矛盾（target === 允许根 ⇒ 直接被拒，症状仍是卸不掉）。
+      //   ⇒ 故拆成两个概念：allowedRoots = 可以往里删的**根**（不得相等）；
+      //      exactAllowed = 允许**整体删除**的具体目录（target 就等于它）。
+      const allowedRoots = [...toolRootsRead(), codexHome].filter(Boolean).map((r) => path.resolve(r));
+      const exactAllowed = new Set([path.resolve(kbBackendDir())]);
+      for (const target of targets) {
+        const resolvedTarget = path.resolve(target);
+        const underAllowed = allowedRoots.some((r) => resolvedTarget.startsWith(r + path.sep));
+        if (!resolvedTarget || allowedRoots.includes(resolvedTarget)
+          || (!underAllowed && !exactAllowed.has(resolvedTarget))) {
+          throw new Error("安装路径解析异常，已取消卸载");
+        }
+      }
+      // 逐个删（先包体、再 shim；marker 是文件还是目录都适用）—— 大目录按字节比例发卸载进度
+      // ⛔⛔ 10-07：kb-embedding 必须走它**自己的**卸载函数，不能用通用分批删除 ——
+      //   常驻 embedding worker 子进程正抱着模型文件，Windows 上文件被占用时 fs.rm 直接 EBUSY/EPERM
+      //   （try/catch 还把它吞成「删成功」）⇒ 又一个「卸载了但一直显示已安装」。
+      //   uninstallKbEmbedding() 内部先 disposeKbEmbedWorker() 再删，与 10-04 的安装/卸载设计同源。
+      /* ⛔⛔ 11-01 用户实测「文档转换怎么都卸不掉」：它是 **pip 包**，文件在 python/Lib/site-packages 里，
+         靠「按路径删目录」在不同根/不同大小写布局下极易漏 ⇒ 残文件仍在，判定依旧是已安装。
+         ⇒ 先走包管理器真正卸载（它自己清 pkg / dist-info / entry-points），再走目录清理兜底。 */
+      if (PIP_PACKAGE_DIRS[id]) {
+        const pyCandidates = [
+          path.join(toolsRoot(), "python", process.platform === "win32" ? "python.exe" : "bin/python3"),
+          path.join(writeToolsRoot(), "python", process.platform === "win32" ? "python.exe" : "bin/python3"),
+        ];
+        const py = pyCandidates.find((c) => { try { return existsSync(c); } catch { return false; } });
+        if (py) {
+          sendToWindow("runtime:progress", { id, stage: "正在卸载 pip 包", percent: 0 });
+          /* ⛔⛔ 11-15：原来用 spawnSync 在主进程同步等 pip 最多 180 秒 ⇒ 界面整个无响应。
+             改成异步 spawn + 超时 kill，期间事件循环照常跑（Laya / 手机控制 / 文档转换都走这里）。 */
+          await new Promise<void>((resolve) => {
+            let settled = false;
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const done = () => { if (!settled) { settled = true; if (timer) clearTimeout(timer); resolve(); } };
+            try {
+              const child = spawn(py, ["-m", "pip", "uninstall", "-y", String(PIP_PACKAGE_DIRS[id])], {
+                windowsHide: true, stdio: "ignore",
+              });
+              timer = setTimeout(() => { try { child.kill(); } catch { /* 已退出 */ } done(); }, 180_000);
+              child.on("error", done);
+              child.on("close", done);
+            } catch { done(); } // pip 起不来就走下面的目录清理兜底
+          });
+        }
+      }
+      if (id === "kb-embedding") {
+        sendToWindow("runtime:progress", { id, stage: "正在删除文件", percent: 0 });
+        await uninstallKbEmbedding();
+        sendToWindow("runtime:progress", { id, message: "卸载完成", percent: 100, done: true });
+        return { ok: true, runtimes: runtimeList() };
+      }
+      await removeTargetsWithProgress(id, targets);
+      /* ⛔⛔ 11-01 用户实测「这个是假卸载吧」：PS7 等实际来自**随包资源**（resources/tools），
+         而这里只删可写根里的同名目录 ⇒ 文件根本没删，界面仍显示已安装，却弹了已卸载。
+         ⇒ 删完必须**回读判定**：仍装着就如实报错，绝不再谎报成功。 */
+      if (runtimeList().find((r) => r.id === id)?.installed) {
+        throw new Error("该工具来自随包内置资源（resources/tools），无法从这里删除；如需移除请重装应用包");
+      }
+      // ponytail 卸载后要显式关掉 config.toml 里的注册段（否则引擎重启找不到已删的 cache）：
+      // 插件 key 是 **"ponytail@ponytail"**（见 ponytail-plugin.ts 的 MARKETPLACE_SECTION）。
+      // ⛔ 引擎必填 mergeStrategy：缺了整条请求被判 Invalid request，而这里是 catch 静默吞掉
+      //    —— 表现为「卸载了但 enabled 还是 true」。
+      if (id === "ponytail") {
+        await server.request("config/value/write", {
+          filePath: path.join(codexHome, "config.toml"),
+          keyPath: 'plugins."ponytail@ponytail".enabled',
+          value: false,
+          mergeStrategy: "replace",
+        }).catch(() => undefined);
+      }
+      // Craft 全家桶（11-16）：卸载只删 Launcher 目录；同时摘掉每个已装 App 的独立 MCP 段。
+      if (id === "artcraft") {
+        const { removeCraftAppMcpSections } = await import("../artcraft");
+        removeCraftAppMcpSections();
+        await restartServerWhenIdle(id);
+      }
+      sendToWindow("runtime:progress", { id, message: "卸载完成", percent: 100, done: true });
+      // ⛔ 10-12 同步清账：留着记录的话，更新后的「你装过哪些工具」会把一个**用户主动卸载**的
+      //   工具算成「待重装」并提示恢复 —— 账本必须跟着真实状态走，不是只增不减。
+      try { recordToolRemoved(id); } catch { /* 记账失败不影响卸载结果 */ }
+      return { ok: true, runtimes: runtimeList() };
+    });
+
+    // 取消安装（10-07 用户要求）：杀掉该工具名下的安装子进程 + 清半截下载产物。
+    // 「已取消」经 runtime:progress(cancelled) 推给界面；正在等的 install 调用随后会以
+    // 非零码 reject —— install handler 查 isCancelRequested 把它改判成 cancelled 回执。
+    ipcHost.handle("runtime:cancel", (_event, idValue: string) => {
+      const id = idValue as DevRuntimeId;
+      if (!devRuntimeSpecs[id]) return { ok: false, reason: "unknown" };
+      if (!runtimeInstalls.has(id)) return { ok: false, reason: "not-running" };
+      requestRuntimeCancel(id);
+      const killed = cancelRuntimeInstall(id);
+      cleanupRuntimeTempFiles(id);
+      /* ⛔ 11-01：立刻把这条安装从「进行中」表里摘掉 —— 渲染层的 `busy` 判据是
+         `runtimeInstalls.has(id)`（经 runtime:list 下发），不摘的话取消后界面仍显示
+         「正在下载」并继续画进度条（用户实测：「取消都不刷新状态，界面还在走下载」）。
+         安装 promise 收尾时还会 delete 一次，Map.delete 幂等。 */
+      runtimeInstalls.delete(id);
+      sendToWindow("runtime:progress", { id, message: "已取消下载，临时文件已清理", cancelled: true, done: true });
+      return { ok: true, killed };
+    });
+
+    ipcHost.handle("runtime:health", () => devRuntimeHealth());
+
+    ipcHost.handle("runtime:install", async (_event, idValue: string) => {
+      try {
+      const id = idValue as DevRuntimeId;
+      if (!devRuntimeSpecs[id]) throw new Error("未知开发工具");
+      if (devRuntimeSpecs[id].builtIn) return { ok: true, runtimes: runtimeList() };
+      // ⛔ 09-20 下载源选择：所有按需下载通道统一从这里读源（每次现读 app-settings，不缓存）。
+      const downloadSource = await readDownloadSource();
+      // ⛔ 同一工具并发安装：**等它跑完**，不要抛「该工具正在安装」（09-18 用户反馈截图）。
+      //   抛错既看不懂，又让**整批安装被中断**（后两项也没装）。等待语义对用户才是正确的。
+      const inFlight = runtimeInstalls.get(id);
+      if (inFlight) {
+        await inFlight;
+        return { ok: true, joined: true, runtimes: runtimeList() };
+      }
+      const spec = devRuntimeSpecs[id];
+      // 引导型（docker/openssl）：静默安装需要管理员/重启/登录，这里打开官方下载页由用户自己装
+      if (spec.kind === "guide") {
+        /* ⛔ mac 的 openssl 是系统自带件（见 runtimeInstalledBySystem 的 darwin 分支）⇒
+           不给 Windows 下载页（slproweb 是 Win32 构建，mac 上装了也用不了），guide 留空。 */
+        const url = id === "openssl"
+          ? (IS_MAC ? "" : "https://slproweb.com/products/Win32OpenSSL.html")
+          : "https://www.docker.com/products/docker-desktop/";
+        if (url) await shell.openExternal(url);
+        return { ok: true, guide: url, runtimes: runtimeList() };
+      }
+      // 随包内置且已就位：无需「修复」。再解压/重种一遍只会覆盖同名文件（无收益，还多一次引擎重启）。
+      if (spec.bundled && runtimeInstalled(id, spec)) return { ok: true, runtimes: runtimeList() };
+      // ⛔ 10-01：Laya / 手机控制是 pip 包（各有专用安装器）——必须走它们自己的安装链，
+      //   绝不能落到 install-runtimes.cjs（那里没有这两个 id，会静默什么也不做）。
+      if (id === "kb-embedding") {
+        // 知识库本地 embedding 后端（10-04 改判：npm 树 463MB 远超 50MB 内置线 ⇒ 不随包，按需下载）。
+        // npm 装 @huggingface/transformers 到 <userData>/kb-backend + 预下载 bge 模型（hf-mirror）。
+        // 进度事件直接透传给渲染层（知识库页与开发工具页共用 runtime:progress）。
+        /* ⛔ 11-01 用户实测「取消是假的」：这条链原来不看取消标记 ⇒ 界面回落了、npm/模型下载还在跑。
+           ⇒ 把 isCancelRequested 传进去（npm 子进程 kill、模型下载 abort），取消后清掉半成品。 */
+        const task = (async () => {
+          if (kbEmbeddingInstalled()) return; // 已装好（三件齐）⇒ 幂等早退，不重下 463MB
+          sendToWindow("runtime:progress", { id, message: "正在安装本地 embedding 运行库（npmmirror + hf-mirror）…" });
+          await installKbEmbedding((p) => sendToWindow("runtime:progress", { id, ...p }), () => isCancelRequested(id));
+          if (isCancelRequested(id)) throw new Error("已取消安装（知识库本地语义检索）");
+          // ⛔ 这里**不许**发 done:true 的「安装完成」：紧随其后的 assertInstallVerified 才是判据
+          //   （10-08 自审抓到：旧写法在这条分支上先报完成、再复核 —— 复核失败就成了
+          //   「先绿条后报错」，正是本次要根除的那类「假成功」。真正的那条完成消息在复核之后发。）
+          sendToWindow("runtime:progress", { id, message: "正在复核安装结果…" });
+        })();
+        runtimeInstalls.set(id, task.finally(() => runtimeInstalls.delete(id)) as Promise<void>);
+        try {
+          await task;
+        } catch (error) {
+          if (isCancelRequested(id)) {
+            // 半装的 node_modules / 下载中的模型文件都不留（否则下次安装判定混乱、也占 400MB+）
+            await uninstallKbEmbedding().catch(() => undefined);
+            sendToWindow("runtime:progress", { id, message: "已取消安装，临时文件已清理", cancelled: true, done: true });
+            return { ok: true, cancelled: true, runtimes: runtimeList() };
+          }
+          throw error instanceof Error ? error : new Error(String(error));
+        } finally {
+          clearCancelRequest(id);
+        }
+        assertInstallVerified(id, spec);
+        return { ok: true, runtimes: runtimeList() };
+      }
+      if (id === "laya" || id === "phone-harness") {
+        const task = (async () => {
+          const result = id === "laya" ? await layaInstall() : await installPhoneHarness();
+          if (!result.ok) throw new Error(result.log.split("\n").filter(Boolean).slice(-1)[0] || `${spec.name} 安装失败`);
+        })();
+        runtimeInstalls.set(id, task.finally(() => runtimeInstalls.delete(id)) as Promise<void>);
+        await task.catch((error) => { throw error instanceof Error ? error : new Error(String(error)); });
+        assertInstallVerified(id, spec);
+        return { ok: true, runtimes: runtimeList() };
+      }
+      /* MoeKoe Music（10-20）：系统级外部客户端，不能走 install-runtimes.cjs。
+         下载/安装由 moekoe.ts 负责；这里只发进度、等安装向导完成（exe 出现）再启动。
+         ⛔ 用户完成 NSIS 向导前 exe 不存在 —— 不能提前报「安装完成」。 */
+      if (id === "moekoe") {
+        const task = (async () => {
+          const { findMoeKoeExe, installMoeKoe } = await import("../moekoe");
+          if (findMoeKoeExe()) {
+            const launched = await installMoeKoe({ confirm: true });
+            sendToWindow("runtime:progress", { id, message: launched.message || "MoeKoe Music 已启动", percent: 100, done: true });
+            return;
+          }
+          sendToWindow("runtime:progress", { id, message: "正在从国内镜像下载 MoeKoe Music（约 133 MB）…", percent: 1 });
+          const started = await installMoeKoe({ confirm: true });
+          sendToWindow("runtime:progress", { id, message: started.message || "安装程序已启动，请完成安装向导…", percent: 3 });
+          for (let attempt = 0; attempt < 300; attempt++) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            if (!findMoeKoeExe()) continue;
+            await installMoeKoe({ confirm: true }).catch(() => undefined); // 装好就启动；启动失败不影响「已安装」
+            sendToWindow("runtime:progress", { id, message: "MoeKoe Music 已安装并启动", percent: 100, done: true });
+            return;
+          }
+          throw new Error("安装程序已启动，但 5 分钟内未检测到安装完成；请完成安装后回来刷新");
+        })();
+        runtimeInstalls.set(id, task.finally(() => runtimeInstalls.delete(id)) as Promise<void>);
+        await task.catch((error) => { throw error instanceof Error ? error : new Error(String(error)); });
+        return { ok: true, runtimes: runtimeList() };
+      }
+      const task = (async () => {
+        if (id === "ponytail") {
+          // ⛔ 必须排在 spec.bundled 分支**之前**：ponytail 也是 bundled，但它的修复路径是「重种插件」
+          //    而不是「解压 automation-tools.zip」——漏了会让「修复安装 ponytail」把 zip 解到 npm-global。
+          /* 10-30：改走 healPonytailInstall（重建**带清单文件**的本地市场 + 引擎 plugin/install
+             + enabled=true + 按 currentHash 信任钩子）。旧做法把 marketplaces 指到插件目录本身，
+             引擎 0.16x 不认 ⇒ 插件/技能/钩子一起消失（用户实测）。 */
+          const heal = await healPonytailInstall({ restart: true });
+          if (!heal.ok) throw new Error(heal.message);
+        } else if (spec.bundled) {
+          // 随包内置能力的「修复安装」（nuphus）：从随包 zip 重新解压。
+          if (!bundledNode()) await runRuntimeInstaller("node", runtimeInstaller("install-runtimes.cjs"), ["node"], process.execPath, { DOWNLOAD_SOURCE: downloadSource });
+          // ⛔ 只认随包 zip（解压安装），**不再回落在线下载**（09-12 用户实测发布包故障）：
+          //   GitHub Release 那个 automation-tools.zip 资产根本不存在，回落只会撞死地址。
+          const bundledAutomationZip = existingToolPath("automation-tools.zip") || path.join(toolsRoot(), "automation-tools.zip");
+          if (!existsSync(bundledAutomationZip)) {
+            throw new Error(
+              `随包缺少 tools/automation-tools.zip —— 这一版安装包不完整，装不了「${spec.name}」。`
+              + "请更新到带该文件的版本；自建包时先在本机装一次自动化工具链再执行打包。"
+            );
+          }
+          await runRuntimeInstaller(id, runtimeInstaller("install-automation.cjs"), ["--zip", bundledAutomationZip], bundledNode());
+          // 解压安装成功后自动激活「桌面自动化」「浏览器自动化」联动开关
+          await saveAppSettings(app.getPath("userData"), { desktopAutomation: true, browserAutomation: true });
+        } else if (id === "feishu-cli") {
+          /* 飞书官方 CLI（10-29）：npm 包自身 postinstall 会按平台下载 Go 二进制（约 50MB）⇒ 必须放行该包的脚本。
+             ⛔ 11-15：装 `@latest` 之前先查**具体最新版本**并写进包名，避免镜像 dist-tags 滞后时装回旧版；
+             `fetchRegistryLatest` 会把国内镜像与官方源都查一遍取最大，查不到才退回随包表。 */
+          let cliVersion = TOOLS_VERSIONS.feishuCli ?? "latest";
+          try { cliVersion = (await fetchRegistryLatest("@larksuite/cli", downloadSource)).version; } catch { /* 离线兜底 */ }
+          await runNpmInstall(id, `@larksuite/cli@${cliVersion}`, "飞书 CLI", downloadSource, NPM_ALLOW_SCRIPTS["feishu-cli"]);
+        } else if (id === "filee") {
+          /* Filee 文件转换（10-30）：GitHub release 直下型（151MB，镜像序 + SHA256 校验）。
+             更新链（performRuntimeUpdate 的 GITHUB_UPDATEABLE 分支）也走这一个函数。 */
+          await installFileeFromGitHub(id, await latestInstallVersion("filee", FILEE_REPO));
+        } else if (id === "apkstart") {
+          /* ApkStart 安卓运行器（11-14）：GitHub release 直下型（119MB 便携 zip）。
+             首启再由它自己下载 Android 运行时；更新链同上（GITHUB_UPDATEABLE.install）。 */
+          await installApkStartFromGitHub(id, await latestInstallVersion("apkstart", APKSTART_REPO));
+        } else if (id === "openmaic") {
+          /* OpenMAIC 互动课堂（11-14）：源码 + pnpm 依赖 + 便携 PostgreSQL 本机构建（约 5GB）。
+             ⛔ 不进自动/手动更新链：更新 = 重新安装（重建 5–10 分钟，不适合一键静默跑）。 */
+          await installOpenMaicFromGitHub(id, await latestInstallVersion("openmaic", OPENMAIC_REPO));
+        } else if (id === "husk") {
+          /* Husk（11-14）：只下载官方 Husk.ipa（约 142MB，SHA256 校验），真机侧载在 iPhone 上完成。 */
+          await installHuskFromGitHub(id, await latestInstallVersion("husk", HUSK_REPO));
+        } else if (id === "husk-tipa") {
+          /* Husk TIPA（11-14）：TrollStore 专用 .tipa，同版本；与 IPA 分文件、分版本号。 */
+          await installHuskTipaFromGitHub(id, await latestInstallVersion("husk", HUSK_REPO));
+        } else if (id === "artcraft") {
+          /* Craft 全家桶（11-16）：Launcher 便携包（约 11MB）。装完立刻重写 config.toml
+             （每个已装 App 各自的 MCP 段；PhotoCraft 也走这里），再走统一重启链。 */
+          await installArtCraftFromGitHub(id, await latestInstallVersion("artcraft", ARTCRAFT_REPO));
+          await refreshConfigForGatewayTools();
+        } else if (id === "rea") {
+          /* REA 逆向分析（10-13）：npm 国内镜像装，失败回落官方源；重跑同一入口 = 重装/更新。
+             ⛔ 11-14 锁 pin（REA_PINNED_VERSION）：随包 Node v24.19.0 跑不了 6.8.0+，
+             装 @latest 会得到一个一启动就 exit 1 的死包。理由与解除条件见 rea-gateway.ts。 */
+          await runNpmInstall(id, `rea-agents@${REA_PINNED_VERSION}`, "REA 逆向分析", downloadSource);
+        } else {
+          // ⛔ DOWNLOAD_SOURCE 经环境变量传给安装脚本 —— 脚本 argv 的裸词会被当成工具 id。
+          await runRuntimeInstaller(id, runtimeInstaller("install-runtimes.cjs"), [id], process.execPath, { DOWNLOAD_SOURCE: downloadSource });
+        }
+        await restartServerWhenIdle(id);
+      })();
+      runtimeInstalls.set(id, task);
+      try {
+        await task;
+        // ⛔ 成功绿条只在**复核通过**之后发 —— 否则界面会先报「安装完成」再报错，把一次假成功演成两次消息。
+        assertInstallVerified(id, spec);
+        sendToWindow("runtime:progress", { id, message: "安装完成", percent: 100, speed: "", done: true });
+        return { ok: true, runtimes: runtimeList() };
+      } catch (error) {
+        // 取消（杀进程导致的非零退出）不算错误：回执 cancelled，渲染层按「已取消」处理而不是报红
+        if (isCancelRequested(id)) return { ok: true, cancelled: true, runtimes: runtimeList() };
+        throw error;
+      } finally {
+        runtimeInstalls.delete(id);
+        clearCancelRequest(id);
+      }
+      } catch (error) {
+        /* ⛔ 用户报「安装报错」时界面只有一行截断文案：这里把完整 stack / 子进程输出留盘 */
+        await recordInstallFailure(idValue, "install", error);
+        throw error;
+      }
+    });
+
+    /* ── 工具链更新（10-12 新增；界面在「设置 → 自动化」）───────────────────────
+     * runtime:update-check —— 只读：查 npm 最新版 + 读盘上已装版，给 hasUpdate。
+     * runtime:update       —— 真装：`<pkg>@latest` 从国内镜像进 tools/npm-global，复核版本后重启引擎。
+     * ⛔ 传 id 返回单条；不传返回**全部**可更新工具（界面一次拿全，免得渲染层再抄一份清单）。 */
+    ipcHost.handle("runtime:update-check", async (_event, idValue?: string) => {
+      // ⛔ 清单走 updateableToolIds()（按平台过滤），别用 Object.keys(UPDATEABLE_TOOLS)
+      const ids = idValue ? [idValue] : updateableToolIds();
+      const rows = await Promise.all(ids.map((id) => checkRuntimeUpdateRow(id)));
+      return idValue ? rows[0] : rows;
+    });
+
+    ipcHost.handle("runtime:update", async (_event, idValue: string) => {
+      const result = await performRuntimeUpdate(idValue);
+      return { ...result, runtimes: runtimeList() };
+    });
+
+    ctx.effect(() => {
+      for (const ch of RUNTIME_CHANNELS) ipcHost.removeHandler(ch);
+    });
+  },
+});

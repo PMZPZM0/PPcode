@@ -11,7 +11,7 @@ description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当
 
 # 宿主接口清单与可拓展能力（自动生成，勿手改）
 
-数据源：electron/ipc-channels.manifest.json（123 个能力域 / 724 个通道），由 scripts/gen-capability-skill.mjs 生成。
+数据源：electron/ipc-channels.manifest.json（123 个能力域 / 722 个通道），由 scripts/gen-capability-skill.mjs 生成。
 
 ## 怎么用
 
@@ -40,7 +40,7 @@ description: Codex Harness Desktop 宿主的接口清单与可拓展能力。当
 |---|---|---|
 | 宿主原生能力（新接口） | \`electron/ipc-channels.manifest.json\` 加一条 → \`npm run gen:ipc\` → 补 \`ipc-registry.ts\` 的域 \`count\` | ⛔ 生成物勿手改；守卫【2】【90】【107】盯；改完**重跑本清单生成器** |
 | 教模型的流程（怎么做事） | 内置技能 \`electron/builtin-skills/NN-*.ts\` + 在 \`builtin-skills.ts\` 登记 | 正文必须**字面量**（【86】做配置面安全扫描），勿运行时拼装 |
-| 个人 / 项目的经验与流程 | \`<workspace>/.codex/skills/<name>/SKILL.md\`（引擎原生发现，**默认落点**） | 跨项目才放 \`$CODEX_HOME/skills/\`；⛔ 别放 \`.ppcode-harness/skills\`（引擎不读） |
+| 个人 / 项目的经验与流程 | \`<workspace>/.codex/skills/<name>/SKILL.md\`（引擎原生发现，**默认落点**） | 跨项目才放 \`$CODEX_HOME/skills/\`；⛔ 别放 \`.codex-harness/skills\`（引擎不读） |
 | 外部服务 / API 接入 | **MCP 连接器**（设置 → 连接器；或自写 MCP server） | 工具面是动态的，以 \`tools/list\` 实际返回为准 |
 | 让某个角色长期替你干活 | **专家 / 专家团**（定义 + 技能包） | 成员在独立会话里跑，产出由主理人汇总 |
 | 定时 / 周期任务 | **调度器**（\`scheduler:*\`） | 任务真的在指定 workspace 目录里跑（不是「看起来在那里」） |
@@ -204,7 +204,7 @@ QQ 通道
 通道：app:doctor, app:engine-info, app:home-dir, app:perf-counters, app:relaunch, app:storage-clear, app:storage-info, app:userData, app:boss-project-dir
 
 ### work-logs（3 通道）
-各项目的**工作日志与项目记忆**管理（<项目>/.ppcode-harness/memory/**：长期记忆 MEMORY.md / 坑与纪律 LESSONS.md+lessons/ / 每日工作日志 logs/YYYY-MM-DD.md / archive / project）——设置 → 数据管理 → 工作日志。可看正文、按项目与类型分组、批量删除。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事；删除是销毁性的（工作日志删了不会重建）
+各项目的**工作日志与项目记忆**管理（<项目>/.codex-harness/memory/**：长期记忆 MEMORY.md / 坑与纪律 LESSONS.md+lessons/ / 每日工作日志 logs/YYYY-MM-DD.md / archive / project）——设置 → 数据管理 → 工作日志。可看正文、按项目与类型分组、批量删除。⛔ 这是项目里的工作记录，与会话本身的归档 / 删除（「归档管理」页）不是一回事；删除是销毁性的（工作日志删了不会重建）
 通道：work-logs:scan, work-logs:read, work-logs:delete
 
 ### capabilities（1 通道）
@@ -243,9 +243,9 @@ OpenAI 账号鉴权（登录/凭据/额度）
 内置终端（创建/输入/缩放/重启）
 通道：terminal:input, terminal:list, terminal:ready, terminal:resize, terminal:restart
 
-### updates（5 通道）
-应用自更新（检查/下载/安装，GitHub Release 单源）
-通道：updates:check, updates:download, updates:reveal, updates:install, updates:restart-install
+### update（3 通道）
+应用自更新（检查 / 下载 / 安装三通道；只读 Release 的 latest.yml，不走 GitHub API）
+通道：update:check, update:download, update:install
 
 ### backup（9 通道）
 改动备份的**查询与恢复**（设置 → 数据管理 → 改动备份：开关、备份目录、产物概览、清空）。备份本身由宿主在**每个回合结束时自动完成**（落 changes-index/<会话id>.json + changes-detail/<会话id>/cd_*.json，结构与 WorkBuddy 同构，**容量上限 3G，超了把最旧的移进系统回收站**，不是硬删）。
@@ -418,7 +418,7 @@ SkillHub **专家市场包**（skillhub.cn/skillspackage，55 包）：list 浏�
 通道：expert-market:install, expert-market:install-local, expert-market:list
 
 ### kb（11 通道）
-**项目级本地知识库**（<项目>/.ppcode-harness/knowledge/）：list 列文档 / add-text·add-files 导入 md·txt·代码文档（自动分块）/ search 分块全文检索（带高亮片段）/ read 读全文 / remove 删除。用户要「把资料存进知识库 / 查项目资料」时用它；语义向量后端为按需下载项。⛔⚠️ 上面是 **IPC 桥（给设置页 UI 用），不是模型工具** —— 模型侧只有两个：\`knowledge_search(query, limit?)\` 检索（workspace 缺省 = 调用者 cwd；装了 Laya 时最相关的一条会被置顶标注）与 \`knowledge_add(title, text, source?)\` 写入（10-04 补，此前模型只能读不能写；⚠️ 同名不覆盖会堆重复条目、⚠️ 写入不做语义向量化、⚠️ 专家/被调度会话不许写、⚠️ 装了 Laya 时低价值内容会被拒写并说明原因——充实内容后重试即可）。⛔⛔ **但只有「知识库后端 = 本地」时才是这两个**：后端切到**云端 weknora** 后，检索与写入一律走 MCP 连接器 \`cloud-kb\` 的工具（\`cloud_kb__ask\` / \`cloud_kb__search_knowledge\` / \`cloud_kb__grep_chunks\` / \`cloud_kb__list_documents\` / \`cloud_kb__read_document\` / \`cloud_kb__list_knowledge_bases\`），本地那两个此时**不在工具列表里**。判定方法：工具列表里有 \`cloud_kb__\` 前缀 ⇒ 云端；否则本地。切换**不迁移数据**（本地库与云端库是两份），详见内置技能 \`knowledge-backend\`
+**项目级本地知识库**（<项目>/.codex-harness/knowledge/）：list 列文档 / add-text·add-files 导入 md·txt·代码文档（自动分块）/ search 分块全文检索（带高亮片段）/ read 读全文 / remove 删除。用户要「把资料存进知识库 / 查项目资料」时用它；语义向量后端为按需下载项。⛔⚠️ 上面是 **IPC 桥（给设置页 UI 用），不是模型工具** —— 模型侧只有两个：\`knowledge_search(query, limit?)\` 检索（workspace 缺省 = 调用者 cwd；装了 Laya 时最相关的一条会被置顶标注）与 \`knowledge_add(title, text, source?)\` 写入（10-04 补，此前模型只能读不能写；⚠️ 同名不覆盖会堆重复条目、⚠️ 写入不做语义向量化、⚠️ 专家/被调度会话不许写、⚠️ 装了 Laya 时低价值内容会被拒写并说明原因——充实内容后重试即可）。⛔⛔ **但只有「知识库后端 = 本地」时才是这两个**：后端切到**云端 weknora** 后，检索与写入一律走 MCP 连接器 \`cloud-kb\` 的工具（\`cloud_kb__ask\` / \`cloud_kb__search_knowledge\` / \`cloud_kb__grep_chunks\` / \`cloud_kb__list_documents\` / \`cloud_kb__read_document\` / \`cloud_kb__list_knowledge_bases\`），本地那两个此时**不在工具列表里**。判定方法：工具列表里有 \`cloud_kb__\` 前缀 ⇒ 云端；否则本地。切换**不迁移数据**（本地库与云端库是两份），详见内置技能 \`knowledge-backend\`
 通道：kb:add-files, kb:add-text, kb:backend-get, kb:backend-set, kb:embed-install, kb:embed-status, kb:embed-uninstall, kb:list, kb:read, kb:remove, kb:search
 
 ### whatsnew（3 通道）
@@ -446,7 +446,7 @@ SkillHub **人格市场**（skillhub.cn/soul，16 套现成人格）：list 浏�
 通道：scratch:create
 
 ### sessionspace（6 通道）
-会话专属工作区（10-29）：每个会话在项目地址下有一个 \`<project>/.ppcode-harness/sessions/<threadId>/\`，作为本会话的产物与临时落点。生命周期：新建即建、归档保留（可恢复）、永久删除时目录一并清理、启动时收口孤儿。⛔ 它不是记忆 workspace —— 项目记忆仍按项目根寻址（跨会话共享），会话私有走 private 层
+会话专属工作区（10-29）：每个会话在项目地址下有一个 \`<project>/.codex-harness/sessions/<threadId>/\`，作为本会话的产物与临时落点。生命周期：新建即建、归档保留（可恢复）、永久删除时目录一并清理、启动时收口孤儿。⛔ 它不是记忆 workspace —— 项目记忆仍按项目根寻址（跨会话共享），会话私有走 private 层
 通道：sessionspace:ensure, sessionspace:state, sessionspace:list, sessionspace:set-state, sessionspace:remove, sessionspace:gc
 
 ### custom-model（12 通道）

@@ -1,259 +1,258 @@
-#!/usr/bin/env node
-/**
- * 12k-auto-update —— 自动化与引擎的后台自动更新（10-13 用户令）守卫。
- *
- * 钉的都是「真会复发的坑」：
- *  ① 四类（桌面 / 浏览器 / Mac 电脑操作 / 引擎）**开关互相独立**：四个 AppSettings 字段、
- *     缺省即开（`!== false`）、`autoUpdate:set` 只 patch 单键；
- *  ② **手动链 = 自动链同一函数**（runtime-ipc / engine-ipc 导出，两边都调）——
- *     两处各写判据必漂移（技能更新已栽过一次）；
- *  ③ **更新源不另抄**：auto-update-ipc 里不许出现任何镜像 URL 字面量（沿用各链路既有国内镜像优先）；
- *  ④ Mac 电脑操作**按平台过滤**（非 darwin 不入清单），且包名只在 UPDATEABLE_TOOLS 里写一次；
- *  ⑤ 后台三道闸：防重入 / 单类失败只跳过 / finally 放闸 + ctx.effect 清定时器；
- *  ⑥ 更新成功要发通知；引擎更新成功后必须把引擎拉回来（否则应用等于残废）；
- *  ⑦ 界面：自动化卡片有 ToggleSwitch + 版本号；
- *  ⑧ 域登记闭环（composition / ipc-registry / manifest / preload）+ FEATURE-LEDGER 有条目。
- */
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-let checks = 0;
-let fails = 0;
-const ok = (cond, label) => {
-  checks++;
-  if (!cond) fails++;
-  console.log(`${cond ? "  ✓" : "  ✗"} ${label}`);
-};
-
-const read = (p) => {
-  try { return readFileSync(join(ROOT, p), "utf8"); } catch { return ""; }
-};
-/** 剥掉注释再判「有没有写字面量」——⛔ 文档里**提到** npmmirror / 包名是应该的，
- *  判据只该管**代码**（把注释算成第二份真相源 ⇒ 逼人删掉有用的说明，守卫反而害事）。 */
-const stripComments = (text) => text
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .replace(/(^|\s)\/\/[^\n]*/g, "$1");
-
-/** 按锚点切片取某个 JSON 条目（⛔ 别用惰性正则切 JSON —— 没锚点会切到空串报假红，12j 教训） */
-const sliceEntry = (text, anchor) => {
-  const at = text.indexOf(anchor);
-  if (at < 0) return "";
-  const start = text.lastIndexOf("{", at);
-  let depth = 0;
-  for (let i = start; i < text.length; i++) {
-    if (text[i] === "{") depth++;
-    else if (text[i] === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
-  }
-  return "";
-};
-
-const board = read("electron/features/auto-update-ipc.ts");
-const backends = read("electron/update-backends.ts");
-const backendsCode = stripComments(backends);
-const runtimeIpc = read("electron/features/runtime-ipc.ts");
-const engineIpc = read("electron/features/engine-ipc.ts");
-const settings = read("electron/app-settings.ts");
-const manifest = read("electron/ipc-channels.manifest.json");
-const preload = read("electron/preload.ts");
-const registry = read("electron/ipc-registry.ts");
-const composition = read("electron/composition.json");
-const page = read("src/features/settings-automation/AutomationSettingsSection.tsx");
-const ledger = read("docs/FEATURE-LEDGER.md");
-const boardCode = stripComments(board);
-
-console.log("【① 四个开关互相独立 + 缺省即开】");
-for (const key of ["autoUpdateDesktop", "autoUpdateComputerUse", "autoUpdateEngine"]) {
-  ok(settings.includes(`${key}?: boolean`), `AppSettings 有独立字段 ${key}`);
-}
-ok(/function autoUpdateEnabled[\s\S]{0,400}\?\.\[key\] !== false/.test(settings),
-  "缺省判据是 `!== false`（字段不存在 = 开；⛔ 用 === true 会让老用户升级后静默关闭）");
-ok(/readAutoUpdateRowSwitch\(settings, row\.id\)/.test(board),
-  "后台循环逐行读自己的开关（10-13 统一体系后：行白可由 readAutoUpdateRowSwitch 一处裁决）");
-ok(/saveAppSettings\(userData, \{ \[owner\]: Boolean\(enabled\) \}/.test(board),
-  "⛔ autoUpdate:set 只 patch 单键（写整份会互相覆盖 ⇒ 开关不独立）");
-const keysBlock = board.match(/const toolKeys[\s\S]*?\};/)?.[0] ?? "";
-ok(/nuphus: "autoUpdateDesktop"/.test(keysBlock) && !/playwright-cli/.test(keysBlock)
-  && /"computer-use": "autoUpdateComputerUse"/.test(keysBlock),
-  "桌面 / Mac 电脑操作各自映射到自己的开关字段（Playwright 已移除）");
-ok(/id: "ego-lite"/.test(board) && /runEgoUpgrade/.test(board) && /if \(row\.id === "ego-lite"\)/.test(board),
-  "控制台组件清单含 Ego Lite 行，手动更新走官方 ego-browser upgrade");
-
-console.log("【② 手动链 = 自动链（单一真相源）】");
-ok(/export async function checkRuntimeUpdateRow/.test(runtimeIpc) && /export async function performRuntimeUpdate/.test(runtimeIpc),
-  "runtime-ipc 导出 checkRuntimeUpdateRow / performRuntimeUpdate");
-ok(/ipcHost\.handle\("runtime:update-check"[\s\S]{0,300}checkRuntimeUpdateRow/.test(runtimeIpc)
-  && /ipcHost\.handle\("runtime:update"[\s\S]{0,200}performRuntimeUpdate/.test(runtimeIpc),
-  "界面「检查更新 / 更新」按钮只是这两个函数的薄包装");
-// ⛔ 10-13 统一体系后，编排层不再直接调各家函数，而是经 update-backends 的 updateComponent；
-//    统一后的判据在 backends 里，**仍然必须是同一批导出函数**（换位置可以，抄第二份不行）。
-ok(/import \{ checkRuntimeUpdateRow, performRuntimeUpdate/.test(backendsCode)
-  && /performRuntimeUpdate\(spec\.id\)/.test(backendsCode),
-  "执行层调的是 runtime-ipc 导出的同一批函数（⛔ 不许在别处再抄一遍判据）");
-ok(/export async function checkEngineUpdateInfo/.test(engineIpc) && /export async function performEngineUpdateFlow/.test(engineIpc),
-  "engine-ipc 导出 checkEngineUpdateInfo / performEngineUpdateFlow");
-ok(/ipcHost\.handle\("engine:check-update", \(\) => checkEngineUpdateInfo\(\)\)/.test(engineIpc),
-  "engine:check-update 走同一实现");
-ok(/performEngineUpdateFlow\(/.test(engineIpc) && /performEngineUpdateFlow\(async \(\) =>/.test(backendsCode),
-  "引擎手动与后台都走 performEngineUpdateFlow（唯一接缝 = 成功后怎么办）");
-
-console.log("【③ 更新源不另抄（统一国内镜像）】");
-ok(!/https?:\/\//.test(boardCode),
-  "⛔ auto-update-ipc 代码里不含任何镜像 URL 字面量（源沿用两条链路既有的国内镜像优先）");
-ok(/CHINA_NPM_REGISTRY/.test(runtimeIpc) && /NPMMIRROR/.test(read("electron/engine-updater.ts")),
-  "两条链路各自持有国内镜像常量（删掉就等于源被换回官方）");
-
-console.log("【④ 电脑操作（computer-use）：按平台过滤 + 包名只写一次】");
-ok(/"computer-use": \{[^}]*open-computer-use[^}]*platforms: \["darwin", "win32"\]/.test(runtimeIpc),
-  "UPDATEABLE_TOOLS 里 computer-use 带 platforms:[darwin, win32]（Windows 可装辅助后端）");
-ok(/id: "computer-use"[\s\S]{0,600}platforms: \["darwin", "win32"\]/.test(read("electron/update-registry.ts")),
-  "⛔ 组件注册表 computer-use 同样双平台可见（Windows 上的组件更新入口不能被过滤掉）");
-ok(/export function updateableToolIds\(\)[\s\S]{0,300}platforms\.includes\(process\.platform\)/.test(runtimeIpc),
-  "updateableToolIds() 按平台过滤（不支持的系统根本不入清单）");
-ok(/const ids = idValue \? \[idValue\] : updateableToolIds\(\)/.test(runtimeIpc),
-  "runtime:update-check 用 updateableToolIds()，不是 Object.keys(UPDATEABLE_TOOLS)");
-// @openai/codex 是**引擎**的包名，不在 UPDATEABLE_TOOLS 里（引擎不走 npm install），写一次是合理的；
-// 三类工具的包名则必须全部来自 updateableToolMeta —— 抄第二份就会和 UPDATEABLE_TOOLS 对不上。
-ok(/updateableToolMeta/.test(boardCode)
-  && !/@nuphus\/nuphus-mcp|@playwright\/cli|open-computer-use/.test(boardCode),
-  "⛔ 三类工具的包名只写在 UPDATEABLE_TOOLS（板块经 updateableToolMeta 取，不抄第二份）");
-
-console.log("【⑤ 后台三道闸】");
-ok(/if \(running\) return;[\s\S]{0,80}running = true;/.test(board), "闸 1 防重入（上轮没跑完不开新一轮）");
-/* ⛔ 10-23：窗口从 900 放宽到 1600 —— PPcode 仓在这段循环里多出 6 行「市场技能不在这里跑」的注释，
-   177→195 行隔了 ~1000 字符 ⇒ 旧窗口把**已正确实现**的 catch/console.warn 判成缺失（假红）。
-   放宽后仍要求「循环体里出现 console.warn」这个实质。 */
-ok(/for \(const row of rows\)[\s\S]{0,1600}console\.warn/.test(board),
-  "闸 2 单类失败只 warn 跳过、继续跑其余（一个包挂了不拖垮全部）");
-ok(/finally \{[\s\S]{0,120}running = false;/.test(board), "闸 3 finally 放闸");
-ok(/clearInterval\(timer\)/.test(board) && /clearTimeout\(first\)/.test(board) && /ctx\.effect\(/.test(board),
-  "定时器在 ctx.effect 里摘除（不留泄漏）");
-
-console.log("【⑥ 通知 + 引擎必须拉回来】");
-ok(/new Notification\(\{/.test(board) && /notifyUpdated\(/.test(board), "更新成功发系统通知");
-ok(/Notification\.isSupported\(\)/.test(board), "通知在不支持的环境静默跳过（后台任务不许因通知失败而失败）");
-const engineSuccess = backendsCode.match(/performEngineUpdateFlow\(async \(\) =>[\s\S]{0,400}?\n {8}\}\)/)?.[0] ?? "";
-ok(/server\.restart\(\)/.test(engineSuccess),
-  "⛔ 引擎更新成功后必须 server.restart() 把引擎拉回来（更新流程会先 stop 掉引擎，不拉 = 应用残废）");
-
-console.log("【⑦ 界面：开关统一在控制台 + 版本号】");
-const card = read("src/features/settings-general/AutoUpdateCard.tsx");
-const general = read("src/features/settings-general/GeneralSettingsSection.tsx");
-const skillsPage = read("src/features/settings-skills/SkillsCenterSection.tsx");
-ok(/<AutoUpdateCard[^>]*\/>/.test(general) && /from "\.\/AutoUpdateCard"/.test(general),
-  "「控制台」页挂上了统一开关卡片");
-ok(/ToggleSwitch/.test(card) && /window\.codex\.setAutoUpdate\(row\.id, enabled\)/.test(card)
-  && /window\.codex\.readAutoUpdateStatus\(\)/.test(card),
-  "卡片用共享 ToggleSwitch，读 autoUpdate:status、写 autoUpdate:set（⛔ 原生 checkbox 暗色下画成浅底）");
-ok(!/ToggleSwitch/.test(page) && !/skillAutoUpdate/.test(skillsPage),
-  "⛔ 自动化页与技能页**不再各放一个开关**（同一状态两个入口 ⇒ 用户会以为两边不一致）");
-ok(/控制台/.test(read("src/features/settings-automation/AutomationSettingsSection.tsx"))
-  && /控制台/.test(skillsPage),
-  "两处都留了指向「控制台」的说明（不是静默消失）");
-/* 11-07 卡片改版：桌面卡按后端各显示一行「Nuphus / CU + 版本」（toolTag 读同一条 toolStatus）。 */
-ok(/toolTag\("nuphus-mcp"/.test(page) && !/playwright-cli/.test(page),
-  "桌面自动化卡片显示版本号（Playwright 卡已移除）");
-ok(!/Object\.keys\(UPDATEABLE_TOOLS\)|nuphus.*@nuphus/.test(page) && !/@nuphus|@playwright/.test(card),
-  "⛔ 界面不另抄工具清单与包名");
-
-console.log("【⑦b 技能那条：一个端点给全部开关】");
-ok(/"market-skill": "skillAutoUpdate"/.test(settings) && /skill: "skillAutoUpdate"/.test(settings),
-  "市场技能行归属技能内容开关（界面一次请求仍能拿全开关）");
-ok(/if \(row\.specId === "market-skill"\) continue;/.test(boardCode),
-  "⛔ 技能的后台循环仍在 skills-ipc（本板块只承载开关与显示），不重复起调度器");
-ok(/if \(!readAutoUpdateRowSwitch\(settings, row\.id\)\) continue;[\s\S]{0,200}await updateRow\(row/.test(boardCode),
-  "⛔ 关掉就不**发起检查**：开关判定在「更新」之前 continue 掉（连比对都不做）");
-ok(/autoUpdateRunning\) return;/.test(read("electron/features/skills-ipc.ts"))
-  && /if \(!enabled\) return;[\s\S]{0,120}checkSkillUpdateRows\(\)/.test(read("electron/features/skills-ipc.ts")),
-  "⛔ 技能同理：关着时在 checkSkillUpdateRows 之前返回（连内容比对都不做）");
-
-console.log("【⑦c 每行有名称 / 说明 / tooltip / 状态反馈】");
-ok(/<strong>\{row\.kind === "skill" \? "技能自动更新" : row\.kind === "plugin" \? "插件自动更新" : row\.label\}<\/strong>/.test(card) && /<small>\{text\}<\/small>/.test(card),
-  "每行 = 名称 + 简要说明（技能/插件两个总开关用统一标签）");
-ok(/title=\{row\.enabled \? `关闭/.test(card), "每行有 tooltip（说明开/关会做什么）");
-ok(/不会发起更新检查/.test(card), "关闭态明确写出「不会发起更新检查」（开关的语义，不是装饰）");
-ok(/onNotice\?\.\(applied \?/.test(card) && /onNotice=\{setNotice\}/.test(general),
-  "写盘成功后有状态反馈（对齐控制台既有的 notice 用法）");
-ok(/readAutoUpdateSwitch/.test(settings) && /key === "skillAutoUpdate" \|\| key === "pluginAutoUpdate"[\s\S]{0,120}=== true/.test(settings),
-  "缺省值分档只写一处：四类装包缺省开、技能/插件内容更新缺省关");
-
-console.log("【⑦d 清单扫描有上限 + 后台更新与清单解耦】");
-/* 10-24 用户实测：控制台「其他组件更新」一直停在「正在读取组件清单…」。
-   ⛔ 根因：scanAll 把十几类远端查版本放在一个 Promise.all 里，npm 2×20s / pip 5×20s，
-      任何一个源挂住整张清单就永远不返回 ⇒ 必须逐类限时，超时行给原因而不是整项消失。 */
-ok(/const SCAN_DEADLINE_MS = 12_000;/.test(board), "扫描有单类预算 SCAN_DEADLINE_MS（12 秒）");
-ok(/withDeadline\([\s\S]{0,160}scanRows\(spec, ctx\)/.test(board), "scanAll 里每一类都过 withDeadline（⛔ 不是只包整个 Promise.all）");
-ok(/检测超时/.test(card) && /attemptable/.test(card), "界面：超时行可重试「更新」，并明确标注超时原因");
-ok(/Promise\.race\(\[[\s\S]{0,200}20_000/.test(card), "渲染层再兜一层 20 秒时限（IPC 不回来也不许永久 loading）");
-ok(/不依赖清单是否加载成功/.test(card), "卡片明说：后台自动更新不依赖这张清单是否加载成功");
-ok(!/<details[\s>]/.test(card) && /auto-update-advanced-head/.test(card),
-  "⛔ 工具清单常显、不再折叠（10-24 用户：「展开折叠，正常展示工具就行了，不要隐藏」）");
-ok(/\{row\.hasUpdate && row\.installed \?/.test(card),
-  "「有更新」徽标只给已安装的组件（未安装行挂徽标 = 「有更新 / 未安装」自相矛盾）");
-ok(/row\.specId === "market-plugin" \|\| row\.specId === "official-plugin"\) continue;/.test(boardCode)
-  && /runPluginAutoUpdate/.test(read("electron/features/plugins-ipc.ts")),
-  "⛔ 插件自动更新只有一个 owner（plugins-ipc 的循环），本编排循环跳过插件行（否则两个循环同时重装）");
-
-console.log("【⑧ 域登记闭环 + 台账】");
-ok(/"id": "autoUpdate"/.test(composition) && /features\/auto-update-ipc\.ts/.test(composition) && /autoUpdateFeature/.test(composition),
-  "composition.json 登记 autoUpdate 域");
-ok(/prefix: "autoUpdate", count: 5/.test(registry), "ipc-registry 记账 autoUpdate(5)");
-ok(/autoUpdate:status/.test(manifest) && /autoUpdate:set/.test(manifest), "manifest 有两条通道");
-ok(/readAutoUpdateStatus/.test(preload) && /setAutoUpdate/.test(preload), "preload 暴露两个方法");
-ok(/自动更新/.test(ledger) && /autoUpdate/.test(ledger), "FEATURE-LEDGER 有对应条目");
-
-/* ⑨ 引擎更新的**落位必须跨卷安全**（10-17 实测事故，用户报「能下载、装不上」）。
-   ⛔ 真因：暂存目录建在 `os.tmpdir()`（几乎总在 C:），而引擎可能装在 D: ⇒
-      `rename` 跨卷直接 `EXDEV: cross-device link not permitted`，下载/解压/自检全过、**只有落位失败**。
-   ⛔ 手动链与自动链调的是**同一个** `performEngineUpdate` ⇒ 一处修好两边都好，一处不修两边都挂。 */
-{
-  const eu = read("electron/engine-updater.ts");
-  ok(!/path\.join\(os\.tmpdir\(\), `codex-engine-update-/.test(eu), "引擎更新暂存目录不再用 os.tmpdir()（跨卷 rename 必 EXDEV）");
-  ok(/function movePath\(/.test(eu) && /EXDEV/.test(eu) && /fs\.cp\(from, to/.test(eu), "落位有 EXDEV 兜底（复制 + 删源），不是把 EXDEV 原样抛给用户");
-  ok(!/await fs\.rename\(newVendorDir, vendorDir\)/.test(eu), "落位不再直接 rename（必须走 movePath）");
-  /* ⛔ 10-17 第二次实测：跨盘修掉后立刻撞上 Windows **EPERM 文件占用** ——
-     前面刚用 runCommand 执行过要搬的那棵树里的 exe，Windows 短暂持有进程映像；
-     再叠加杀软/索引器扫新解压的 ~100MB 树。⇒ movePath 必须对 EPERM/EBUSY 重试（同解压安装的先例）。 */
-  ok(/attempt < 5/.test(eu) && /EPERM\|EBUSY\|ENOTEMPTY/.test(eu), "落位对 Windows 文件占用（EPERM/EBUSY）重试，不重试就会「下载 100% 却装不上」");
-
-  /* ⛔ 10-17 实测：更新**成功**后 vendor/ 里仍留着 ~160MB 的 .engine-update-* ——
-      里的 fs.rm 被 Windows 占用打回、又被 .catch 静默吞掉。
-     ⇒ 必须给 fs.rm 原生的 maxRetries（它就是为 EBUSY/EPERM 设计的）。 */
-  ok(/maxRetries: 10/.test(eu), "临时目录清理带 maxRetries（否则每次更新残留 ~160MB）");
-}
-
-/* ⑩ 进度日志不许被刷成同一行（10-17 实测：留下 6 条「下载引擎包 100%」）。
-   ⛔ 两个成因：① 主进程"依次换源"每轮从 0 重报；② 渲染层逐条 append 每个进度事件。
-   ⇒ 都要在：换源时写明第几个源失败；渲染层同阶段只原地更新最后一行。 */
-{
-  const eu = read("electron/engine-updater.ts");
-  const view = read("src/features/app-state/parts/part01/05-engine-ssh-connectors.tsx");
-  ok(/candidates\.entries\(\)/.test(eu) && /换源重试/.test(eu), "主进程换源时自解释（第几个源失败 + 原因），不再只报「开始下载」");
-  ok(/lastProgressStage/.test(view) && /sameStage/.test(view), "渲染层同阶段原地更新最后一行（⛔ 不再逐条 append）");
-}
-
-/* ⑪ 旧安装包必须清理（10-17 用户令：「更新重启完成后把旧的安装包去了，否则越积越大」）。
-   ⛔ 安装包按**版本命名**、每更新一次一个新文件；不清理就永久累积（实测下载目录全仓无任何清理）。
-   ⛔ 清理点必须是**启动时**（安装包拉起后本进程马上退出，那一刻删不掉）。 */
-{
-  const upd = read("electron/updates.ts");
-  const updIpc = read("electron/features/updates-ipc.ts");
-  ok(/export function pruneOldInstallers/.test(upd), "有旧安装包清理函数");
-  ok(/files\.slice\(1\)/.test(upd), "清理保留**最新一个**（手动重装兜底），不团灭");
-  ok(/\.\(exe\|msi\|dmg\|pkg\|zip\|appimage\|deb\|rpm\)/.test(upd), "只认安装包扩展名（⛔ 不误删用户其它文件）");
-  ok(/pruneOldInstallers\(defaultDownloadDir/.test(updIpc), "在 updates 域 setup 里**启动即清**（重启后才是安全清理点）");
-}
-
-/* ⑫ **只保留最新版本，旧的自动清理**（10-17 用户定的通用规则，不只是安装包）。
-   ⛔ 引擎的旧版本（`vendor/*.bak-1`，~437MB）也是"旧版本"——它在**本次更新内**是回滚备份，
-     但复验一旦通过就该删；否则每次更新都白占 437MB。
-   ⛔ 顺序不能反：必须 **先 rm(backupDir) 再 report(done)** —— 反过来就丢了"失败可回滚"的窗口。 */
-{
-  const eu2 = read("electron/engine-updater.ts");
-  ok(/fs\.rm\(backupDir[\s\S]{0,240}?report\(\{ stage: "done"/.test(eu2), "引擎复验通过后删旧版本（只留最新；且删除发生在报告完成之前）");
-  ok(/fs\.rm\(backupDir[^)]*maxRetries: 10/.test(eu2), "删旧引擎带 maxRetries（Windows 占用重试，与其它清理同口径）");
-}
-
-console.log(fails ? `\n✗ 12k 未通过：${fails}/${checks}` : `\n✓ 12k 通过：${checks}/${checks}`);
-process.exit(fails ? 1 : 0);
+#!/usr/bin/env node
+/**
+ * 12k-auto-update —— 自动化与引擎的后台自动更新（10-13 用户令）守卫。
+ *
+ * 钉的都是「真会复发的坑」：
+ *  ① 四类（桌面 / 浏览器 / Mac 电脑操作 / 引擎）**开关互相独立**：四个 AppSettings 字段、
+ *     缺省即开（`!== false`）、`autoUpdate:set` 只 patch 单键；
+ *  ② **手动链 = 自动链同一函数**（runtime-ipc / engine-ipc 导出，两边都调）——
+ *     两处各写判据必漂移（技能更新已栽过一次）；
+ *  ③ **更新源不另抄**：auto-update-ipc 里不许出现任何镜像 URL 字面量（沿用各链路既有国内镜像优先）；
+ *  ④ Mac 电脑操作**按平台过滤**（非 darwin 不入清单），且包名只在 UPDATEABLE_TOOLS 里写一次；
+ *  ⑤ 后台三道闸：防重入 / 单类失败只跳过 / finally 放闸 + ctx.effect 清定时器；
+ *  ⑥ 更新成功要发通知；引擎更新成功后必须把引擎拉回来（否则应用等于残废）；
+ *  ⑦ 界面：自动化卡片有 ToggleSwitch + 版本号；
+ *  ⑧ 域登记闭环（composition / ipc-registry / manifest / preload）+ FEATURE-LEDGER 有条目。
+ */
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+let checks = 0;
+let fails = 0;
+const ok = (cond, label) => {
+  checks++;
+  if (!cond) fails++;
+  console.log(`${cond ? "  ✓" : "  ✗"} ${label}`);
+};
+
+const read = (p) => {
+  try { return readFileSync(join(ROOT, p), "utf8"); } catch { return ""; }
+};
+/** 剥掉注释再判「有没有写字面量」——⛔ 文档里**提到** npmmirror / 包名是应该的，
+ *  判据只该管**代码**（把注释算成第二份真相源 ⇒ 逼人删掉有用的说明，守卫反而害事）。 */
+const stripComments = (text) => text
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/(^|\s)\/\/[^\n]*/g, "$1");
+
+/** 按锚点切片取某个 JSON 条目（⛔ 别用惰性正则切 JSON —— 没锚点会切到空串报假红，12j 教训） */
+const sliceEntry = (text, anchor) => {
+  const at = text.indexOf(anchor);
+  if (at < 0) return "";
+  const start = text.lastIndexOf("{", at);
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
+  }
+  return "";
+};
+
+const board = read("electron/features/auto-update-ipc.ts");
+const backends = read("electron/update-backends.ts");
+const backendsCode = stripComments(backends);
+const runtimeIpc = read("electron/features/runtime-ipc.ts");
+const engineIpc = read("electron/features/engine-ipc.ts");
+const settings = read("electron/app-settings.ts");
+const manifest = read("electron/ipc-channels.manifest.json");
+const preload = read("electron/preload.ts");
+const registry = read("electron/ipc-registry.ts");
+const composition = read("electron/composition.json");
+const page = read("src/features/settings-automation/AutomationSettingsSection.tsx");
+const ledger = read("docs/FEATURE-LEDGER.md");
+const boardCode = stripComments(board);
+
+console.log("【① 四个开关互相独立 + 缺省即开】");
+for (const key of ["autoUpdateDesktop", "autoUpdateComputerUse", "autoUpdateEngine"]) {
+  ok(settings.includes(`${key}?: boolean`), `AppSettings 有独立字段 ${key}`);
+}
+ok(/function autoUpdateEnabled[\s\S]{0,400}\?\.\[key\] !== false/.test(settings),
+  "缺省判据是 `!== false`（字段不存在 = 开；⛔ 用 === true 会让老用户升级后静默关闭）");
+ok(/readAutoUpdateRowSwitch\(settings, row\.id\)/.test(board),
+  "后台循环逐行读自己的开关（10-13 统一体系后：行白可由 readAutoUpdateRowSwitch 一处裁决）");
+ok(/saveAppSettings\(userData, \{ \[owner\]: Boolean\(enabled\) \}/.test(board),
+  "⛔ autoUpdate:set 只 patch 单键（写整份会互相覆盖 ⇒ 开关不独立）");
+const keysBlock = board.match(/const toolKeys[\s\S]*?\};/)?.[0] ?? "";
+ok(/nuphus: "autoUpdateDesktop"/.test(keysBlock) && !/playwright-cli/.test(keysBlock)
+  && /"computer-use": "autoUpdateComputerUse"/.test(keysBlock),
+  "桌面 / Mac 电脑操作各自映射到自己的开关字段（Playwright 已移除）");
+ok(/id: "ego-lite"/.test(board) && /runEgoUpgrade/.test(board) && /if \(row\.id === "ego-lite"\)/.test(board),
+  "控制台组件清单含 Ego Lite 行，手动更新走官方 ego-browser upgrade");
+
+console.log("【② 手动链 = 自动链（单一真相源）】");
+ok(/export async function checkRuntimeUpdateRow/.test(runtimeIpc) && /export async function performRuntimeUpdate/.test(runtimeIpc),
+  "runtime-ipc 导出 checkRuntimeUpdateRow / performRuntimeUpdate");
+ok(/ipcHost\.handle\("runtime:update-check"[\s\S]{0,300}checkRuntimeUpdateRow/.test(runtimeIpc)
+  && /ipcHost\.handle\("runtime:update"[\s\S]{0,200}performRuntimeUpdate/.test(runtimeIpc),
+  "界面「检查更新 / 更新」按钮只是这两个函数的薄包装");
+// ⛔ 10-13 统一体系后，编排层不再直接调各家函数，而是经 update-backends 的 updateComponent；
+//    统一后的判据在 backends 里，**仍然必须是同一批导出函数**（换位置可以，抄第二份不行）。
+ok(/import \{ checkRuntimeUpdateRow, performRuntimeUpdate/.test(backendsCode)
+  && /performRuntimeUpdate\(spec\.id\)/.test(backendsCode),
+  "执行层调的是 runtime-ipc 导出的同一批函数（⛔ 不许在别处再抄一遍判据）");
+ok(/export async function checkEngineUpdateInfo/.test(engineIpc) && /export async function performEngineUpdateFlow/.test(engineIpc),
+  "engine-ipc 导出 checkEngineUpdateInfo / performEngineUpdateFlow");
+ok(/ipcHost\.handle\("engine:check-update", \(\) => checkEngineUpdateInfo\(\)\)/.test(engineIpc),
+  "engine:check-update 走同一实现");
+ok(/performEngineUpdateFlow\(/.test(engineIpc) && /performEngineUpdateFlow\(async \(\) =>/.test(backendsCode),
+  "引擎手动与后台都走 performEngineUpdateFlow（唯一接缝 = 成功后怎么办）");
+
+console.log("【③ 更新源不另抄（统一国内镜像）】");
+ok(!/https?:\/\//.test(boardCode),
+  "⛔ auto-update-ipc 代码里不含任何镜像 URL 字面量（源沿用两条链路既有的国内镜像优先）");
+ok(/CHINA_NPM_REGISTRY/.test(runtimeIpc) && /NPMMIRROR/.test(read("electron/engine-updater.ts")),
+  "两条链路各自持有国内镜像常量（删掉就等于源被换回官方）");
+
+console.log("【④ 电脑操作（computer-use）：按平台过滤 + 包名只写一次】");
+ok(/"computer-use": \{[^}]*open-computer-use[^}]*platforms: \["darwin", "win32"\]/.test(runtimeIpc),
+  "UPDATEABLE_TOOLS 里 computer-use 带 platforms:[darwin, win32]（Windows 可装辅助后端）");
+ok(/id: "computer-use"[\s\S]{0,600}platforms: \["darwin", "win32"\]/.test(read("electron/update-registry.ts")),
+  "⛔ 组件注册表 computer-use 同样双平台可见（Windows 上的组件更新入口不能被过滤掉）");
+ok(/export function updateableToolIds\(\)[\s\S]{0,300}platforms\.includes\(process\.platform\)/.test(runtimeIpc),
+  "updateableToolIds() 按平台过滤（不支持的系统根本不入清单）");
+ok(/const ids = idValue \? \[idValue\] : updateableToolIds\(\)/.test(runtimeIpc),
+  "runtime:update-check 用 updateableToolIds()，不是 Object.keys(UPDATEABLE_TOOLS)");
+// @openai/codex 是**引擎**的包名，不在 UPDATEABLE_TOOLS 里（引擎不走 npm install），写一次是合理的；
+// 三类工具的包名则必须全部来自 updateableToolMeta —— 抄第二份就会和 UPDATEABLE_TOOLS 对不上。
+ok(/updateableToolMeta/.test(boardCode)
+  && !/@nuphus\/nuphus-mcp|@playwright\/cli|open-computer-use/.test(boardCode),
+  "⛔ 三类工具的包名只写在 UPDATEABLE_TOOLS（板块经 updateableToolMeta 取，不抄第二份）");
+
+console.log("【⑤ 后台三道闸】");
+ok(/if \(running\) return;[\s\S]{0,80}running = true;/.test(board), "闸 1 防重入（上轮没跑完不开新一轮）");
+/* ⛔ 10-23：窗口从 900 放宽到 1600 —— PPcode 仓在这段循环里多出 6 行「市场技能不在这里跑」的注释，
+   177→195 行隔了 ~1000 字符 ⇒ 旧窗口把**已正确实现**的 catch/console.warn 判成缺失（假红）。
+   放宽后仍要求「循环体里出现 console.warn」这个实质。 */
+ok(/for \(const row of rows\)[\s\S]{0,1600}console\.warn/.test(board),
+  "闸 2 单类失败只 warn 跳过、继续跑其余（一个包挂了不拖垮全部）");
+ok(/finally \{[\s\S]{0,120}running = false;/.test(board), "闸 3 finally 放闸");
+ok(/clearInterval\(timer\)/.test(board) && /clearTimeout\(first\)/.test(board) && /ctx\.effect\(/.test(board),
+  "定时器在 ctx.effect 里摘除（不留泄漏）");
+
+console.log("【⑥ 通知 + 引擎必须拉回来】");
+ok(/new Notification\(\{/.test(board) && /notifyUpdated\(/.test(board), "更新成功发系统通知");
+ok(/Notification\.isSupported\(\)/.test(board), "通知在不支持的环境静默跳过（后台任务不许因通知失败而失败）");
+const engineSuccess = backendsCode.match(/performEngineUpdateFlow\(async \(\) =>[\s\S]{0,400}?\n {8}\}\)/)?.[0] ?? "";
+ok(/server\.restart\(\)/.test(engineSuccess),
+  "⛔ 引擎更新成功后必须 server.restart() 把引擎拉回来（更新流程会先 stop 掉引擎，不拉 = 应用残废）");
+
+console.log("【⑦ 界面：开关统一在控制台 + 版本号】");
+const card = read("src/features/settings-general/AutoUpdateCard.tsx");
+const general = read("src/features/settings-general/GeneralSettingsSection.tsx");
+const skillsPage = read("src/features/settings-skills/SkillsCenterSection.tsx");
+ok(/<AutoUpdateCard[^>]*\/>/.test(general) && /from "\.\/AutoUpdateCard"/.test(general),
+  "「控制台」页挂上了统一开关卡片");
+ok(/ToggleSwitch/.test(card) && /window\.codex\.setAutoUpdate\(row\.id, enabled\)/.test(card)
+  && /window\.codex\.readAutoUpdateStatus\(\)/.test(card),
+  "卡片用共享 ToggleSwitch，读 autoUpdate:status、写 autoUpdate:set（⛔ 原生 checkbox 暗色下画成浅底）");
+ok(!/ToggleSwitch/.test(page) && !/skillAutoUpdate/.test(skillsPage),
+  "⛔ 自动化页与技能页**不再各放一个开关**（同一状态两个入口 ⇒ 用户会以为两边不一致）");
+ok(/控制台/.test(read("src/features/settings-automation/AutomationSettingsSection.tsx"))
+  && /控制台/.test(skillsPage),
+  "两处都留了指向「控制台」的说明（不是静默消失）");
+/* 11-07 卡片改版：桌面卡按后端各显示一行「Nuphus / CU + 版本」（toolTag 读同一条 toolStatus）。 */
+ok(/toolTag\("nuphus-mcp"/.test(page) && !/playwright-cli/.test(page),
+  "桌面自动化卡片显示版本号（Playwright 卡已移除）");
+ok(!/Object\.keys\(UPDATEABLE_TOOLS\)|nuphus.*@nuphus/.test(page) && !/@nuphus|@playwright/.test(card),
+  "⛔ 界面不另抄工具清单与包名");
+
+console.log("【⑦b 技能那条：一个端点给全部开关】");
+ok(/"market-skill": "skillAutoUpdate"/.test(settings) && /skill: "skillAutoUpdate"/.test(settings),
+  "市场技能行归属技能内容开关（界面一次请求仍能拿全开关）");
+ok(/if \(row\.specId === "market-skill"\) continue;/.test(boardCode),
+  "⛔ 技能的后台循环仍在 skills-ipc（本板块只承载开关与显示），不重复起调度器");
+ok(/if \(!readAutoUpdateRowSwitch\(settings, row\.id\)\) continue;[\s\S]{0,200}await updateRow\(row/.test(boardCode),
+  "⛔ 关掉就不**发起检查**：开关判定在「更新」之前 continue 掉（连比对都不做）");
+ok(/autoUpdateRunning\) return;/.test(read("electron/features/skills-ipc.ts"))
+  && /if \(!enabled\) return;[\s\S]{0,120}checkSkillUpdateRows\(\)/.test(read("electron/features/skills-ipc.ts")),
+  "⛔ 技能同理：关着时在 checkSkillUpdateRows 之前返回（连内容比对都不做）");
+
+console.log("【⑦c 每行有名称 / 说明 / tooltip / 状态反馈】");
+ok(/<strong>\{row\.kind === "skill" \? "技能自动更新" : row\.kind === "plugin" \? "插件自动更新" : row\.label\}<\/strong>/.test(card) && /<small>\{text\}<\/small>/.test(card),
+  "每行 = 名称 + 简要说明（技能/插件两个总开关用统一标签）");
+ok(/title=\{row\.enabled \? `关闭/.test(card), "每行有 tooltip（说明开/关会做什么）");
+ok(/不会发起更新检查/.test(card), "关闭态明确写出「不会发起更新检查」（开关的语义，不是装饰）");
+ok(/onNotice\?\.\(applied \?/.test(card) && /onNotice=\{setNotice\}/.test(general),
+  "写盘成功后有状态反馈（对齐控制台既有的 notice 用法）");
+ok(/readAutoUpdateSwitch/.test(settings) && /key === "skillAutoUpdate" \|\| key === "pluginAutoUpdate"[\s\S]{0,120}=== true/.test(settings),
+  "缺省值分档只写一处：四类装包缺省开、技能/插件内容更新缺省关");
+
+console.log("【⑦d 清单扫描有上限 + 后台更新与清单解耦】");
+/* 10-24 用户实测：控制台「其他组件更新」一直停在「正在读取组件清单…」。
+   ⛔ 根因：scanAll 把十几类远端查版本放在一个 Promise.all 里，npm 2×20s / pip 5×20s，
+      任何一个源挂住整张清单就永远不返回 ⇒ 必须逐类限时，超时行给原因而不是整项消失。 */
+ok(/const SCAN_DEADLINE_MS = 12_000;/.test(board), "扫描有单类预算 SCAN_DEADLINE_MS（12 秒）");
+ok(/withDeadline\([\s\S]{0,160}scanRows\(spec, ctx\)/.test(board), "scanAll 里每一类都过 withDeadline（⛔ 不是只包整个 Promise.all）");
+ok(/检测超时/.test(card) && /attemptable/.test(card), "界面：超时行可重试「更新」，并明确标注超时原因");
+ok(/Promise\.race\(\[[\s\S]{0,200}20_000/.test(card), "渲染层再兜一层 20 秒时限（IPC 不回来也不许永久 loading）");
+ok(/不依赖清单是否加载成功/.test(card), "卡片明说：后台自动更新不依赖这张清单是否加载成功");
+ok(!/<details[\s>]/.test(card) && /auto-update-advanced-head/.test(card),
+  "⛔ 工具清单常显、不再折叠（10-24 用户：「展开折叠，正常展示工具就行了，不要隐藏」）");
+ok(/\{row\.hasUpdate && row\.installed \?/.test(card),
+  "「有更新」徽标只给已安装的组件（未安装行挂徽标 = 「有更新 / 未安装」自相矛盾）");
+ok(/row\.specId === "market-plugin" \|\| row\.specId === "official-plugin"\) continue;/.test(boardCode)
+  && /runPluginAutoUpdate/.test(read("electron/features/plugins-ipc.ts")),
+  "⛔ 插件自动更新只有一个 owner（plugins-ipc 的循环），本编排循环跳过插件行（否则两个循环同时重装）");
+
+console.log("【⑧ 域登记闭环 + 台账】");
+ok(/"id": "autoUpdate"/.test(composition) && /features\/auto-update-ipc\.ts/.test(composition) && /autoUpdateFeature/.test(composition),
+  "composition.json 登记 autoUpdate 域");
+ok(/prefix: "autoUpdate", count: 5/.test(registry), "ipc-registry 记账 autoUpdate(5)");
+ok(/autoUpdate:status/.test(manifest) && /autoUpdate:set/.test(manifest), "manifest 有两条通道");
+ok(/readAutoUpdateStatus/.test(preload) && /setAutoUpdate/.test(preload), "preload 暴露两个方法");
+ok(/自动更新/.test(ledger) && /autoUpdate/.test(ledger), "FEATURE-LEDGER 有对应条目");
+
+/* ⑨ 引擎更新的**落位必须跨卷安全**（10-17 实测事故，用户报「能下载、装不上」）。
+   ⛔ 真因：暂存目录建在 `os.tmpdir()`（几乎总在 C:），而引擎可能装在 D: ⇒
+      `rename` 跨卷直接 `EXDEV: cross-device link not permitted`，下载/解压/自检全过、**只有落位失败**。
+   ⛔ 手动链与自动链调的是**同一个** `performEngineUpdate` ⇒ 一处修好两边都好，一处不修两边都挂。 */
+{
+  const eu = read("electron/engine-updater.ts");
+  ok(!/path\.join\(os\.tmpdir\(\), `codex-engine-update-/.test(eu), "引擎更新暂存目录不再用 os.tmpdir()（跨卷 rename 必 EXDEV）");
+  ok(/function movePath\(/.test(eu) && /EXDEV/.test(eu) && /fs\.cp\(from, to/.test(eu), "落位有 EXDEV 兜底（复制 + 删源），不是把 EXDEV 原样抛给用户");
+  ok(!/await fs\.rename\(newVendorDir, vendorDir\)/.test(eu), "落位不再直接 rename（必须走 movePath）");
+  /* ⛔ 10-17 第二次实测：跨盘修掉后立刻撞上 Windows **EPERM 文件占用** ——
+     前面刚用 runCommand 执行过要搬的那棵树里的 exe，Windows 短暂持有进程映像；
+     再叠加杀软/索引器扫新解压的 ~100MB 树。⇒ movePath 必须对 EPERM/EBUSY 重试（同解压安装的先例）。 */
+  ok(/attempt < 5/.test(eu) && /EPERM\|EBUSY\|ENOTEMPTY/.test(eu), "落位对 Windows 文件占用（EPERM/EBUSY）重试，不重试就会「下载 100% 却装不上」");
+
+  /* ⛔ 10-17 实测：更新**成功**后 vendor/ 里仍留着 ~160MB 的 .engine-update-* ——
+      里的 fs.rm 被 Windows 占用打回、又被 .catch 静默吞掉。
+     ⇒ 必须给 fs.rm 原生的 maxRetries（它就是为 EBUSY/EPERM 设计的）。 */
+  ok(/maxRetries: 10/.test(eu), "临时目录清理带 maxRetries（否则每次更新残留 ~160MB）");
+}
+
+/* ⑩ 进度日志不许被刷成同一行（10-17 实测：留下 6 条「下载引擎包 100%」）。
+   ⛔ 两个成因：① 主进程"依次换源"每轮从 0 重报；② 渲染层逐条 append 每个进度事件。
+   ⇒ 都要在：换源时写明第几个源失败；渲染层同阶段只原地更新最后一行。 */
+{
+  const eu = read("electron/engine-updater.ts");
+  const view = read("src/features/app-state/parts/part01/05-engine-ssh-connectors.tsx");
+  ok(/candidates\.entries\(\)/.test(eu) && /换源重试/.test(eu), "主进程换源时自解释（第几个源失败 + 原因），不再只报「开始下载」");
+  ok(/lastProgressStage/.test(view) && /sameStage/.test(view), "渲染层同阶段原地更新最后一行（⛔ 不再逐条 append）");
+}
+
+/* ⑪ 旧安装包必须清理（10-17 用户令：「更新重启完成后把旧的安装包去了，否则越积越大」）。
+   ⛔ 安装包按**版本命名**、每更新一次一个新文件；不清理就永久累积（实测下载目录全仓无任何清理）。
+   ⛔ 清理点必须是**启动时**（安装包拉起后本进程马上退出，那一刻删不掉）。 */
+  const svc = read("electron/update-service.ts");
+  ok(/function pruneOldPackages\(/.test(svc), "有旧安装包清理函数（11-21 重写后在 update-service.ts）");
+  ok(/keepVersion/.test(svc), "清理保留**当前这一版**（手动重装 / 回退兜底），不团灭");
+  ok(/path\.join\(app\.getPath\("userData"\), "update"\)/.test(svc),
+    "只清本应用自己的 userData/update 目录（⛔ 不扫用户下载目录、不按扩展名误删）");
+  ok(/restoreUpdateState[\s\S]{0,800}pruneOldPackages\(saved\?\.version\)/.test(svc),
+    "在启动恢复里就清（安装包拉起时本进程已退出，只能等新版本跑起来再清）");
+
+/* ⑫ **只保留最新版本，旧的自动清理**（10-17 用户定的通用规则，不只是安装包）。
+   ⛔ 引擎的旧版本（`vendor/*.bak-1`，~437MB）也是"旧版本"——它在**本次更新内**是回滚备份，
+     但复验一旦通过就该删；否则每次更新都白占 437MB。
+   ⛔ 顺序不能反：必须 **先 rm(backupDir) 再 report(done)** —— 反过来就丢了"失败可回滚"的窗口。 */
+{
+  const eu2 = read("electron/engine-updater.ts");
+  ok(/fs\.rm\(backupDir[\s\S]{0,240}?report\(\{ stage: "done"/.test(eu2), "引擎复验通过后删旧版本（只留最新；且删除发生在报告完成之前）");
+  ok(/fs\.rm\(backupDir[^)]*maxRetries: 10/.test(eu2), "删旧引擎带 maxRetries（Windows 占用重试，与其它清理同口径）");
+}
+
+console.log(fails ? `\n✗ 12k 未通过：${fails}/${checks}` : `\n✓ 12k 通过：${checks}/${checks}`);
+process.exit(fails ? 1 : 0);

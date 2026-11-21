@@ -244,13 +244,14 @@ export function AppView({ app }: { app: HarnessAppApi }) {
   /* ★ 10-31 用户令：「左侧栏也加一个拖动功能」——拖侧栏右缘改宽度（200–420px），
      localStorage 持久化；折叠 / 窄屏 / 独立弹窗三种状态不响应（那里宽度是布局决定的）。
      ⛔ 只改 CSS 变量 --side-w（grid 用它的那条），不换模板：轨道数不变才能插值动画。 */
+  /* 11-17 用户令：「默认宽度降低一点，现在有点太宽」——默认 260 → 236，最小 220。 */
   const SIDEBAR_MIN = 236;
   const SIDEBAR_MAX = 420;
   const SIDEBAR_DEFAULT = 236;
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     try {
       const stored = Number(localStorage.getItem("sidebar-width"));
-      /* 旧默认 260 = 从没拖过；跟随新默认（拖过的自定义宽度保留）。 */
+      /* 旧默认 260 = 用户从没拖过；看作未设置，跟着新默认走（拖过的自定义宽度保留）。 */
       if (stored === 260) return SIDEBAR_DEFAULT;
       return Number.isFinite(stored) && stored >= SIDEBAR_MIN && stored <= SIDEBAR_MAX ? stored : SIDEBAR_DEFAULT;
     } catch { return SIDEBAR_DEFAULT; }
@@ -385,7 +386,7 @@ export function AppView({ app }: { app: HarnessAppApi }) {
     resourceLoading, restartPending, reviewBusy, reviewReport,
     rightOpen, rightTab, rpaRecipes, rpaRunning,
     runActivity, runMemoryDistill, runPhrase, runPromptEnhance,
-    runSchedule, runSlashCommand, runUpdateCheck, runUpdateDownload,
+    runSchedule, runSlashCommand,
     runtimeInstalling, runtimeModal, runtimePercent, runtimeProgress,
     runtimeSpeed, runtimeStage, sandbox, saveAccountName,
     saveConnector, saveConnectorFromTemplate, saveCustomDraft, saveCustomModel,
@@ -466,9 +467,7 @@ export function AppView({ app }: { app: HarnessAppApi }) {
     topbarActionsNode, treeChildren, treeExpanded, treeLoading,
     treePath, trustAllHooks, turnWindow, turnsCursorRef,
     uiFont, uiLang, uiSketchOpen, uiZoom, uninstallDevRuntime,
-    updateBotStream, updateChecking, updateCurrentVersion, updateDownloading,
-    updateError, updateInfo, updateMemoryMode,
-    updateProgress, upstreamRetries, usage, useCommand,
+    updateBotStream, updateMemoryMode, upstreamRetries, usage, useCommand,
     userAvatar, userDataPath, username, viewTab,
     voiceDictating, waitingForApproval, waitingForInput, welcomeCwdMenuOpen,
     welcomeScratchDir, workspace, workspaceMemoryEnabled,
@@ -502,7 +501,8 @@ export function AppView({ app }: { app: HarnessAppApi }) {
     [officeGroupMembers.snapshot.members],
   );
 
-  /* 11-18：自媒体工作台「成稿出口」把提示词推过来 ⇒ 填进输入框（⛔ 不自动发送）。 */
+  /* 11-18：自媒体工作台的「成稿出口」把提示词推过来 ⇒ 填进输入框（⛔ 不自动发送）。
+     订阅只挂一次；setPrompt 来自 bag（与设计库/组件库的 onHandoff 同一条路）。 */
   const [incoming, setIncoming] = useState<{ text: string; threadId?: string } | null>(null);
   useEffect(() => {
     const off = window.codex.onAppPrefill?.((payload) => {

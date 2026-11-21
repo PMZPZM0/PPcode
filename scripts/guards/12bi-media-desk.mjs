@@ -48,7 +48,7 @@ export async function run() {
   const appEntry = read("src/App.tsx");
   const popoutQuery = read("src/lib/media-desk-window.ts");
   const sidebar = read("src/features/app-view/AppView/01-sidebar-shell.tsx");
-  /* 11-18：自媒体工作台 / 拓展功能入口现在在功能入口菜单里。 */
+  /* 11-18：自媒体工作台 / 拓展功能的入口现在在功能入口菜单里（元数据在 FunctionMenu）。 */
   const fmMeta = read("src/features/function-menu/FunctionMenu.tsx");
   const winFactory = read("electron/features/window-factory.ts");
   const dispatchCore = read("electron/features/dispatch-core.ts");
@@ -161,7 +161,7 @@ export async function run() {
       "更新装到 userData/media-desk-vendor/<version> 并用 current.json 指向（⛔ 不改写随包资源）");
     ok(/registry\.npmjs\.org/.test(vendor) && /registry\.npmmirror\.com/.test(vendor)
       && /if \(v && \(!latest \|\| compareVersions\(v, latest\) > 0\)\)/.test(vendor)
-      && /from "\.\.\/\.\.\/updates"/.test(vendor),
+      && /from "\.\.\/\.\.\/version-utils"/.test(vendor),
       "查最新版：官方 + 镜像都问、取最大（镜像滞后不会把旧版报成最新）");
     ok(/\.media-desk-bar \{/.test(boardCss) && /\.media-desk-btn\.is-primary/.test(boardCss)
       && /\.media-desk-frame \{ height: 100%; \}/.test(boardCss),

@@ -1,298 +1,147 @@
-/**
- * usePart02c2 —— usePart02c 按序切分出的第 2 段（纯搬迁、零改写）。
- * 域：会话切换与戳记 · 系统事件 · 欢迎目录 — 更新检查 · UI 语言与缩放 · 设置页
- *
- * ⛔ 顺序即契约：段内含 hook 调用，React 靠**调用顺序**绑定 state ⇒ 组合根必须按文件名前缀顺序调用。
- * ⛔ 本段语句只引用「自己的局部声明」与 bag；跨段名字由组合根按入参转交。
- */
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { HelpDialog, type HelpTopic } from "../../../../../components/HelpDialog";
-import { readStoredCodexAvatar, storeCodexAvatar, setCodexIdentity, getCodexIdentity, subscribeCodexIdentity, CODEX_DEFAULT_NAME, type CodexAvatarSpec } from "../../../../../lib/codex-identity.mjs";
-import { setWidgetDark, isWidgetDark } from "../../../../../lib/widget-dark";
-import type { Model, PendingRequest, SettingsPage, SystemEvent, Thread, TreeEntry } from "../../../../app-view/types";
-import type { Bag } from "../../bag-types";
-
-/** bag 分片 02c2：更新流程的 UI 状态与下载进度（听主进程的 download-progress 推送）。 */
-export function usePart02c2(bag: Bag) {
-  // 下载进度：主进程通过 updates:download-progress 推送
-  useEffect(() => {
-    const off = window.codex.updateOnProgress?.((percent: number) => bag.setUpdateProgress(percent));
-    return () => { off?.(); };
-  }, []);
-
-  /* ══════════════════════════════════════════════════════════════════════
-   * 更新就绪状态机（10-12）—— 需求 2/3/4
-   *
-   *   idle ──(后台静默下载完成 / 手动检查发现已下好)──▶ ready
-   *   ready ──「取消」──▶ dismissed ──(下次更新事件)──▶ ready
-   *   ready ──「重启安装」──▶ 调 restart-install（主进程 spawn 安装包后 quit 自己）
-   *
-   * ⛔ 版本号存两处是**故意的**：`updateInfo.version`（检查结果）与 `updateReadyVersion`
-   *   （静默下载完成时主进程推来的）可能不是同一次检查来的；弹窗只显示"已就绪"的
-   *   那一个，所以独立存，别在弹窗里读 updateInfo（会显示成旧版本）。
-   * ⛔ dismissed 只压**这一版**：换版本后仍会重新弹（否则用户永远看不到新版本）。
-   * ══════════════════════════════════════════════════════════════════════ */
-  const [updateReady, setUpdateReady] = useState(false);
-  const [updateReadyVersion, setUpdateReadyVersion] = useState("");
-  const [updateRestarting, setUpdateRestarting] = useState(false);
-  const dismissedVersionRef = useRef<string>("");
-  bag.updateReady = updateReady as typeof bag.updateReady;
-  bag.updateReadyVersion = updateReadyVersion as typeof bag.updateReadyVersion;
-  bag.updateRestarting = updateRestarting as typeof bag.updateRestarting;
-
-  /* 11-20 用户令：「把那个自动更新删了吧，就保留手动的」「手动重启，不要自动了」。
-     ⇒ 自动安装整套移除（开关 / 定时器 / 阻塞判据 / localStorage 键）：更新就绪后只弹提示条，
-        必须由用户点「重启安装」才装。⛔ 别再把定时自动安装加回来 —— 用户实测它会在人没注意时
-        把应用直接关掉，而安装流程根本没出来。 */
-
-  /* 11-16：上次安装失败（版本没变）⇒ 本会话不再自动安装；toast 让用户手动重试。 */
-  const [updateInstallFailed, setUpdateInstallFailed] = useState("");
-  bag.updateInstallFailed = updateInstallFailed as typeof bag.updateInstallFailed;
-  bag.setUpdateInstallFailed = setUpdateInstallFailed as typeof bag.setUpdateInstallFailed;
-  useEffect(() => {
-    const onFailed = (event: Event) => {
-      const version = String((event as CustomEvent<{ version?: string }>)?.detail?.version ?? "");
-      setUpdateInstallFailed(version || "unknown");
-      bag.showToast?.("上次更新未完成", `v${version || "新版本"} 没有装成功，已切换为手动安装；请点「重启安装」重试`, "");
-    };
-    window.addEventListener("harness:update-install-failed", onFailed);
-    return () => window.removeEventListener("harness:update-install-failed", onFailed);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 已就绪 ⇒ 弹窗出现；被用户取消过的这一版不再打扰。 */
-  const armUpdateReady = (version?: string) => {
-    const v = String(version ?? "").trim();
-    if (dismissedVersionRef.current && v && dismissedVersionRef.current === v) return;
-    if (v) setUpdateReadyVersion(v);
-    setUpdateReady(true);
-  };
-  bag.armUpdateReady = armUpdateReady as typeof bag.armUpdateReady;
-
-  /** 「取消 / 稍后」：手动模式 = 本版不再打扰；自动模式 = 延后 30 分钟再自动装。 */
-  const dismissUpdateReady = () => {
-    dismissedVersionRef.current = updateReadyVersion;
-    setUpdateReady(false);
-  };
-  bag.dismissUpdateReady = dismissUpdateReady as typeof bag.dismissUpdateReady;
-
-  /** 「重启安装」：主进程先起安装包再退出自己；失败要如实告知（不静默吞）。 */
-  const restartAndInstall = async () => {
-    setUpdateRestarting(true);
-    setUpdateInstallFailed("");
-    try {
-      const r = await window.codex.updateRestartInstall?.();
-      if (!r?.ok) {
-        // macOS 上没有 NSIS 覆盖安装这条路 ⇒ 如实降级到"打开文件夹"，并说明原因
-        if (r?.error === "unsupported_platform") {
-          await window.codex.updateReveal?.("");
-          bag.showToast?.("macOS 请打开下载的压缩包，把 PPcode 拖进「应用程序」", "");
-        } else {
-          bag.setUpdateError(`重启安装失败：${r?.error || "未知原因"}`);
-        }
-        return;
-      }
-      // ok ⇒ 主进程会 quit，这里不再收尾（进程即将退出）。
-    } finally {
-      setUpdateRestarting(false);
-    }
-  };
-  bag.restartAndInstall = restartAndInstall as typeof bag.restartAndInstall;
-
-
-  /* ⛔⛔ 11-20 用户令：「我现在进应用就弹自动下载，很烦，只提醒，不要强制更新和自动下载」。
-     这里原来是「启动 8 秒后自动调 download-silent 下完整包」—— 用户没点任何东西就开始下 668MB。
-     已删除。⛔ 别再加回来：更新只能由用户在账号菜单里点「更新」触发。 */
-
-  // 需求 3：主进程下载完成后主动推 `updates:ready` ⇒ 弹窗（与是否开着设置页无关）。
-  useEffect(() => {
-    const off = window.codex.updateOnReady?.((info: { version?: string }) => {
-      armUpdateReady(info?.version);
-    });
-    return () => { off?.(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-
-  const runUpdateCheck = async () => {
-    bag.setUpdateChecking(true);
-    bag.setUpdateError("");
-    try {
-      const r = await window.codex.updateCheck?.();
-      if (!r) throw new Error("IPC 不可用");
-      if (!r.ok) throw new Error(r.error || "检查失败");
-      bag.setUpdateInfo(r.info ?? null);
-      bag.setUpdateCurrentVersion(r.currentVersion ?? "");
-      // ⛔⛔ 10-12 需求 4：手动「检查更新」若发现**更新包已经下好**，要弹同一个重启安装框。
-      //   这里不自己判断"下好了没"（渲染层没有这个权威状态）⇒ 直接问主进程要：
-      //   `download-silent` 是幂等的（已下好直接回 alreadyDone，不会重复下几百 MB）。
-      /* ⛔ 11-20 用户令：这里原来会**自动开始静默下载**（发现新版就下几百 MB）。已删除 ——
-         检查更新只更新状态，用户点「更新」才下载。 */
-    } catch (err: any) {
-      bag.setUpdateError(err?.message || String(err));
-    } finally {
-      bag.setUpdateChecking(false);
-    }
-  };
-bag.runUpdateCheck = runUpdateCheck as typeof bag.runUpdateCheck;
-
-  /** 下载安装包 → 自动打开安装程序；唤起失败则退化为打开所在文件夹 */
-  const runUpdateDownload = async () => {
-    if (!bag.updateInfo?.downloadUrl) return;
-    bag.setUpdateDownloading(true);
-    bag.setUpdateProgress(0);
-    bag.setUpdateError("");
-    try {
-      const r = await window.codex.updateDownload?.({
-        downloadUrl: bag.updateInfo.downloadUrl,
-        filename: bag.updateInfo.filename || "codex-harness-update.bin",
-      });
-      if (!r?.ok) throw new Error(r?.error || "下载失败");
-      const started = await window.codex.updateInstall?.(r.path!);
-      if (!started?.ok) {
-        void window.codex.updateReveal?.(r.path!);
-        bag.showToast?.(`已下载 v${bag.updateInfo.version}，请手动安装`, "");
-      } else {
-        bag.showToast?.(`正在打开 v${bag.updateInfo.version} 安装程序`, "");
-      }
-    } catch (err: any) {
-      bag.setUpdateError(err?.message || String(err));
-    } finally {
-      bag.setUpdateDownloading(false);
-      bag.setUpdateProgress(0);
-    }
-  };
-bag.runUpdateDownload = runUpdateDownload as typeof bag.runUpdateDownload;
-
-  // 打开网站反馈页：带上当前版本与系统信息（管理员可据此复现）
-  // 发布站 09-15 起不再分发安装包，只负责应用介绍与问题反馈——反馈页地址保持不变
-  const openFeedbackPage = () => {
-    const ua = navigator.userAgent;
-    const os = /Windows NT 10/.test(ua) ? "Windows 10/11"
-      : /Windows/.test(ua) ? "Windows"
-      : /Mac OS X/.test(ua) ? "macOS"
-      : /Linux/.test(ua) ? "Linux"
-      : navigator.platform || "";
-    const qs = new URLSearchParams();
-    if (bag.updateCurrentVersion) qs.set("v", bag.updateCurrentVersion);
-    if (os) qs.set("os", os);
-    // 发布中心地址固定（应用介绍 + 问题反馈），用户无需配置
-    const base = "https://dl.ppz123.asia";
-    const url = `${base}/feedback.html${qs.toString() ? `?${qs.toString()}` : ""}`;
-    bag.setAccountMenuOpen(false);
-    void window.codex.openExternal(url);
-  };
-bag.openFeedbackPage = openFeedbackPage as typeof bag.openFeedbackPage;
-
-  const [uiLang, setUiLang] = useState(() => localStorage.getItem("ui-lang") ?? "zh");
-bag.uiLang = uiLang as typeof bag.uiLang; bag.setUiLang = setUiLang as typeof bag.setUiLang;
-
-  // ⛔ mac 适配（09-16）：把平台写进 <html data-os>，styles.css 用 [data-os="darwin"] 分叉
-  // 窗口控制键让位（右上 145px 是 Windows WCO 专属预留，mac 上是纯空白）。
-  // data-motion="force"（默认）：无视 macOS 系统级「减少动态效果」——styles.css 里所有
-  // prefers-reduced-motion 静音块都加了 html:not([data-motion="force"]) 前缀，用户实测
-  // mac 上动画全静止就是系统这个开关命中了全局 `*` 块。以后要做「跟随系统」再摘属性。
-  useEffect(() => {
-    const p = (window as any).codex?.platform
-      || (navigator.platform?.toLowerCase().includes("mac") ? "darwin" : "win32");
-    document.documentElement.dataset.os = p;
-    document.documentElement.dataset.motion = "force";
-  }, []);
-
-  const [uiZoom, setUiZoom] = useState(() => Number(localStorage.getItem("ui-zoom") ?? "1"));
-bag.uiZoom = uiZoom as typeof bag.uiZoom; bag.setUiZoom = setUiZoom as typeof bag.setUiZoom;
-
-  useEffect(() => { document.documentElement.dataset.uiLang = bag.uiLang; localStorage.setItem("ui-lang", bag.uiLang); }, [bag.uiLang]);
-
-  useEffect(() => { (document.body.style as any).zoom = String(bag.uiZoom); localStorage.setItem("ui-zoom", String(bag.uiZoom)); }, [bag.uiZoom]);
-
-  // 让模块级 widget 卡片跟随主题（widget iframe 背景/文字色）
-  useEffect(() => { setWidgetDark(bag.theme === "dark"); return () => { setWidgetDark(false); }; }, [bag.theme]);
-
-  const [uiFont, setUiFont] = useState(() => localStorage.getItem("ui-font") ?? "default");
-bag.uiFont = uiFont as typeof bag.uiFont; bag.setUiFont = setUiFont as typeof bag.setUiFont;
-
-  useEffect(() => {
-    document.documentElement.dataset.uiFont = bag.uiFont;
-  }, [bag.uiFont]);
-
-  const [settingsOpen, setSettingsOpen] = useState(false);
-bag.settingsOpen = settingsOpen as typeof bag.settingsOpen; bag.setSettingsOpen = setSettingsOpen as typeof bag.setSettingsOpen;
-
-  // 专家团像素办公室（v19）：成员流转轨「办公室」按钮 → 整屏浮层；状态实时联动由宿主的 railRuns 事件态驱动
-  const [companyPreviewTeamId, setCompanyPreviewTeamId] = useState<string | null>(null);
-bag.companyPreviewTeamId = companyPreviewTeamId as typeof bag.companyPreviewTeamId; bag.setCompanyPreviewTeamId = setCompanyPreviewTeamId as typeof bag.setCompanyPreviewTeamId;
-
-  // AI 短剧无限画布（09-27）：侧栏入口的整体开关。画布自己的状态全在域内（localStorage 持久化），
-  // 挂 bag 的只有「开没开」这一位 —— 宿主只需要知道要不要渲染它。
-  const [dramaCanvasOpen, setDramaCanvasOpen] = useState(false);
-  bag.dramaCanvasOpen = dramaCanvasOpen as typeof bag.dramaCanvasOpen; bag.setDramaCanvasOpen = setDramaCanvasOpen as typeof bag.setDramaCanvasOpen;
-
-  // 前端开发（10-04，m3e-canvas 嵌入；两轮改名：界面草图 → 手机前端UI → 前端开发）：与画布同款 —— 界面自己的状态全在域内（iframe 里那份
-  // localStorage），挂 bag 的只有「开没开」这一位（侧栏「···更多」开、AppView 渲染宿主）。
-  const [uiSketchOpen, setUiSketchOpen] = useState(false);
-  bag.uiSketchOpen = uiSketchOpen as typeof bag.uiSketchOpen; bag.setUiSketchOpen = setUiSketchOpen as typeof bag.setUiSketchOpen;
-
-  // 通知归属判定用的镜像（09-20）：setNotice 是 useCallback 稳定引用，闭包读 ref 拿最新开关状态
-  bag.settingsOpenRef.current = bag.settingsOpen;
-
-  // 未配置的 PPtoken 推荐卡可被用户「禁用」（仅置灰，不写引擎存储；配置真实密钥后走 setProviderEnabled）
-  // ⛔ 推荐卡（PPtoken 赞助位）**默认不启用**（09-19 用户：「首次安装启动、没配置供应商的时候，
-  //   默认不要启用任何供应商，要不然会跟新配置的供应商同时启用」）。
-  //   只有用户**显式点开过**（localStorage 存 "0"）才保持启用；没有记录 = 首次安装 = 关。
-  //   ⚠️ 旧实现是 `=== "1"`（没记录=启用），于是全新安装第一眼就是一个"未配置密钥却已启用"的卡。
-  const [pptokenCardOff, setPptokenCardOff] = useState(() => localStorage.getItem("pptoken-card-off") !== "0");
-bag.pptokenCardOff = pptokenCardOff as typeof bag.pptokenCardOff; bag.setPptokenCardOff = setPptokenCardOff as typeof bag.setPptokenCardOff;
-
-  useEffect(() => { try { localStorage.setItem("pptoken-card-off", bag.pptokenCardOff ? "1" : "0"); } catch { /* ignore */ } }, [bag.pptokenCardOff]);
-
-  const [settingsPage, setSettingsPage] = useState<SettingsPage>("general");
-bag.settingsPage = settingsPage as typeof bag.settingsPage; bag.setSettingsPage = setSettingsPage as typeof bag.setSettingsPage;
-
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
-bag.shortcutsOpen = shortcutsOpen as typeof bag.shortcutsOpen; bag.setShortcutsOpen = setShortcutsOpen as typeof bag.setShortcutsOpen;
-
-  /** 设置页「使用帮助」弹窗（09-17 用户要求：模型/插件/技能/MCP/专家团/语音/开发工具都要有）。
-   *  null = 不显示；`overview` 是设置总览（标题栏那枚按钮），其余由各页标题旁的 ? 写入（HelpTopic）。 */
-  const [helpKey, setHelpKey] = useState<HelpTopic | null>(null);
-bag.helpKey = helpKey as typeof bag.helpKey; bag.setHelpKey = setHelpKey as typeof bag.setHelpKey;
-
-  /** 归档后提示浮层（09-17）：token 用于重置倒计时，name 是刚归档的会话名。 */
-  const [archiveToast, setArchiveToast] = useState<{ name: string; token: number } | null>(null);
-bag.archiveToast = archiveToast as typeof bag.archiveToast; bag.setArchiveToast = setArchiveToast as typeof bag.setArchiveToast;
-
-  // ⛔ 首启引导弹窗两代都已删（模型引导 10-01、环境体检 10-07）——新手引导改走侧栏常驻入口。
-  //    登录页快捷配置链路保留（part08 的 handleLogin/markModelConfigured）。
-
-  /* ⛔ 首启「环境体检」弹窗（09-17）已整体删除（10-07 用户令：「反正现在也新手引导选项了」）。
-     新手侧入口 = 侧栏底部「新手引导」（newbie-guide 板块）；别再复活 envCheckOpen 一族状态。 */
-
-  /** Codex 的身份（名字+头像）：订阅外部 store，改设置时消息头会立刻跟着变。 */
-  const codexIdentity = useSyncExternalStore(subscribeCodexIdentity, getCodexIdentity, getCodexIdentity);
-bag.codexIdentity = codexIdentity as typeof bag.codexIdentity;
-
-  const [toolsStatus, setToolsStatus] = useState<{ id: string; name: string; scope: "computer" | "browser"; version: string; installed: boolean; binaryReady: boolean; detail: string; command: string }[]>([]);
-bag.toolsStatus = toolsStatus as typeof bag.toolsStatus; bag.setToolsStatus = setToolsStatus as typeof bag.setToolsStatus;
-
-  const refreshToolsStatus = () => { window.codex.toolStatus().then(bag.setToolsStatus).catch(() => bag.setToolsStatus([])); };
-bag.refreshToolsStatus = refreshToolsStatus as typeof bag.refreshToolsStatus;
-
-  const [devRuntimes, setDevRuntimes] = useState<DevRuntimeEntry[]>([]);
-bag.devRuntimes = devRuntimes as typeof bag.devRuntimes; bag.setDevRuntimes = setDevRuntimes as typeof bag.setDevRuntimes;
-
-  const [runtimeInstalling, setRuntimeInstalling] = useState<string | null>(null);
-bag.runtimeInstalling = runtimeInstalling as typeof bag.runtimeInstalling; bag.setRuntimeInstalling = setRuntimeInstalling as typeof bag.setRuntimeInstalling;
-
-  const [runtimeProgress, setRuntimeProgress] = useState<Record<string, string>>({});
-bag.runtimeProgress = runtimeProgress as typeof bag.runtimeProgress; bag.setRuntimeProgress = setRuntimeProgress as typeof bag.setRuntimeProgress;
-
-  // 安装进度条（09-19 用户：「不要弹窗，全部进度条展示吧，这样可视化进度，方便新手」）：
-  // 主进程把安装脚本的结构化行（`@@PROGRESS n` / `@@STAGE 阶段`）解析成独立事件下发，
-  // 这里分别记住——文字说明「在做什么」，百分比驱动进度条。
-  const [runtimePercent, setRuntimePercent] = useState<Record<string, number>>({});
-bag.runtimePercent = runtimePercent as typeof bag.runtimePercent; bag.setRuntimePercent = setRuntimePercent as typeof bag.setRuntimePercent;
-
-  const [runtimeStage, setRuntimeStage] = useState<Record<string, string>>({});
-bag.runtimeStage = runtimeStage as typeof bag.runtimeStage; bag.setRuntimeStage = setRuntimeStage as typeof bag.setRuntimeStage;
-  return { runUpdateCheck, runUpdateDownload, updateReady, updateReadyVersion, updateRestarting, armUpdateReady, dismissUpdateReady, restartAndInstall, openFeedbackPage, uiLang, setUiLang, uiZoom, setUiZoom, uiFont, setUiFont, settingsOpen, setSettingsOpen, companyPreviewTeamId, setCompanyPreviewTeamId, dramaCanvasOpen, setDramaCanvasOpen, uiSketchOpen, setUiSketchOpen, pptokenCardOff, setPptokenCardOff, settingsPage, setSettingsPage, shortcutsOpen, setShortcutsOpen, helpKey, setHelpKey, archiveToast, setArchiveToast, codexIdentity, toolsStatus, setToolsStatus, refreshToolsStatus, devRuntimes, setDevRuntimes, runtimeInstalling, setRuntimeInstalling, runtimeProgress, setRuntimeProgress, runtimePercent, setRuntimePercent, runtimeStage, setRuntimeStage };
-}
+/**
+ * usePart02c2 —— usePart02c 按序切分出的第 2 段（纯搬迁、零改写）。
+ * 域：会话切换与戳记 · 系统事件 · 欢迎目录 — 更新检查 · UI 语言与缩放 · 设置页
+ *
+ * ⛔ 顺序即契约：段内含 hook 调用，React 靠**调用顺序**绑定 state ⇒ 组合根必须按文件名前缀顺序调用。
+ * ⛔ 本段语句只引用「自己的局部声明」与 bag；跨段名字由组合根按入参转交。
+ */
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { HelpDialog, type HelpTopic } from "../../../../../components/HelpDialog";
+import { readStoredCodexAvatar, storeCodexAvatar, setCodexIdentity, getCodexIdentity, subscribeCodexIdentity, CODEX_DEFAULT_NAME, type CodexAvatarSpec } from "../../../../../lib/codex-identity.mjs";
+import { setWidgetDark, isWidgetDark } from "../../../../../lib/widget-dark";
+import type { Model, PendingRequest, SettingsPage, SystemEvent, Thread, TreeEntry } from "../../../../app-view/types";
+import type { Bag } from "../../bag-types";
+
+/** bag 分片 02c2：界面语言 / 缩放 / 设置页开关等**纯 UI 状态**（11-21 更新链重写后，更新状态已全部移出 bag）。 */
+export function usePart02c2(bag: Bag) {
+
+  // 发布站 09-15 起不再分发安装包，只负责应用介绍与问题反馈——反馈页地址保持不变
+  const openFeedbackPage = () => {
+    const ua = navigator.userAgent;
+    const os = /Windows NT 10/.test(ua) ? "Windows 10/11"
+      : /Windows/.test(ua) ? "Windows"
+      : /Mac OS X/.test(ua) ? "macOS"
+      : /Linux/.test(ua) ? "Linux"
+      : navigator.platform || "";
+    const qs = new URLSearchParams();
+    if (os) qs.set("os", os);
+    // 发布中心地址固定（应用介绍 + 问题反馈），用户无需配置
+    const base = "https://dl.ppz123.asia";
+    const url = `${base}/feedback.html${qs.toString() ? `?${qs.toString()}` : ""}`;
+    bag.setAccountMenuOpen(false);
+    void window.codex.openExternal(url);
+  };
+bag.openFeedbackPage = openFeedbackPage as typeof bag.openFeedbackPage;
+
+  const [uiLang, setUiLang] = useState(() => localStorage.getItem("ui-lang") ?? "zh");
+bag.uiLang = uiLang as typeof bag.uiLang; bag.setUiLang = setUiLang as typeof bag.setUiLang;
+
+  // ⛔ mac 适配（09-16）：把平台写进 <html data-os>，styles.css 用 [data-os="darwin"] 分叉
+  // 窗口控制键让位（右上 145px 是 Windows WCO 专属预留，mac 上是纯空白）。
+  // data-motion="force"（默认）：无视 macOS 系统级「减少动态效果」——styles.css 里所有
+  // prefers-reduced-motion 静音块都加了 html:not([data-motion="force"]) 前缀，用户实测
+  // mac 上动画全静止就是系统这个开关命中了全局 `*` 块。以后要做「跟随系统」再摘属性。
+  useEffect(() => {
+    const p = (window as any).codex?.platform
+      || (navigator.platform?.toLowerCase().includes("mac") ? "darwin" : "win32");
+    document.documentElement.dataset.os = p;
+    document.documentElement.dataset.motion = "force";
+  }, []);
+
+  const [uiZoom, setUiZoom] = useState(() => Number(localStorage.getItem("ui-zoom") ?? "1"));
+bag.uiZoom = uiZoom as typeof bag.uiZoom; bag.setUiZoom = setUiZoom as typeof bag.setUiZoom;
+
+  useEffect(() => { document.documentElement.dataset.uiLang = bag.uiLang; localStorage.setItem("ui-lang", bag.uiLang); }, [bag.uiLang]);
+
+  useEffect(() => { (document.body.style as any).zoom = String(bag.uiZoom); localStorage.setItem("ui-zoom", String(bag.uiZoom)); }, [bag.uiZoom]);
+
+  // 让模块级 widget 卡片跟随主题（widget iframe 背景/文字色）
+  useEffect(() => { setWidgetDark(bag.theme === "dark"); return () => { setWidgetDark(false); }; }, [bag.theme]);
+
+  const [uiFont, setUiFont] = useState(() => localStorage.getItem("ui-font") ?? "default");
+bag.uiFont = uiFont as typeof bag.uiFont; bag.setUiFont = setUiFont as typeof bag.setUiFont;
+
+  useEffect(() => {
+    document.documentElement.dataset.uiFont = bag.uiFont;
+  }, [bag.uiFont]);
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+bag.settingsOpen = settingsOpen as typeof bag.settingsOpen; bag.setSettingsOpen = setSettingsOpen as typeof bag.setSettingsOpen;
+
+  // 专家团像素办公室（v19）：成员流转轨「办公室」按钮 → 整屏浮层；状态实时联动由宿主的 railRuns 事件态驱动
+  const [companyPreviewTeamId, setCompanyPreviewTeamId] = useState<string | null>(null);
+bag.companyPreviewTeamId = companyPreviewTeamId as typeof bag.companyPreviewTeamId; bag.setCompanyPreviewTeamId = setCompanyPreviewTeamId as typeof bag.setCompanyPreviewTeamId;
+
+  // AI 短剧无限画布（09-27）：侧栏入口的整体开关。画布自己的状态全在域内（localStorage 持久化），
+  // 挂 bag 的只有「开没开」这一位 —— 宿主只需要知道要不要渲染它。
+  const [dramaCanvasOpen, setDramaCanvasOpen] = useState(false);
+  bag.dramaCanvasOpen = dramaCanvasOpen as typeof bag.dramaCanvasOpen; bag.setDramaCanvasOpen = setDramaCanvasOpen as typeof bag.setDramaCanvasOpen;
+
+  // 前端开发（10-04，m3e-canvas 嵌入；两轮改名：界面草图 → 手机前端UI → 前端开发）：与画布同款 —— 界面自己的状态全在域内（iframe 里那份
+  // localStorage），挂 bag 的只有「开没开」这一位（侧栏「···更多」开、AppView 渲染宿主）。
+  const [uiSketchOpen, setUiSketchOpen] = useState(false);
+  bag.uiSketchOpen = uiSketchOpen as typeof bag.uiSketchOpen; bag.setUiSketchOpen = setUiSketchOpen as typeof bag.setUiSketchOpen;
+
+  // 通知归属判定用的镜像（09-20）：setNotice 是 useCallback 稳定引用，闭包读 ref 拿最新开关状态
+  bag.settingsOpenRef.current = bag.settingsOpen;
+
+  // 未配置的 PPtoken 推荐卡可被用户「禁用」（仅置灰，不写引擎存储；配置真实密钥后走 setProviderEnabled）
+  // ⛔ 推荐卡（PPtoken 赞助位）**默认不启用**（09-19 用户：「首次安装启动、没配置供应商的时候，
+  //   默认不要启用任何供应商，要不然会跟新配置的供应商同时启用」）。
+  //   只有用户**显式点开过**（localStorage 存 "0"）才保持启用；没有记录 = 首次安装 = 关。
+  //   ⚠️ 旧实现是 `=== "1"`（没记录=启用），于是全新安装第一眼就是一个"未配置密钥却已启用"的卡。
+  const [pptokenCardOff, setPptokenCardOff] = useState(() => localStorage.getItem("pptoken-card-off") !== "0");
+bag.pptokenCardOff = pptokenCardOff as typeof bag.pptokenCardOff; bag.setPptokenCardOff = setPptokenCardOff as typeof bag.setPptokenCardOff;
+
+  useEffect(() => { try { localStorage.setItem("pptoken-card-off", bag.pptokenCardOff ? "1" : "0"); } catch { /* ignore */ } }, [bag.pptokenCardOff]);
+
+  const [settingsPage, setSettingsPage] = useState<SettingsPage>("general");
+bag.settingsPage = settingsPage as typeof bag.settingsPage; bag.setSettingsPage = setSettingsPage as typeof bag.setSettingsPage;
+
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+bag.shortcutsOpen = shortcutsOpen as typeof bag.shortcutsOpen; bag.setShortcutsOpen = setShortcutsOpen as typeof bag.setShortcutsOpen;
+
+  /** 设置页「使用帮助」弹窗（09-17 用户要求：模型/插件/技能/MCP/专家团/语音/开发工具都要有）。
+   *  null = 不显示；`overview` 是设置总览（标题栏那枚按钮），其余由各页标题旁的 ? 写入（HelpTopic）。 */
+  const [helpKey, setHelpKey] = useState<HelpTopic | null>(null);
+bag.helpKey = helpKey as typeof bag.helpKey; bag.setHelpKey = setHelpKey as typeof bag.setHelpKey;
+
+  /** 归档后提示浮层（09-17）：token 用于重置倒计时，name 是刚归档的会话名。 */
+  const [archiveToast, setArchiveToast] = useState<{ name: string; token: number } | null>(null);
+bag.archiveToast = archiveToast as typeof bag.archiveToast; bag.setArchiveToast = setArchiveToast as typeof bag.setArchiveToast;
+
+  // ⛔ 首启引导弹窗两代都已删（模型引导 10-01、环境体检 10-07）——新手引导改走侧栏常驻入口。
+  //    登录页快捷配置链路保留（part08 的 handleLogin/markModelConfigured）。
+
+  /* ⛔ 首启「环境体检」弹窗（09-17）已整体删除（10-07 用户令：「反正现在也新手引导选项了」）。
+     新手侧入口 = 侧栏底部「新手引导」（newbie-guide 板块）；别再复活 envCheckOpen 一族状态。 */
+
+  /** Codex 的身份（名字+头像）：订阅外部 store，改设置时消息头会立刻跟着变。 */
+  const codexIdentity = useSyncExternalStore(subscribeCodexIdentity, getCodexIdentity, getCodexIdentity);
+bag.codexIdentity = codexIdentity as typeof bag.codexIdentity;
+
+  const [toolsStatus, setToolsStatus] = useState<{ id: string; name: string; scope: "computer" | "browser"; version: string; installed: boolean; binaryReady: boolean; detail: string; command: string }[]>([]);
+bag.toolsStatus = toolsStatus as typeof bag.toolsStatus; bag.setToolsStatus = setToolsStatus as typeof bag.setToolsStatus;
+
+  const refreshToolsStatus = () => { window.codex.toolStatus().then(bag.setToolsStatus).catch(() => bag.setToolsStatus([])); };
+bag.refreshToolsStatus = refreshToolsStatus as typeof bag.refreshToolsStatus;
+
+  const [devRuntimes, setDevRuntimes] = useState<DevRuntimeEntry[]>([]);
+bag.devRuntimes = devRuntimes as typeof bag.devRuntimes; bag.setDevRuntimes = setDevRuntimes as typeof bag.setDevRuntimes;
+
+  const [runtimeInstalling, setRuntimeInstalling] = useState<string | null>(null);
+bag.runtimeInstalling = runtimeInstalling as typeof bag.runtimeInstalling; bag.setRuntimeInstalling = setRuntimeInstalling as typeof bag.setRuntimeInstalling;
+
+  const [runtimeProgress, setRuntimeProgress] = useState<Record<string, string>>({});
+bag.runtimeProgress = runtimeProgress as typeof bag.runtimeProgress; bag.setRuntimeProgress = setRuntimeProgress as typeof bag.setRuntimeProgress;
+
+  // 安装进度条（09-19 用户：「不要弹窗，全部进度条展示吧，这样可视化进度，方便新手」）：
+  // 主进程把安装脚本的结构化行（`@@PROGRESS n` / `@@STAGE 阶段`）解析成独立事件下发，
+  // 这里分别记住——文字说明「在做什么」，百分比驱动进度条。
+  const [runtimePercent, setRuntimePercent] = useState<Record<string, number>>({});
+bag.runtimePercent = runtimePercent as typeof bag.runtimePercent; bag.setRuntimePercent = setRuntimePercent as typeof bag.setRuntimePercent;
+
+  const [runtimeStage, setRuntimeStage] = useState<Record<string, string>>({});
+bag.runtimeStage = runtimeStage as typeof bag.runtimeStage; bag.setRuntimeStage = setRuntimeStage as typeof bag.setRuntimeStage;
+  return { openFeedbackPage, uiLang, setUiLang, uiZoom, setUiZoom, uiFont, setUiFont, settingsOpen, setSettingsOpen, companyPreviewTeamId, setCompanyPreviewTeamId, dramaCanvasOpen, setDramaCanvasOpen, uiSketchOpen, setUiSketchOpen, pptokenCardOff, setPptokenCardOff, settingsPage, setSettingsPage, shortcutsOpen, setShortcutsOpen, helpKey, setHelpKey, archiveToast, setArchiveToast, codexIdentity, toolsStatus, setToolsStatus, refreshToolsStatus, devRuntimes, setDevRuntimes, runtimeInstalling, setRuntimeInstalling, runtimeProgress, setRuntimeProgress, runtimePercent, setRuntimePercent, runtimeStage, setRuntimeStage };
+}

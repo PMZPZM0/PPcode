@@ -104,7 +104,7 @@ export function photocraftMcpSection(): string[] {
     `[mcp_servers.${PHOTOCRAFT_MCP_SERVER}]`,
     `command = "${escape(cli)}"`,
     `args = ["mcp", "--no-gpu", "--automation-read-root", "${escape(ioRoot)}", "--automation-write-root", "${escape(ioRoot)}"]`,
-    "startup_timeout_sec = 30",
+    "enabled = false",
     "",
   ];
 }

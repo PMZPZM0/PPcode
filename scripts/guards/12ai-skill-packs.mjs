@@ -156,5 +156,17 @@ ok(coreTools.every((name) => catalogTools.includes(name)), "【工具画像】CO
 ok(/export const TOOL_PROFILES_ENABLED\s*=\s*(true|false)/.test(profilesSrc), "【工具画像】有 TOOL_PROFILES_ENABLED 回滚开关（置 false 即恢复全量）");
 ok(/roleKeyOf/.test(profilesSrc) && /设计|engineering|工程/.test(profilesSrc), "【工具画像】岗位判定走 roleKeyOf（识别不出岗位时回落 CORE）");
 
+/* 11-21 首回合瘦身：MCP 停用 + 网关回挂 + 指令精简 + guide 落盘，四件缺一不可。 */
+const applySrcLean = read("electron/features/custom-model-apply.ts");
+const bridgeSrcLean = read("electron/mcp-bridge.ts");
+ok((applySrcLean.match(/enabled = false/g) ?? []).length >= 5 && /enabled = false/.test(read("electron/photocraft.ts")) && /enabled = false/.test(read("electron/artcraft.ts")),
+  "【上下文】内置 MCP 默认 enabled=false（schema 不进前缀）");
+ok(/parseLazyBuiltinServers/.test(bridgeSrcLean) && /listLazyBuiltinTools/.test(bridgeSrcLean),
+  "【上下文】宿主网关按需拉起内置 MCP（能力保留）");
+ok(/leanDevInstructions/.test(read("electron/developer-instructions.ts"))
+  && /lean: appSettings\.leanContext !== false/.test(read("electron/main/12-skill-discipline.ts"))
+  && /harness-dev-guide\.md/.test(applySrcLean),
+  "【上下文】常驻指令精简 + 完整细则落盘按需读取");
+
 console.log(`\n【skill-packs】${checks - fails}/${checks} 通过${fails ? ` —— ${fails} 条红` : ""}`);
 process.exit(fails ? 1 : 0);

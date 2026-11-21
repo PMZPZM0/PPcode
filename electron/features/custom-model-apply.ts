@@ -14,7 +14,7 @@ import { app, safeStorage } from "electron";
 import { AGENT_DESKTOP_MCP_SERVER, COMPUTER_USE_MCP_SERVER, HARNESS_UIA_MCP_SERVER, agentDesktopDisabledTools, shouldRegisterAgentDesktop, shouldRegisterComputerUse, shouldRegisterNuphus, shouldRegisterUia, withNuphusMasksForRules } from "../automation-policy";
 import { safeProviderId } from "../provider-id";
 import { injectMcpToolRules, injectSectionExtras, tomlBareKey, writeTextFileAtomic } from "../config-toml";
-import { developerInstructionsLine } from "../developer-instructions";
+import { buildDevInstructions, developerInstructionsLine } from "../developer-instructions";
 import { PHOTOCRAFT_MCP_SERVER, photocraftMcpSection } from "../photocraft";
 import { craftAppMcpPlan } from "../artcraft";
 import { augmentedPath, bundledNode, bundledPython, agentDesktopLauncher, computerUseLauncher, harnessUiaServer, nuphusBinary, reaServerScript } from "../toolchain";
@@ -204,6 +204,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
       `command = "${escapeToml(node)}"`,
       `args = ["${escapeToml(launcher)}", "mcp"]`,
       "startup_timeout_sec = 30",
+      "enabled = false",
       "",
     ];
   })();
@@ -213,6 +214,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
         `command = "${escapeToml(nuphusBinary())}"`,
         "args = []",
         "startup_timeout_sec = 20",
+        "enabled = false",
         // ⛔ 10-30 撤 `[mcp_servers.nuphus.env]` 视觉 env 段：视觉辅助插件整体移除后
         //    desktop_vision（BYOK）没有配置来源了；老 config.toml 里的残留段由 preserveUserConfig 收敛。
         "",
@@ -230,6 +232,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
       `command = "${escapeToml(node)}"`,
       `args = ["${escapeToml(launcher)}", "mcp"]`,
       "startup_timeout_sec = 30",
+      "enabled = false",
       `disabled_tools = [${agentDesktopDisabledTools().map((tool) => `"${tool}"`).join(", ")}]`,
       "",
     ];
@@ -370,6 +373,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
         `command = "${escapeToml(uiaNode)}"`,
         `args = ["${escapeToml(uiaServer)}"]`,
         "startup_timeout_sec = 20",
+        "enabled = false",
         "",
       ];
     })(),
@@ -386,6 +390,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
         `command = "${escapeToml(node)}"`,
         `args = ["${escapeToml(script)}", "mcp"]`,
         "startup_timeout_sec = 30",
+        "enabled = false",
         "",
       ];
     })(),
@@ -404,6 +409,13 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
     path.join(codexHome, "config.toml"),
     injectMcpToolRules(injectSectionExtras(configText, preserved.sectionExtras), mcpToolRules),
   );
+  /* 11-21：精简常驻指令模式下，完整工作细则落盘（不进前缀，按需读取）。 */
+  try {
+    await writeTextFileAtomic(
+      path.join(codexHome, "harness-dev-guide.md"),
+      "# Codex Harness 完整工作细则\n\n> 本文件是精简常驻指令的全文版。需要细节时按小节读取。\n\n" + buildDevInstructions({ ...devInput, lean: false }),
+    );
+  } catch { /* 落盘失败只影响按需读取 */ }
   // 官方订阅绝不能带 API Key：chatgpt 后端只认 ChatGPT 登录凭据，
   // 带上陈旧 sk- key 会 401 "api_key_not_supported" → 流无限重连（实证）。
   // 顺手把存档里的陈旧密钥清掉。

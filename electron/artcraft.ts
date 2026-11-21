@@ -514,6 +514,7 @@ export async function craftAppMcpPlan(): Promise<{ servers: string[]; previous: 
       `command = "${escape(app.cliPath)}"`,
       'args = ["mcp"]',
       "startup_timeout_sec = 30",
+      "enabled = false",
       "",
     );
   }

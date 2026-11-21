@@ -161,11 +161,18 @@ export async function installArtCraftFromGitHub(id: DevRuntimeId, version: strin
   const paths = artcraftPaths();
   const asset = artcraftAssetName(version);
   const staging = path.join(writeToolsRoot(), ".artcraft-download");
-  await fs.rm(staging, { recursive: true, force: true });
+  /* ⛔ 11-21：不再整目录 rm —— 分片下载的断点续传靠 `<asset>.partN` 存活（见 mirror-download），
+     整目录删会让「下载到一半重试」永远从 0 开始。只清与本次无关的残留（旧版本资产 / 上次解压残渣）。 */
   await fs.mkdir(staging, { recursive: true });
+  for (const name of await fs.readdir(staging).catch(() => [] as string[])) {
+    if (name === asset || /\.part\d+$/.test(name)) continue;
+    await fs.rm(path.join(staging, name), { recursive: true, force: true }).catch(() => undefined);
+  }
   const archive = path.join(staging, asset);
   emitRuntimeProgress(id, `@@STAGE 下载 ArtCraft Launcher ${version}`);
   emitRuntimeProgress(id, `正在下载 ArtCraft Launcher ${version}（${asset}，约 11 MB）…`);
+  /* ⛔ 11-21：成功 / 用户取消才清暂存；**下载失败保留** staging —— 分片断点续传靠 `<asset>.partN`。 */
+  let installedOk = false;
   try {
     const actualSha = (await downloadThroughMirrors({
       url: `https://github.com/${ARTCRAFT_REPO}/releases/download/v${version}/${asset}`,
@@ -218,8 +225,11 @@ export async function installArtCraftFromGitHub(id: DevRuntimeId, version: strin
     }
     await fs.writeFile(paths.versionFile, version + "\n", "utf8");
     emitRuntimeProgress(id, "@@PROGRESS 100");
+    installedOk = true;
   } finally {
-    await fs.rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    if (installedOk || isCancelRequested(id)) {
+      await fs.rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 }
 
@@ -514,6 +524,8 @@ export async function craftAppMcpPlan(lazyAllowed: (id: string) => boolean = () 
       `command = "${escape(app.cliPath)}"`,
       'args = ["mcp"]',
       "startup_timeout_sec = 30",
+      /* 11-21：引擎侧停用（每个 App 一条 MCP 段，全开会把首回合前缀撑爆）；宿主网关按需调用。
+         ⛔ 该 App 有用户「ask」规则时不懒加载（保持引擎审批）。 */
       ...(lazyAllowed(app.id) ? ["enabled = false"] : []),
       "",
     );

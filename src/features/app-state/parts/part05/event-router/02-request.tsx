@@ -1056,7 +1056,7 @@ ${st.hint}`);
                 if (gen?.ok) {
                   const genThread = String(event.params?.threadId ?? "");
                   const genCurrent = String(bag.threadRef.current?.id ?? "");
-                  const genTurn = String(event.params?.turnId ?? ((!genThread || genThread === genCurrent) ? (bag.activeTurnIdRef.current ?? bag.activeTurnId ?? "") : ""));
+                  const genTurn = String(event.params?.turnId ?? ((!genThread || genThread === genCurrent) ? (bag.activeTurnIdRef.current || bag.activeTurnId || "") : ""));
                   if (genTurn) noteGeneratedFiles(genTurn, imageOutputPaths(gen.output));
                 }
               } else if (event.params?.tool === "image_edit") {
@@ -1075,8 +1075,8 @@ ${st.hint}`);
                 });
                 if (edited?.ok) {
                   const editThread = String(event.params?.threadId ?? "");
-                  const editCurrent = String(!!bag.threadRef.current?.id ?? "");
-                  const editTurn = String(event.params?.turnId ?? ((!editThread || editThread === String(bag.threadRef.current?.id ?? "")) ? (bag.activeTurnIdRef.current ?? bag.activeTurnId ?? "") : ""));
+                  const editCurrent = String(bag.threadRef.current?.id ?? "");
+                  const editTurn = String(event.params?.turnId ?? ((!editThread || editThread === String(bag.threadRef.current?.id ?? "")) ? (bag.activeTurnIdRef.current || bag.activeTurnId || "") : ""));
                   if (editTurn) noteGeneratedFiles(editTurn, imageOutputPaths(edited.output));
                 }
               } else if (event.params?.tool === "image_info") {

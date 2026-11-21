@@ -158,7 +158,7 @@ function mirrorUrls(url) {
   if (!/^https:\/\/github\.com\//.test(url)) return [url];
   const m = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/(.+)$/.exec(url);
   const npmmirror = m ? `https://registry.npmmirror.com/-/binary/${m[2]}/${m[3]}/${m[4]}` : null;
-  return [npmmirror, url, `https://ghfast.top/${url}`, `https://gh-proxy.com/${url}`].filter(Boolean);
+  return [npmmirror, `https://gh-proxy.org/${url}`, url, `https://ghfast.top/${url}`, `https://gh-proxy.com/${url}`].filter(Boolean);
 }
 
 async function downloadAny(url, dest) {

@@ -94,7 +94,7 @@ export function photocraftGuiPath(): string {
 }
 
 /** 生成 `[mcp_servers.photocraft]` 段（未安装返回空数组）。由 custom-model-apply 统一拼进 config.toml。 */
-export function photocraftMcpSection(): string[] {
+export function photocraftMcpSection(lazy = true): string[] {
   const cli = photocraftCliPath();
   if (!cli) return [];
   const ioRoot = photocraftPaths().ioRoot;
@@ -104,7 +104,7 @@ export function photocraftMcpSection(): string[] {
     `[mcp_servers.${PHOTOCRAFT_MCP_SERVER}]`,
     `command = "${escape(cli)}"`,
     `args = ["mcp", "--no-gpu", "--automation-read-root", "${escape(ioRoot)}", "--automation-write-root", "${escape(ioRoot)}"]`,
-    "enabled = false",
+    ...(lazy ? ["enabled = false"] : []),
     "",
   ];
 }

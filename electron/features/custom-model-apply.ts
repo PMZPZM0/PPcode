@@ -46,9 +46,11 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
   const devInput = await devInstructionsInput();
   const desktopAuto = devInput.desktop;
   const browserAuto = devInput.browser;
+  /* 11-21：带用户「ask（每次确认）」规则的工具不能走懒加载网关（会绕过引擎审批）⇒ 保持直连。 */
+  const keepNativeMcp = (id: string) => Object.values(mcpOverrides[id]?.permissions ?? {}).some((mode) => mode === "ask");
   /* 11-16：Craft 全家桶按「每个已装 App 一条独立 MCP 段」生成（用户令「都单独」）。
      plan 同时更新账本（artcraft-mcp-servers.json），previous = 上次写过、这次要清的名单。 */
-  const craftPlan = await craftAppMcpPlan();
+  const craftPlan = await craftAppMcpPlan((id) => !keepNativeMcp(id));
   // 内置 nuphus 与所有连接器都由 harness 重新生成，用户手工写的 MCP 段交给覆盖表
   // harness-dispatch（09-16 调度 MCP）同样是 harness 自己生成的段：不进保留清单，
   // 否则「保留旧段 +新生成段」会在 config.toml 里写出重复的 [mcp_servers.harness-dispatch]，
@@ -204,7 +206,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
       `command = "${escapeToml(node)}"`,
       `args = ["${escapeToml(launcher)}", "mcp"]`,
       "startup_timeout_sec = 30",
-      "enabled = false",
+      ...(keepNativeMcp(COMPUTER_USE_MCP_SERVER) ? [] : ["enabled = false"]),
       "",
     ];
   })();
@@ -214,7 +216,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
         `command = "${escapeToml(nuphusBinary())}"`,
         "args = []",
         "startup_timeout_sec = 20",
-        "enabled = false",
+        ...(keepNativeMcp("nuphus") ? [] : ["enabled = false"]),
         // ⛔ 10-30 撤 `[mcp_servers.nuphus.env]` 视觉 env 段：视觉辅助插件整体移除后
         //    desktop_vision（BYOK）没有配置来源了；老 config.toml 里的残留段由 preserveUserConfig 收敛。
         "",
@@ -232,7 +234,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
       `command = "${escapeToml(node)}"`,
       `args = ["${escapeToml(launcher)}", "mcp"]`,
       "startup_timeout_sec = 30",
-      "enabled = false",
+      ...(keepNativeMcp(AGENT_DESKTOP_MCP_SERVER) ? [] : ["enabled = false"]),
       `disabled_tools = [${agentDesktopDisabledTools().map((tool) => `"${tool}"`).join(", ")}]`,
       "",
     ];
@@ -354,7 +356,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
     ...desktopBackendSections,
     /* PhotoCraft（11-15）：装了才写 `[mcp_servers.photocraft]`（headless CLI，roots 限 userData/photocraft-io）。
        ⛔ 顺序放在桌面后端之后：它的工具是"专业图像编辑"专用，不该挤在自动化工具前面。 */
-    ...photocraftMcpSection(),
+    ...photocraftMcpSection(!keepNativeMcp("photocraft")),
     /* Craft 全家桶（11-16）：每个已装 App 各自一条 `[mcp_servers.<id>]`（用户令「工具都拆开」）。
        没有已装 App = 空数组；App 卸载后其段由账本在下一轮清掉。 */
     ...craftPlan.sections,
@@ -373,7 +375,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
         `command = "${escapeToml(uiaNode)}"`,
         `args = ["${escapeToml(uiaServer)}"]`,
         "startup_timeout_sec = 20",
-        "enabled = false",
+        ...(keepNativeMcp(HARNESS_UIA_MCP_SERVER) ? [] : ["enabled = false"]),
         "",
       ];
     })(),
@@ -390,7 +392,7 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
         `command = "${escapeToml(node)}"`,
         `args = ["${escapeToml(script)}", "mcp"]`,
         "startup_timeout_sec = 30",
-        "enabled = false",
+        ...(keepNativeMcp("rea") ? [] : ["enabled = false"]),
         "",
       ];
     })(),
@@ -409,6 +411,8 @@ export async function applyCustomModel(entry: CustomModelFile, opts?: { restart?
     path.join(codexHome, "config.toml"),
     injectMcpToolRules(injectSectionExtras(configText, preserved.sectionExtras), mcpToolRules),
   );
+  /* 11-21：MCP 段/开关变了 ⇒ 立刻失效宿主网关缓存（新装 Craft / 开关无需等 5 分钟）。 */
+  void import("../mcp-bridge").then((m) => m.invalidateMcpBridgeCache()).catch(() => undefined);
   /* 11-21：精简常驻指令模式下，完整工作细则落盘（不进前缀，按需读取）。 */
   try {
     await writeTextFileAtomic(

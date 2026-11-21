@@ -375,12 +375,12 @@ if (!existsSync(join(ROOT, "src", "features", "team-office", "office-format.ts")
         "【254】官方源锚定 GitHub openai/plugins 的 .agents/plugins/{marketplace,api_marketplace}.json（清单形态与上游一致）"
       );
       // 镜像顺序 = 实测可用性；顺序反了国内首屏就要等三轮超时
-      //（10-11 表收敛进 ./gh-mirror 单一真相源 —— 这里锚「别名引用 + 源头顺序」两处）
-      // ⛔ 11-21 复测（v0.0.76 资产 8MB Range）：gh-proxy.org 0.84~1.56MB/s 且支持 206 ⇒ 提到第二档；
-      //    直连仍排第一（能通时最快），hk 实测 500 保留垫底（有朝一日恢复了不必改代码）。
+      //（11-21 表再往上一层搬到 src/lib/github-mirror.mjs：渲染层的「热门 / 前端设计」也直连 GitHub，
+      //  而 electron/ 与 src/ 互不 import ⇒ 只有一份真相源才不会一处快一处慢。gh-mirror 只转出。）
       (/const MIRROR_PREFIXES = GH_MIRROR_PREFIXES/.test(officialSrc)
-        && /export const GH_MIRROR_PREFIXES = \["", "https:\/\/gh-proxy\.org\/", "https:\/\/gh-proxy\.com\/", "https:\/\/hk\.gh-proxy\.com\/", "https:\/\/ghfast\.top\/"\] as const/.test(codeOnly(readFileSync(join(ROOT, "electron", "gh-mirror.ts"), "utf8")))
-        && /export const GH_API_MIRROR_PREFIXES = \["https:\/\/gh-proxy\.org\/"/.test(codeOnly(readFileSync(join(ROOT, "electron", "gh-mirror.ts"), "utf8"))) ? ok : fail)(
+        && /export const GH_MIRROR_PREFIXES = \["", "https:\/\/gh-proxy\.org\/", "https:\/\/gh-proxy\.com\/", "https:\/\/hk\.gh-proxy\.com\/", "https:\/\/ghfast\.top\/"/.test(codeOnly(readFileSync(join(ROOT, "src", "lib", "github-mirror.mjs"), "utf8")))
+        && /export const GH_API_MIRROR_PREFIXES = \["https:\/\/gh-proxy\.org\/"/.test(codeOnly(readFileSync(join(ROOT, "src", "lib", "github-mirror.mjs"), "utf8")))
+        && /GH_MIRROR_PREFIXES as SHARED_ASSET/.test(codeOnly(readFileSync(join(ROOT, "electron", "gh-mirror.ts"), "utf8"))) ? ok : fail)(
         "【254】镜像优先级：资产 直连 → **gh-proxy.org** → gh-proxy → hk.gh-proxy → ghfast（11-21 实测：gh-proxy.org 0.84~1.56MB/s 支持 206 > gh-proxy.com 0.37MB/s 忽略 Range > hk 500 / ghfast 超时）；api.github.com 仍走镜像优先（直连在国内不通）"
       );
       (officialSrc.includes("const MAX_FILES = 1_200") && officialSrc.includes("MAX_SINGLE_FILE_BYTES = 20 * 1024 * 1024") ? ok : fail)(

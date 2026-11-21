@@ -395,17 +395,24 @@ bag.batchSetSkillEnabled = batchSetSkillEnabled as typeof bag.batchSetSkillEnabl
         //    这是可接受的取舍，且实现与数据形状解耦。
         bag.pruneSupersededCompactions(String(params.item?.id ?? ""));
         bag.setCompactEventState("success");
-        /* ⛔⛔ 11-20 用户实测：「压缩完成后，下面的『等待模型回复』这一行就没了」——
+        /* ⛔⛔ 11-20 用户实测：「刚压缩就弹成功，下面的『等待模型回复』这行就没了」——
            自动压缩是**内联**在用户回合里的（压缩项所在回合还有 userMessage 等真实内容），
            压缩项 completed 只是「压缩做完了」，**回合还在等模型回复**。此时调 settle 会把
-           sending/activeTurnId 清掉 ⇒ 活动行消失、而且引擎不会再发 turn/started，行永远不回来。
+           sending/activeTurnId 清掉 ⇒ 活动行消失、看上去整个回合停了。
            ⇒ 只有「独立压缩回合」（整回合仅压缩项，如手动 /compact）才结算；
              内联压缩的结算交给该回合自己的 turn/completed。 */
         const ownerTurns = bag.threadRef.current?.turns ?? [];
         const ownerTurnId = String(params.turnId ?? "");
         const ownerTurn = ownerTurns.find((t) => String((t as { id?: unknown }).id ?? "") === ownerTurnId)
           ?? ownerTurns.find((t) => ((t as { items?: unknown[] }).items ?? []).some((i) => String((i as { id?: unknown })?.id ?? "") === String(params.item?.id ?? "")));
-        const inlineCompaction = Boolean(ownerTurn && ((ownerTurn as { items?: unknown[] }).items ?? []).some((i) => !isCompactionItem(i)));
+        /* ⛔⛔ 11-21 二修（另一台电脑实测「压缩完后『等待模型回复』行就不展示了」）：
+           11-20 的判据是 `ownerTurn && 有非压缩项 ⇒ 内联` —— **ownerTurn 找不到时照样结算**。
+           但压缩完成事件经常早于回合容器把压缩项归位（threadRef 还没更新到）⇒ 找不到
+           ⇒ 误结算 ⇒ sending/activeTurnId 被清、行消失（时序好就不丢，时序差就丢 = 两台电脑
+           同版本行为不同的原因）。⇒ 判据反转为 fail-safe：只有**明确确认**「整回合仅压缩项」
+           的独立压缩回合（手动 /compact）才结算；找不到回合 = 信息不足 = 不结算，
+           交给该回合自己的 turn/completed 兜底（极端残留还有 180s 超时兜底）。 */
+        const inlineCompaction = Boolean(!ownerTurn || ((ownerTurn as { items?: unknown[] }).items ?? []).some((i) => !isCompactionItem(i)));
         if (!inlineCompaction) bag.settleAfterCompaction(tid0);
         /* 10-17（「回合结束回落 50%」的根因修法）：压缩生效后**作废该会话的用量快照** ——
            盘上那份是压缩前的更大值，回合结束/重载时会被恢复回来，环就弹回 50%。
@@ -570,13 +577,17 @@ bag.batchSetSkillEnabled = batchSetSkillEnabled as typeof bag.batchSetSkillEnabl
         //    状态条与停止键永久亮着。settleAfterCompaction 内部有「真回合还在跑就不动」守卫。
         // ⛔ 11-20 同款内联判定：当前活跃回合里还有真实内容（userMessage 等）⇒ 是内联自动压缩，
         //    回合仍在等模型回复 —— 结算交给 turn/completed，别把「等待模型回复」行打掉。
+        // ⛔⛔ 11-21 二修（与 item/completed 分支同口径）：**activeTurn 找不到（压缩完成事件早于
+        //    回合归位的竞态）时同样不结算** —— 旧写法找不到 = 照样结算，就是另一台电脑
+        //    「压缩完后『等待模型回复』行不展示」的根因。fail-safe：只有确认「整回合仅压缩项」
+        //    的独立压缩回合才结算。
         {
           const activeId = String(bag.activeTurnId ?? "");
           const turnsNow = bag.threadRef.current?.turns ?? [];
           const activeTurn = activeId
             ? turnsNow.find((t) => String((t as { id?: unknown }).id ?? "") === activeId)
             : undefined;
-          const inlineCompaction = Boolean(activeTurn && ((activeTurn as { items?: unknown[] }).items ?? []).some((i) => !isCompactionItem(i)));
+          const inlineCompaction = Boolean(!activeTurn || ((activeTurn as { items?: unknown[] }).items ?? []).some((i) => !isCompactionItem(i)));
           if (!inlineCompaction) bag.settleAfterCompaction(String(params.threadId ?? bag.threadRef.current?.id ?? ""));
         }
       } else if (event.method === "model/rerouted") {
@@ -784,7 +795,9 @@ bag.batchSetSkillEnabled = batchSetSkillEnabled as typeof bag.batchSetSkillEnabl
         }
       }
       if (event.type === "provider-activated") {
-        /* 供应商互斥在主进程执行；渲染层必须重拉整张列表，旧供应商开关才会同步变灰。 */
+        /* 供应商互斥是**主进程**执行的：启用 A 会把 B/C 写成 enabled=false。渲染层如果只改
+           被点的那一行，旧供应商的绿开关会一直留着（用户看到"两个都启用"的假象）。
+           ⇒ 任何 provider-activated（保存 / 启用 / 云端同步）都重新拉一次整张列表。 */
         bag.refreshActive?.();
         /* 10-24：显式启用/保存供应商后，当前会话的模型选择也要跟到新供应商 ——
            否则「旧供应商被停用、界面还发着旧 model id」，用户看到的是保存成功却发不出去。

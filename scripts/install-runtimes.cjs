@@ -71,7 +71,9 @@ const NINJA_URL = "https://github.com/ninja-build/ninja/releases/latest/download
 const SEVENZIP_VERSION = "26.06";
 const SEVENZIP_STEM = `7z${SEVENZIP_VERSION.replace(".", "")}`;
 const YTDLP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
-// GitHub 直连在国内经常不可达；gh-proxy.com / ghfast.top 加速前缀实测稳定（rg/cmake/uv/7zip 均可 206 分段续传）。
+// GitHub 直连在国内经常不可达；加速前缀实测（11-21 v0.0.76 资产 8MB Range）：
+//   **gh-proxy.org 0.84~1.56MB/s 且支持 206 分段** > gh-proxy.com 0.37MB/s（忽略 Range）>
+//   ghfast 超时 / hk-gh-proxy 500。⇒ 最快的排第一。
 // 自动模式（默认）= 国内优先：镜像 → 本机代理（PROXY 环境变量，默认空）→ gh 加速 → 直连兜底。
 // ⛔ 09-20 修订：GitHub 资产**加速在前、直连兜底**——直连不会"失败"只会龟速（PowerShell 7 实测 7% 爬行），
 //    排在加速前面等于永远轮不到加速。
@@ -230,21 +232,18 @@ function chmodExec(target) {
 const PROXY = process.env.PROXY || "";
 
 // 国内镜像加速（09-16）：有镜像源的先走镜像，失败再按 直连 → gh-proxy 逐通道回落。
-// npmmirror 同步了 nodejs.org、python.org/ftp 与 git-for-windows 的 releases 资产。
+/* ⛔⛔ 11-22 收敛为**单一真相源**：映射表搬进 `scripts/lib/download-sources.json`，
+   本函数只查表。理由是同一张表还要给「设置 → 开发工具 → 工具自检」的通道自检用，
+   两处各写一份必然漂移（用户实测 mac 侧大量工具没有镜像通道，就是漂移的后果）。
+   表里没命中的 URL 返回 null ⇒ 上层按 gh 加速 / 直连回落。 */
+const DOWNLOAD_SOURCES = (() => {
+  try { return require("./lib/download-sources.json"); } catch { return { npmmirror: {} }; }
+})();
 function chinaMirrorUrl(url) {
-  if (url.startsWith("https://nodejs.org/dist/")) return url.replace("https://nodejs.org/dist/", "https://cdn.npmmirror.com/binaries/node/");
-  if (url.startsWith("https://www.python.org/ftp/python/")) return url.replace("https://www.python.org/ftp/python/", "https://cdn.npmmirror.com/binaries/python/");
-  if (url.startsWith("https://github.com/git-for-windows/git/releases/download/")) return url.replace("https://github.com/git-for-windows/git/releases/download/", "https://cdn.npmmirror.com/binaries/git-for-windows/");
-  // python-build-standalone（PBS）：npmmirror 同步了该构建的全部 release 资产（实测 302 → CDN）
-  if (url.startsWith("https://github.com/astral-sh/python-build-standalone/releases/download/")) return url.replace("https://github.com/astral-sh/python-build-standalone/releases/download/", "https://registry.npmmirror.com/-/binary/python-build-standalone/");
-  /* ⛔⛔ 10-07 补两条（用户报「miniconda 压根安装不了」+「FFmpeg 不是国内源，太慢了，几十K」）：
-     两条都**实测过**镜像真的有对应文件，不是照着别人的镜像表抄的。
-     · Miniconda：官方 repo.anaconda.com 在国内常年龟速/被限速；清华 TUNA 的 anaconda 镜像
-       **文件名与官方逐字相同** ⇒ 只换域名，版本号/资产名一个字都不用改（实测 200）。
-     · ffmpeg-static（eugeneware）：npmmirror 同步了它的 release 资产，含 darwin-arm64/x64 两个
-       构建（实测 302 → CDN）；mac 侧 ffmpeg 的主源。 */
-  if (url.startsWith("https://repo.anaconda.com/miniconda/")) return url.replace("https://repo.anaconda.com/miniconda/", "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/");
-  if (url.startsWith("https://github.com/eugeneware/ffmpeg-static/releases/download/")) return url.replace("https://github.com/eugeneware/ffmpeg-static/releases/download/", "https://registry.npmmirror.com/-/binary/ffmpeg-static/");
+  const map = DOWNLOAD_SOURCES.npmmirror || {};
+  for (const [from, to] of Object.entries(map)) {
+    if (url.startsWith(from)) return to + url.slice(from.length);
+  }
   return null;
 }
 
@@ -455,6 +454,7 @@ function curlSupportsRetryAllErrors() {
       ? (Number(m[1]) > 7 || (Number(m[1]) === 7 && Number(m[2]) >= 71))
       : false;
   } catch {
+    /* 探测失败按「不支持」处理：宁可少一次重试语义，也不能让下载在参数解析阶段挂掉 */
     curlRetryAllErrorsCache = false;
   }
   return curlRetryAllErrorsCache;
@@ -467,7 +467,7 @@ async function download(url, file, extraSources = []) {
   // 见 downloadWithProgress 的注释：进度与速度都靠采样文件大小，curl 这边只要「安静地下载」。
   const curlArgs = ["-L", "--fail", "--show-error", "--retry", "3",
     "--connect-timeout", "30", "--continue-at", "-", "-o", file];
-  /* ⚠ 见 curlSupportsRetryAllErrors 的注释：只有 curl ≥ 7.71 才敢加这个参数 */
+  /* ⛔ 见 curlSupportsRetryAllErrors 的注释：只有 curl ≥ 7.71 才敢加这个参数 */
   if (curlSupportsRetryAllErrors()) curlArgs.splice(5, 0, "--retry-all-errors");
   const mirror = chinaMirrorUrl(url);
   const isGh = url.includes("github.com");

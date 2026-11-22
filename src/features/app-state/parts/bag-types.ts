@@ -1368,7 +1368,8 @@ export interface Bag {
   clearCurrentConversation: () => Promise<void>;
   unarchiveThread: (id: string) => Promise<void>;
   deleteThreadCore: (id: string) => Promise<void>;
-  deleteThread: (id: string) => Promise<void>;
+  /* ⛔ 11-22：调用方已确认时必须传 { confirmed: true }，否则会弹第二次确认。 */
+  deleteThread: (id: string, options?: { confirmed?: boolean }) => Promise<void>;
   deleteThreadsByCwd: (cwd: string) => Promise<void>;
   /* 11-01 笔名体系（会话名即笔名）：
      · aliasState —— 主进程 `session-alias:snapshot` 的只读快照，store 在 `src/lib/alias-store.mjs`；

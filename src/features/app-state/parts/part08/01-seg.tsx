@@ -402,7 +402,7 @@ bag.unarchiveThread = unarchiveThread as typeof bag.unarchiveThread;
   }
 bag.deleteThreadCore = deleteThreadCore as typeof bag.deleteThreadCore;
 
-  async function deleteThread(id: string) {
+  async function deleteThread(id: string, options?: { confirmed?: boolean }) {
     const cluster = bag.clusteredSidebar.clusters.find((entry) => entry.lead?.id === id);
     const memberCount = cluster?.members.length ?? 0;
     /* ⛔ 10-31：删除会**连带**它派出的调度子会话（否则它们变成孤儿行、按自己的 cwd 挂到别的项目下）
@@ -412,7 +412,10 @@ bag.deleteThreadCore = deleteThreadCore as typeof bag.deleteThreadCore;
       memberCount ? `这是「专家团」主会话，将同时永久删除其 ${memberCount} 条成员会话。` : "",
       delegateCount ? `它派出的 ${delegateCount} 条调度会话也会一并删除（否则会变成挂在别的项目下的孤儿会话）。` : "",
     ].filter(Boolean).join("\n\n");
-    if (!await bag.openAppConfirm("删除会话", `当前会话及其中的消息、工具记录将被永久删除，此操作无法撤销。${extra}`, "永久删除")) return;
+    /* ⛔⛔ 11-22 用户实测：「点删除，然后又出来一次这个」—— 侧栏菜单**自己已经确认过**，
+       这里再确认一次就是第二个气泡（而且它没有锚点、位置也在别处）。
+       ⇒ 调用方传 confirmed:true 时直接走内核。 */
+    if (!options?.confirmed && !await bag.openAppConfirm("删除会话", `当前会话及其中的消息、工具记录将被永久删除，此操作无法撤销。${extra}`, "永久删除")) return;
     bag.setOpeningThread(id);
     try {
       await bag.deleteThreadCore(id);
@@ -658,8 +661,9 @@ bag.deleteThreadsByCwd = deleteThreadsByCwd as typeof bag.deleteThreadsByCwd;
       { type: "function", name: "rpa_schedule", description: "给一条已保存的 RPA 配方设置/取消定时：录制配方到点由宿主原生回放（应用需保持运行，且配方必须有目标应用）；文本配方到点在会话里由模型复现。mode=off 取消已有定时。", inputSchema: { type: "object", properties: { name: { type: "string", description: "配方名称（唯一匹配）" }, mode: { type: "string", enum: ["daily", "weekly", "once", "off"], description: "每天 / 每周 / 一次性 / 取消定时" }, time: { type: "string", description: "HH:mm（daily/weekly 用）" }, weekdays: { type: "array", items: { type: "number" }, description: "weekly 用：0=周日 … 6=周六" }, scheduledAt: { type: "string", description: "once 用：本地日期时间，如 2026-11-20 09:30" } }, required: ["name", "mode"] } },
       /* 10-17 用户令「配套工具」：压缩上下文此前只有界面按钮，模型自己查不到通道（它会说
          「没有 compact 工具」）。⇒ 独立工具（不进 harness_tools 网关：这是引擎动作，不是网关能力）。 */
-      /* 11-19：技能按需检索 —— 实时扫盘，刚装完的技能立刻能搜到。 */
-      { type: "function", name: "find_skills", description: "按关键词检索本地已安装的技能（全局 + 当前项目），返回名字、路径与一句说明。当你不确定有没有现成技能、或清单里没有明显匹配时调用；命中后先 read_file 读那个 SKILL.md 的正文再动手。⛔ 只读，不会安装任何东西。", inputSchema: { type: "object", properties: { query: { type: "string", description: "关键词，可用空格分隔多个（中文按子串匹配）" }, limit: { type: "number", description: "返回条数上限，默认 5" } }, required: ["query"] } },
+      /* 11-19：技能按需检索 —— 清单只给 60 字索引，命中不了的技能靠这个找。
+     ⛔ 实时扫盘：**刚装完的技能立刻能搜到**（不依赖引擎清单刷新）。 */
+      { type: "function", name: "find_skills", description: "按关键词检索本地已安装的技能（全局 + 当前项目），返回名字、路径与一句说明。当你不确定有没有现成技能、或清单里没有明显匹配时调用；命中后先 read_file 读那个 SKILL.md 的正文再动手。⛔ 只读，不会安装任何东西。", inputSchema: { type: "object", properties: { query: { type: "string", description: "关键词，可用空格分隔多个（中文不分词，按子串匹配）" }, limit: { type: "number", description: "返回条数上限，默认 5" } }, required: ["query"] } },
       { type: "function", name: "compact_context", description: "压缩当前会话的上下文（引擎原生压缩）。当对话很长、上下文占用很高、或用户说「压缩一下上下文」时调用。压缩由引擎执行：历史被摘要、上下文显著缩短，当前回合继续；无需等待它完成。", inputSchema: { type: "object", properties: {}, required: [] } },
       { type: "function", name: "task_add", description: "把一条任务加入用户的任务清单（多步任务开工时先建清单；输入框上方的「步骤 N/M」胶囊实时展示这份清单，悬停可展开）。", inputSchema: { type: "object", properties: { text: { type: "string" }, priority: { type: "string", enum: ["low", "medium", "high"] } }, required: ["text"] } },
       { type: "function", name: "task_update", description: "更新任务清单：列出全部任务（不传任何参数）、改状态或删除。status 只有 todo/doing/done。⛔ 每完成一步立刻把那一步更新为 done（正在做的那步置 doing），别攒到最后一次性更新。", inputSchema: { type: "object", properties: { id: { type: "string" }, status: { type: "string", enum: ["todo", "doing", "done"] }, text: { type: "string" }, priority: { type: "string", enum: ["low", "medium", "high"] }, done: { type: "boolean", description: "删除任务" } } } },
